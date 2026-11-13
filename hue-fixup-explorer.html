@@ -93,7 +93,7 @@ main {
 .pill.seam { background: #ff3b30; color: #fff; }
 .arrowKey { font-size: 15px; line-height: 1; color: var(--fg); }
 #sample {
-    position: fixed;
+    position: absolute;
     z-index: 10;
     pointer-events: none;
     display: none;
@@ -175,6 +175,14 @@ textarea {
 #swatches button span { position: absolute; inset: 0; border-radius: 4px; }
 #swatches button.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
 button.small { font-size: 12px; }
+@media (max-width: 720px) {
+    main { padding: 8px; gap: 8px; }
+    #stageScroller { flex: 1 1 100%; height: auto; position: static; overflow: hidden; }
+    #stageWrap { transform-origin: 0 0; }
+    aside { flex: 1 1 100%; min-width: 0; }
+    /* iOS zooms into fields with text smaller than 16px when they are focused. */
+    input, select, textarea { font-size: 16px; }
+}
 </style>
 </head>
 <body>
@@ -292,6 +300,12 @@ const PUPPY_IMAGE = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD//gA7Q1JF
 // Space around the box for the overlay. The box is centered in the stage area, and the overlay fills it.
 const MIN_MARGIN = 96;
 let margin = { x: MIN_MARGIN, y: MIN_MARGIN };
+
+// On narrow screens, like a phone's, the controls go below the box, and the box and the space around it are scaled
+// down to fit the width. Pointer positions are divided by this to get back to the stage's own coordinates.
+const narrowScreen = matchMedia("(max-width: 720px)");
+const NARROW_MARGIN = 64;
+let viewScale = 1;
 
 // MARK: - Color spaces
 // Conversions follow WebCore's ColorConversion and CSS Color 4.
@@ -1786,12 +1800,22 @@ function fromOverlay(x, y) {
 
 function updateMargin(width, height) {
     const scroller = $("stageScroller");
-    margin = {
-        x: Math.max(MIN_MARGIN, Math.floor((scroller.clientWidth - width) / 2)),
-        y: Math.max(MIN_MARGIN, Math.floor((scroller.clientHeight - height) / 2)),
-    };
+    if (narrowScreen.matches) {
+        margin = { x: Math.max(NARROW_MARGIN, Math.floor((scroller.clientWidth - width) / 2)), y: NARROW_MARGIN };
+        viewScale = Math.min(1, scroller.clientWidth / (width + 2 * margin.x));
+        scroller.style.height = `${Math.ceil((height + 2 * margin.y) * viewScale)}px`;
+    } else {
+        margin = {
+            x: Math.max(MIN_MARGIN, Math.floor((scroller.clientWidth - width) / 2)),
+            y: Math.max(MIN_MARGIN, Math.floor((scroller.clientHeight - height) / 2)),
+        };
+        viewScale = 1;
+        scroller.style.height = "";
+    }
     $("stageWrap").style.padding = `${margin.y}px ${margin.x}px`;
+    $("stageWrap").style.transform = viewScale < 1 ? `scale(${viewScale})` : "";
 }
+narrowScreen.addEventListener("change", () => scheduleRender());
 
 function drawOverlay(width, height, dpr) {
     const cssWidth = width + 2 * margin.x, cssHeight = height + 2 * margin.y;
@@ -2209,26 +2233,48 @@ function hideSample() {
 }
 
 function showSample(event) {
-    lastSamplePosition = { clientX: event.clientX, clientY: event.clientY };
+    lastSamplePosition = { clientX: event.clientX, clientY: event.clientY, pointerType: event.pointerType };
     if (!state.sample || !gpuRenderer)
         return hideSample();
+    // The stage may be scaled down to fit a narrow screen, so this goes by its drawn size.
     const rect = stage.getBoundingClientRect();
-    const target = [(event.clientX - rect.left) / state.width, (event.clientY - rect.top) / state.height];
+    const target = [(event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height];
     const hit = locate(meshPatches(), target);
     if (!hit)
         return hideSample();
     const sample = $("sample");
     sample.innerHTML = sampleHTML(hit);
     sample.style.display = "block";
+    // Placed in the page, so it scrolls with what it describes. Beside a mouse pointer, and above a finger, which would
+    // cover it otherwise.
     const { width, height } = sample.getBoundingClientRect();
-    const x = event.clientX + 18 + width > innerWidth ? event.clientX - 18 - width : event.clientX + 18;
-    const y = Math.min(event.clientY + 18, innerHeight - height - 8);
-    sample.style.left = `${x}px`;
-    sample.style.top = `${y}px`;
+    const viewportWidth = document.documentElement.clientWidth;
+    let x, y;
+    if (event.pointerType === "mouse") {
+        x = event.clientX + 18 + width > viewportWidth ? event.clientX - 18 - width : event.clientX + 18;
+        y = Math.min(event.clientY + 18, innerHeight - height - 8);
+    } else {
+        x = clamp(event.clientX - width / 2, 8, viewportWidth - width - 8);
+        y = event.clientY - height - 36 >= 8 ? event.clientY - height - 36 : event.clientY + 36;
+    }
+    sample.style.left = `${Math.max(8, x) + scrollX}px`;
+    sample.style.top = `${Math.max(8, y) + scrollY}px`;
 }
 
-stage.addEventListener("pointermove", showSample);
-stage.addEventListener("pointerleave", hideSample);
+// A mouse samples as it hovers. A finger samples where it touches and as it moves, unless it is dragging a point or
+// handle, and the sample stays once it lifts, so it can be compared across the two hue fixup orders.
+stage.addEventListener("pointermove", event => {
+    if (event.pointerType === "mouse" || !drag)
+        showSample(event);
+});
+stage.addEventListener("pointerdown", event => {
+    if (event.pointerType !== "mouse" && !drag)
+        showSample(event);
+});
+stage.addEventListener("pointerleave", event => {
+    if (event.pointerType === "mouse")
+        hideSample();
+});
 
 // Space swaps the hue fixup order, so the two can be compared without moving the mouse.
 document.addEventListener("keydown", event => {
@@ -2243,7 +2289,8 @@ document.addEventListener("keydown", event => {
         showSample(lastSamplePosition);
 });
 
-function hitTest(x, y) {
+// `slop` scales the distance a point or handle can be from (x, y) and still be hit.
+function hitTest(x, y, slop = 1) {
     const near = (p, radius) => Math.hypot(p[0] - x, p[1] - y) <= radius;
     let best = null, bestDistance = Infinity;
     const consider = (hit, p, radius) => {
@@ -2255,7 +2302,7 @@ function hitTest(x, y) {
     };
     for (let r = 0; r < state.rows; ++r) {
         for (let c = 0; c < state.cols; ++c)
-            consider({ kind: "point", r, c }, toOverlay(resolvedPosition(r, c)), 9);
+            consider({ kind: "point", r, c }, toOverlay(resolvedPosition(r, c)), 9 * slop);
     }
     if (best)
         return best;
@@ -2271,7 +2318,7 @@ function hitTest(x, y) {
         const used = usedSides(r, c);
         for (let side = 0; side < 4; ++side) {
             if (used[side])
-                consider({ kind: "handle", r, c, side }, toOverlay(controls[side]), 8);
+                consider({ kind: "handle", r, c, side }, toOverlay(controls[side]), 8 * slop);
         }
         if (best && r === selected[0] && c === selected[1])
             return best;
@@ -2281,10 +2328,18 @@ function hitTest(x, y) {
 
 let drag = null;
 
-overlay.addEventListener("pointerdown", event => {
+// The pointer's position on the overlay, in the stage's own coordinates.
+function overlayPosition(event) {
     const rect = overlay.getBoundingClientRect();
-    const x = event.clientX - rect.left, y = event.clientY - rect.top;
-    const hit = hitTest(x, y);
+    return [(event.clientX - rect.left) / viewScale, (event.clientY - rect.top) / viewScale];
+}
+
+// Fingers cover more than a mouse pointer, and the stage may be drawn smaller than its own size.
+const hitSlop = event => (event.pointerType === "mouse" ? 1 : 2.5) / viewScale;
+
+overlay.addEventListener("pointerdown", event => {
+    const [x, y] = overlayPosition(event);
+    const hit = hitTest(x, y, hitSlop(event));
     if (!hit)
         return;
     event.preventDefault();
@@ -2304,10 +2359,9 @@ overlay.addEventListener("pointerdown", event => {
 });
 
 overlay.addEventListener("pointermove", event => {
-    const rect = overlay.getBoundingClientRect();
-    const x = event.clientX - rect.left, y = event.clientY - rect.top;
+    const [x, y] = overlayPosition(event);
     if (!drag || drag.pointerId !== event.pointerId) {
-        overlay.style.cursor = hitTest(x, y) ? "grab" : "default";
+        overlay.style.cursor = hitTest(x, y, hitSlop(event)) ? "grab" : "default";
         return;
     }
     overlay.style.cursor = "grabbing";
@@ -2422,6 +2476,8 @@ $("background").addEventListener("input", () => {
 $("hueOrder").addEventListener("change", () => {
     state.hueOrder = $("hueOrder").value;
     changed();
+    if (lastSamplePosition)
+        showSample(lastSamplePosition);
 });
 $("overlayToggle").addEventListener("change", () => {
     state.overlay = $("overlayToggle").checked;
