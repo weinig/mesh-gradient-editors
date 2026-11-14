@@ -160,6 +160,49 @@ button.small { font-size: 12px; }
 #stopList button span { position: absolute; inset: 0; border-radius: 4px; }
 #stopList button.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
 input.percent { width: 72px; }
+#sample {
+    position: absolute;
+    z-index: 10;
+    pointer-events: none;
+    display: none;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(29, 29, 31, 0.92);
+    color: #fff;
+    font: 12px/1.55 ui-monospace, Menlo, monospace;
+    white-space: pre;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+#sample .muted { color: rgba(255, 255, 255, 0.6); }
+.swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1px solid rgba(128, 128, 128, 0.6);
+    vertical-align: -1px;
+}
+.swatch.large { width: 14px; height: 14px; border-radius: 3px; vertical-align: -3px; }
+#plot, #sheet {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    touch-action: none;
+}
+#plot { height: 170px; }
+#sheet { height: 280px; cursor: grab; }
+#splineNumbers {
+    font: 11px/1.5 ui-monospace, Menlo, monospace;
+    white-space: pre;
+    overflow-x: auto;
+    margin: 6px 0 0;
+}
+details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
+.legend span { white-space: nowrap; margin-right: 10px; }
+.legend b { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: 3px; margin-right: 4px; }
+input[type=range] { flex: 1; min-width: 80px; }
 </style>
 </head>
 <body>
@@ -174,6 +217,7 @@ input.percent { width: 72px; }
             </div>
         </div>
     </div>
+    <div id="sample"></div>
     <aside>
         <section>
             <h1>freeform-gradient() Editor</h1>
@@ -215,6 +259,53 @@ input.percent { width: 72px; }
             <p id="nativeStatus" class="status"></p>
             <p id="gpuStatus" class="status"></p>
             <p class="note">The colors are a thin-plate spline through the stops: the smoothest surface through their colors, one component at a time. It can overshoot the stops' colors between and beyond them. The WebGPU renderer is a port of WebKit's Metal renderer.</p>
+        </section>
+
+        <section>
+            <h2>Visualize</h2>
+            <div class="row">
+                <label for="view">Show</label>
+                <select id="view">
+                    <option value="gradient">The gradient</option>
+                    <option value="plane">The linear part</option>
+                    <option value="term">The linear part and the selected stop's term</option>
+                    <option value="basis">U(r) around the selected stop</option>
+                </select>
+            </div>
+            <p id="viewNote" class="note"></p>
+            <div class="row">
+                <label><input type="checkbox" id="normalizationToggle"> Normalization</label>
+                <label><input type="checkbox" id="sampleToggle"> Sample</label>
+                <label><input type="checkbox" id="crossSectionToggle"> Cross-section</label>
+                <label><input type="checkbox" id="sheetToggle"> 3D</label>
+            </div>
+            <p id="normalizationNote" class="note"></p>
+            <p id="sampleNote" class="note">Hover over the box, or tap it on a phone, to see the color there added up term by term.</p>
+            <div id="crossSectionPanel">
+                <div class="row">
+                    <label for="row">Row</label>
+                    <input id="row" type="range" min="0" max="100" step="1">
+                    <span id="rowValue" class="note"></span>
+                </div>
+                <canvas id="plot"></canvas>
+                <p id="plotNote" class="note legend"></p>
+            </div>
+            <div id="sheetPanel">
+                <div class="row">
+                    <label for="sheetComponent">Height</label>
+                    <select id="sheetComponent"></select>
+                </div>
+                <div class="row">
+                    <label for="tilt">Tilt</label>
+                    <input id="tilt" type="range" min="10" max="85" value="40">
+                </div>
+                <canvas id="sheet"></canvas>
+                <p class="note">Each component is its own surface over the box: here, the height is one component and the color is the gradient's. Each stop is a peg as tall as its value, and the surface passes through the top of every peg while bending as little as it can. All shows every component's surface together, each tinted with its color in the cross-section, over its own pegs. Drag to turn it.</p>
+            </div>
+            <details id="coefficientsDetails">
+                <summary>Coefficients</summary>
+                <pre id="splineNumbers"></pre>
+            </details>
         </section>
 
         <section>
@@ -716,6 +807,9 @@ function cssText() {
     return `freeform-gradient(${prelude ? prelude + ", " : ""}${stops.join(", ")})`;
 }
 
+// What the box shows. Only "gradient" is what WebKit draws; the others draw parts of the spline.
+const VIEWS = ["gradient", "plane", "term", "basis"];
+
 // MARK: - URL fragment
 
 function encodeState() {
@@ -727,6 +821,13 @@ function encodeState() {
         g: state.renderer,
         o: state.overlay ? 1 : 0,
         k: state.backdrop,
+        vw: state.view,
+        n: state.normalization ? 1 : 0,
+        x: state.crossSection ? 1 : 0,
+        r: state.row,
+        m: state.sample ? 1 : 0,
+        d: state.sheet ? 1 : 0,
+        dc: state.sheetComponent,
         p: state.stops.map(stop => stop.weight === null ? [stop.color, ...stop.pos] : [stop.color, ...stop.pos, stop.weight]),
     };
     const bytes = new TextEncoder().encode(JSON.stringify(data));
@@ -751,6 +852,13 @@ function decodeState(text) {
             renderer: data.g === "webgpu" ? "webgpu" : "native",
             overlay: data.o !== 0,
             backdrop: BACKDROPS.includes(data.k) ? data.k : "checkerboard",
+            view: VIEWS.includes(data.vw) ? data.vw : "gradient",
+            normalization: data.n === 1,
+            crossSection: data.x === 1,
+            row: clamp(Math.round(number(data.r) ?? 50), 0, 100),
+            sample: data.m === 1,
+            sheet: data.d === 1,
+            sheetComponent: clamp(Math.round(number(data.dc) ?? 0), 0, 4),
             stops,
         };
     } catch {
@@ -864,6 +972,13 @@ function presetState(index) {
         renderer: state?.renderer ?? defaultRenderer(),
         overlay: state?.overlay ?? true,
         backdrop: state?.backdrop ?? "checkerboard",
+        view: state?.view ?? "gradient",
+        normalization: state?.normalization ?? false,
+        crossSection: state?.crossSection ?? false,
+        row: state?.row ?? 50,
+        sample: state?.sample ?? false,
+        sheet: state?.sheet ?? false,
+        sheetComponent: state?.sheetComponent ?? 0,
         ...preset,
     };
 }
@@ -941,7 +1056,7 @@ function fitSpline() {
         const existing = points.findIndex(point => point.position[0] === position[0] && point.position[1] === position[1]);
         if (existing >= 0)
             points.splice(existing, 1);
-        points.push({ position, color: interpolationComponents(stop.color) });
+        points.push({ position, color: interpolationComponents(stop.color), stop: state.stops.indexOf(stop) });
     }
 
     // 2. In a cylindrical color space, move each hue by whole turns to within half a turn of their circular mean.
@@ -1028,10 +1143,11 @@ function fitSpline() {
     const solution = solve(matrix, values, size);
     if (!solution) {
         // Distinct positions make the system solvable, so this is only reached through rounding. Use the first color.
-        return { hueIndex, origin, scale, centers: [], polynomial: [points[0].color.slice(), [0, 0, 0, 0], [0, 0, 0, 0]] };
+        return { hueIndex, origin, scale, centers: [], polynomial: [points[0].color.slice(), [0, 0, 0, 0], [0, 0, 0, 0]], terms: [[1, 0, 0]] };
     }
 
-    const centers = points.map((point, i) => ({ position: point.position, weight: solution[i] }));
+    // `stop` and `color` aren't in WebKit's Center; the visualizations use them.
+    const centers = points.map((point, i) => ({ position: point.position, weight: solution[i], stop: point.stop, color: point.color }));
     // Gather the linear terms into the coefficients of 1, x and y.
     const polynomial = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
     for (let k = 0; k < terms.length; ++k) {
@@ -1040,7 +1156,7 @@ function fitSpline() {
                 polynomial[coefficient][component] += terms[k][coefficient] * solution[count + k][component];
         }
     }
-    return { hueIndex, origin, scale, centers, polynomial };
+    return { hueIndex, origin, scale, centers, polynomial, terms };
 }
 
 // The color at a position in CSS pixels, in the interpolation color space, premultiplied. Equivalent to
@@ -1062,14 +1178,27 @@ function interpolatedColor(spline, [px, py]) {
 function colorAt(percentPosition) {
     const spline = fitSpline();
     const color = interpolatedColor(spline, [percentPosition[0] / 100 * state.width, percentPosition[1] / 100 * state.height]);
-    const alpha = clamp(color[3], 0, 1);
-    const components = color.slice(0, 3).map((value, k) => k === spline.hueIndex ? normalizeHue(value) : alpha ? value / alpha : 0);
-    if (state.space === "lch" || state.space === "oklch")
-        components[1] = Math.max(0, components[1]);
-    const [r, g, b] = toOutput({ space: state.space, c: components, alpha }, "srgb");
+    const [r, g, b, alpha] = displayColor(unpremultipliedColor(color, spline.hueIndex));
     const hex = v => Math.round(clamp(v, 0, 1) * 255).toString(16).padStart(2, "0");
     return `#${hex(r)}${hex(g)}${hex(b)}${alpha < 1 ? hex(alpha) : ""}`;
 }
+
+// The spline's value with alpha clamped, then unpremultiplied, as FreeformGradient::premultipliedColor() does before it
+// converts.
+function unpremultipliedColor(color, hueIndex) {
+    const alpha = clamp(color[3], 0, 1);
+    const components = color.slice(0, 3).map((value, k) => k === hueIndex ? normalizeHue(value) : alpha ? value / alpha : 0);
+    if (state.space === "lch" || state.space === "oklch")
+        components[1] = Math.max(0, components[1]);
+    return [...components, alpha];
+}
+
+// Unpremultiplied components in the interpolation color space, as sRGB, clamped, and alpha.
+function displayColor(color) {
+    return toOutput({ space: state.space, c: color.slice(0, 3), alpha: color[3] }, "srgb");
+}
+
+const cssForDisplayColor = ([r, g, b, alpha]) => `rgb(${Math.round(r * 255)} ${Math.round(g * 255)} ${Math.round(b * 255)} / ${+alpha.toFixed(3)})`;
 
 // MARK: - WebGPU renderer
 // Ported from WebKit's FreeformGradientRendererMetal.mm: a single triangle covers the canvas, and each fragment
@@ -1109,6 +1238,8 @@ struct Uniforms {
     centerCount: u32,
     space: u32,
     outputIsDisplayP3: u32,
+    // Not in WebKit: 1 draws U(r) around the one center instead of the color.
+    view: u32,
 };
 
 @group(0) @binding(0) var<storage, read> centers: array<Center>;
@@ -1294,7 +1425,22 @@ struct RasterizerData {
 // freeformGradientFragment() in FreeformGradientRendererMetal.mm.
 @fragment fn freeformGradientFragment(in: RasterizerData) -> @location(0) vec4f {
     // The position of a fragment is the center of its pixel, in pixels: (x + 0.5, y + 0.5).
-    return premultipliedColor(in.position.xy / uniforms.scale);
+    let position = in.position.xy / uniforms.scale;
+    if (uniforms.view == 1u) {
+        return radialBasisColor(position);
+    }
+    return premultipliedColor(position);
+}
+
+// Not in WebKit: U(r) around the one center, white at 0, blue below it and orange above it. U is smallest, -1 / (2e),
+// at r = 1 / sqrt(e).
+fn radialBasisColor(position: vec2f) -> vec4f {
+    let offset = (position - uniforms.splineOrigin) / uniforms.splineScale - centers[0].position;
+    let u = radialBasis(dot(offset, offset));
+    if (u < 0.0) {
+        return vec4f(mix(vec3f(1.0), vec3f(0.16, 0.42, 0.95), saturate(-u * 2.0 * 2.718281828)), 1.0);
+    }
+    return vec4f(mix(vec3f(1.0), vec3f(0.95, 0.45, 0.1), 1.0 - exp(-u)), 1.0);
 }
 `;
 
@@ -1330,7 +1476,7 @@ class WebGPUFreeformGradientRenderer {
         });
     }
 
-    render(spline, scale) {
+    render(spline, scale, view = 0) {
         const { device } = this;
 
         // Matches Center in the shader: a vec2f, padded to 16 bytes, then a vec4f. A buffer can't be empty, so a
@@ -1343,7 +1489,7 @@ class WebGPUFreeformGradientRenderer {
         const centers = device.createBuffer({ size: centerData.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
         device.queue.writeBuffer(centers, 0, centerData);
 
-        // Matches Uniforms in the shader: 3 vec4fs, a vec2f, 2 f32s and 3 u32s, padded to 80 bytes.
+        // Matches Uniforms in the shader: 3 vec4fs, a vec2f, 2 f32s and 4 u32s: 80 bytes.
         const uniformData = new ArrayBuffer(80);
         const floats = new Float32Array(uniformData), uints = new Uint32Array(uniformData);
         spline.polynomial.forEach((coefficient, i) => floats.set(coefficient, i * 4));
@@ -1353,6 +1499,7 @@ class WebGPUFreeformGradientRenderer {
         uints[16] = spline.centers.length;
         uints[17] = SPACES.indexOf(state.space);
         uints[18] = this.outputSpace === "display-p3" ? 1 : 0;
+        uints[19] = view;
         const uniforms = device.createBuffer({ size: 80, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
         device.queue.writeBuffer(uniforms, 0, uniformData);
 
@@ -1424,7 +1571,9 @@ function render() {
     const css = cssText();
     $("output").value = `background-image: ${css};`;
 
-    const useNative = state.renderer === "native";
+    currentSpline = fitSpline();
+    const shownSpline = viewSpline(currentSpline);
+    const useNative = state.renderer === "native" && state.view === "gradient";
     nativeView.style.display = useNative ? "" : "none";
     gpuCanvas.style.display = useNative ? "none" : "";
     const message = $("stageMessage");
@@ -1445,8 +1594,12 @@ function render() {
             gpuCanvas.width = pixelWidth;
             gpuCanvas.height = pixelHeight;
         }
-        if (gpuRenderer)
-            gpuRenderer.render(fitSpline(), pixelWidth / width);
+        if (state.view === "basis" && !shownSpline.centers.length) {
+            message.textContent = "A later stop is at the same position as this one, so this one has no term.";
+            message.style.display = "flex";
+            gpuRenderer?.render({ ...shownSpline, polynomial: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] }, pixelWidth / width);
+        } else if (gpuRenderer)
+            gpuRenderer.render(shownSpline, pixelWidth / width, state.view === "basis" ? 1 : 0);
         else {
             message.textContent = gpuError ? `WebGPU: ${gpuError}` : "Starting WebGPU…";
             message.style.display = "flex";
@@ -1461,6 +1614,11 @@ function render() {
     updateMargin(width, height);
     drawOverlay(width, height, dpr);
     updateControls();
+    drawPlot();
+    drawSheet({ recompute: true });
+    updateCoefficients();
+    if (lastSamplePosition)
+        showSample(lastSamplePosition);
 }
 
 // MARK: - Overlay
@@ -1519,7 +1677,10 @@ function drawOverlay(width, height, dpr) {
     overlay.style.top = `${-margin.y}px`;
     overlay.style.width = `${cssWidth}px`;
     overlay.style.height = `${cssHeight}px`;
-    overlay.style.display = state.overlay ? "" : "none";
+    const visualizing = state.normalization || state.crossSection || state.view === "term" || state.view === "basis";
+    overlay.style.display = state.overlay || visualizing ? "" : "none";
+    // With the stops hidden, they can't be dragged, and the box can still be sampled.
+    overlay.style.pointerEvents = state.overlay ? "" : "none";
     if (overlay.width !== Math.round(cssWidth * dpr) || overlay.height !== Math.round(cssHeight * dpr)) {
         overlay.width = Math.round(cssWidth * dpr);
         overlay.height = Math.round(cssHeight * dpr);
@@ -1527,6 +1688,8 @@ function drawOverlay(width, height, dpr) {
     const ctx = overlayContext;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssWidth, cssHeight);
+    if (visualizing)
+        drawVisualization(ctx, width, height);
     if (!state.overlay)
         return;
 
@@ -1664,6 +1827,747 @@ document.addEventListener("keydown", event => {
     removeSelectedStop();
 });
 
+// MARK: - Visualize
+
+// The spline that the chosen view shows: all of it, its linear part, or its linear part and the selected stop's term.
+let currentSpline = null;
+
+function selectedCenter(spline) {
+    return spline.centers.find(center => center.stop === selected) ?? null;
+}
+
+function viewSpline(spline) {
+    switch (state.view) {
+    case "plane":
+        return { ...spline, centers: [] };
+    case "term":
+    case "basis": {
+        const center = selectedCenter(spline);
+        return { ...spline, centers: center ? [center] : [] };
+    }
+    default:
+        return spline;
+    }
+}
+
+const COMPONENT_LABELS = {
+    "xyz-d50": ["x", "y", "z"], "xyz-d65": ["x", "y", "z"],
+    lab: ["L", "a", "b"], lch: ["L", "C", "h"], oklab: ["L", "a", "b"], oklch: ["L", "C", "h"],
+    hsl: ["h", "s", "l"], hwb: ["h", "w", "b"],
+};
+// Each component's usual range, so they can share a graph.
+const COMPONENT_RANGES = {
+    lab: [[0, 100], [-125, 125], [-125, 125]], lch: [[0, 100], [0, 150], [0, 360]],
+    oklab: [[0, 1], [-0.4, 0.4], [-0.4, 0.4]], oklch: [[0, 1], [0, 0.4], [0, 360]],
+    hsl: [[0, 360], [0, 100], [0, 100]], hwb: [[0, 360], [0, 100], [0, 100]],
+};
+const COMPONENT_COLORS = ["#e5484d", "#30a46c", "#0090ff", "#8e8e93"];
+
+function components() {
+    const labels = COMPONENT_LABELS[state.space] ?? ["r", "g", "b"];
+    const ranges = COMPONENT_RANGES[state.space] ?? [[0, 1], [0, 1], [0, 1]];
+    return [...labels.map((label, k) => ({ label, range: ranges[k] })), { label: "α", range: [0, 1] }];
+}
+
+const normalizedComponent = (value, range) => (value - range[0]) / (range[1] - range[0]);
+
+// U(r) around the center, as radialBasisColor() in the shader colors it.
+function radialBasisDisplayColor(u) {
+    const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+    return u < 0 ? mix([1, 1, 1], [0.16, 0.42, 0.95], clamp(-u * 2 * Math.E, 0, 1)) : mix([1, 1, 1], [0.95, 0.45, 0.1], 1 - Math.exp(-u));
+}
+
+function radialBasisAt(spline, center, [px, py]) {
+    const x = (px - spline.origin[0]) / spline.scale - center.position[0], y = (py - spline.origin[1]) / spline.scale - center.position[1];
+    return radialBasis(x * x + y * y);
+}
+
+function signed(value, digits) {
+    const text = Math.abs(value) < 0.5 * 10 ** -digits ? (0).toFixed(digits) : value.toFixed(digits);
+    return value < 0 && !text.match(/^-?0\.?0*$/) ? text : ` ${text.replace(/^-/, "")}`;
+}
+
+// Digits for a component, by its range.
+const digitsFor = range => range[1] - range[0] >= 50 ? 2 : 3;
+
+function escapeHTML(text) {
+    return text.replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
+}
+
+function swatchHTML(stopIndex, large = false) {
+    const color = state.stops[stopIndex]?.color ?? "black";
+    return `<span class="swatch${large ? " large" : ""}" style="background: ${escapeHTML(color)}"></span>`;
+}
+
+const linearPartText = spline => spline.terms.length === 3 ? "a + b·x + c·y" : spline.terms.length === 2 ? "a + b·t" : "a";
+
+function drawLabel(ctx, text, x, y, align = "center") {
+    ctx.font = "600 11px -apple-system, system-ui, sans-serif";
+    const width = ctx.measureText(text).width + 12;
+    const left = align === "left" ? x : align === "right" ? x - width : x - width / 2;
+    ctx.fillStyle = "rgba(29, 29, 31, 0.85)";
+    ctx.beginPath();
+    ctx.roundRect(left, y - 9, width, 18, 9);
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    ctx.fillText(text, left + 6, y + 0.5);
+}
+
+// A line that shows on light and dark colors: white under dark.
+function strokeTwice(ctx, path, dash = []) {
+    ctx.setLineDash(dash);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
+    path();
+    ctx.stroke();
+    ctx.lineWidth = 1.25;
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.75)";
+    path();
+    ctx.stroke();
+    ctx.setLineDash([]);
+}
+
+function drawVisualization(ctx, width, height) {
+    const spline = currentSpline;
+    const toCanvas = ([px, py]) => [margin.x + px, margin.y + py];
+    const fromNormalized = ([x, y]) => toCanvas([spline.origin[0] + x * spline.scale, spline.origin[1] + y * spline.scale]);
+
+    if (state.crossSection) {
+        const y = margin.y + state.row / 100 * height;
+        strokeTwice(ctx, () => {
+            ctx.beginPath();
+            ctx.moveTo(margin.x, y);
+            ctx.lineTo(margin.x + width, y);
+        }, [6, 4]);
+        drawLabel(ctx, "cross-section", margin.x + 6, y - 14, "left");
+    }
+
+    if (state.normalization) {
+        const [cx, cy] = fromNormalized([0, 0]);
+        for (const center of spline.centers) {
+            const [x, y] = fromNormalized(center.position);
+            strokeTwice(ctx, () => {
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(x, y);
+            }, [2, 3]);
+        }
+        strokeTwice(ctx, () => {
+            ctx.beginPath();
+            ctx.arc(cx, cy, spline.scale, 0, 2 * Math.PI);
+        }, [6, 4]);
+        if (spline.terms.length === 2) {
+            // Stops on a line: the linear part only changes along it.
+            const [, dx, dy] = spline.terms[1];
+            const reach = Math.hypot(width, height) + Math.hypot(margin.x, margin.y);
+            strokeTwice(ctx, () => {
+                ctx.beginPath();
+                ctx.moveTo(cx - dx * reach, cy - dy * reach);
+                ctx.lineTo(cx + dx * reach, cy + dy * reach);
+            });
+            drawLabel(ctx, "t", cx + dx * spline.scale * 0.5 + 12, cy + dy * spline.scale * 0.5 - 12);
+        }
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "#fff";
+        ctx.fillStyle = "#000";
+        ctx.beginPath();
+        ctx.arc(cx, cy, 4, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+        drawLabel(ctx, "(0, 0)", cx, cy + 18);
+        drawLabel(ctx, "distance 1", cx, cy - spline.scale);
+    }
+
+    if (state.view === "term" || state.view === "basis") {
+        const center = selectedCenter(spline);
+        if (center) {
+            const [x, y] = fromNormalized(center.position);
+            strokeTwice(ctx, () => {
+                ctx.beginPath();
+                ctx.arc(x, y, spline.scale, 0, 2 * Math.PI);
+            }, [3, 3]);
+            drawLabel(ctx, "r = 1, where U(r) = 0", x, y + spline.scale);
+            if (state.view === "term") {
+                const weights = components().map(({ label, range }, k) => `${label} ${signed(center.weight[k], digitsFor(range)).trim()}`);
+                drawLabel(ctx, `w = ${weights.join(", ")}`, x, y - 24);
+            }
+        }
+    }
+}
+
+const VIEW_NOTES = {
+    gradient: "f(p) = a + b·x + c·y + Σ wᵢ·U(|p − pᵢ|), for each component. The weights wᵢ and a, b and c are solved for together, so that f is each stop's color at its position, and the terms add no tilt of their own: Σ wᵢ = Σ wᵢ·xᵢ = Σ wᵢ·yᵢ = 0.",
+    plane: "Just the linear part, without the stops' terms. It bends nothing, so it is free; it is the tilt that the terms are added to, and on its own it reaches few of the stops' colors.",
+    term: "The linear part, bent by only the selected stop's term, wᵢ·U(r). Where a weight is positive the term lowers that component near the stop and raises it far away; where it is negative, the opposite. It changes sign at r = 1, the dashed circle, since U(1) = 0.",
+    basis: "U(r) = r²·log r, the shape a thin plate takes when pushed at one point. Every stop's term is this shape around the stop, scaled by its weights. It is 0 at the stop and at r = 1 (the dashed circle), below 0 between them (blue), and grows past r = 1 (orange). r is measured in normalized units.",
+};
+
+function updateVisualizationControls() {
+    $("view").value = state.view;
+    let note = VIEW_NOTES[state.view];
+    if (state.view !== "gradient" && state.renderer === "native")
+        note += " Drawn with WebGPU.";
+    $("viewNote").textContent = note;
+    $("normalizationToggle").checked = state.normalization;
+    $("sampleToggle").checked = state.sample;
+    $("crossSectionToggle").checked = state.crossSection;
+    $("sheetToggle").checked = state.sheet;
+    $("sampleNote").hidden = !state.sample;
+    $("crossSectionPanel").hidden = !state.crossSection;
+    $("sheetPanel").hidden = !state.sheet;
+    $("row").value = state.row;
+    $("rowValue").textContent = `${state.row}%`;
+    $("tilt").value = Math.round(sheetTilt * 180 / Math.PI);
+
+    const spline = currentSpline;
+    const normalization = $("normalizationNote");
+    normalization.hidden = !state.normalization;
+    if (state.normalization) {
+        let text = `The spline is fitted with the stops' positions moved so their centroid is at (0, 0), and scaled so the farthest is at a distance of 1, here ${+spline.scale.toFixed(1)}px. This changes nothing but keeps the numbers in the solve similar in size.`;
+        if (spline.terms.length === 2)
+            text += " The stops are on a line, so the linear part is a + b·t, along it: a tilt across it would be undetermined.";
+        else if (spline.terms.length === 1)
+            text += " With only one stop, the linear part is a constant, a.";
+        normalization.textContent = text;
+    }
+
+    const select = $("sheetComponent");
+    const labels = [...components().map(component => component.label), "All"];
+    if ([...select.options].map(option => option.text).join() !== labels.join()) {
+        select.replaceChildren(...labels.map((label, k) => new Option(label, String(k))));
+    }
+    select.value = String(state.sheetComponent);
+    // The U(r) view has one surface.
+    select.closest(".row").hidden = state.view === "basis";
+}
+
+// MARK: Cross-section
+
+function sizeCanvas(canvas) {
+    const dpr = window.devicePixelRatio || 1;
+    const width = canvas.clientWidth, height = canvas.clientHeight;
+    if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
+    }
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    return { ctx, width, height };
+}
+
+const isDark = () => matchMedia("(prefers-color-scheme: dark)").matches;
+
+function drawPlot() {
+    if (!state.crossSection)
+        return;
+    const canvas = $("plot");
+    const { ctx, width, height } = sizeCanvas(canvas);
+    const spline = viewSpline(currentSpline);
+    const ink = isDark() ? "255, 255, 255" : "0, 0, 0";
+    const rowY = state.row / 100 * state.height;
+    const left = 4, right = width - 4, top = 18, bottom = height - 6;
+    const samples = Math.max(2, Math.round((right - left) / 2));
+    const xAt = i => i / samples * state.width;
+    const info = components();
+
+    let curves, low, high;
+    if (state.view === "basis") {
+        const center = selectedCenter(currentSpline);
+        curves = center ? [{ color: `rgb(${ink})`, values: Array.from({ length: samples + 1 }, (_, i) => radialBasisAt(spline, center, [xAt(i), rowY])) }] : [];
+        low = -0.25;
+        high = 1;
+        $("plotNote").innerHTML = "<span><b style=\"background: currentColor\"></b>U(r) along the row. The dashed line is 0.</span>";
+    } else {
+        curves = info.map(({ range }, k) => ({
+            color: COMPONENT_COLORS[k],
+            values: Array.from({ length: samples + 1 }, (_, i) => normalizedComponent(interpolatedColor(spline, [xAt(i), rowY])[k], range)),
+        }));
+        low = -0.15;
+        high = 1.15;
+        $("plotNote").innerHTML = info.map(({ label, range }, k) => `<span><b style="background: ${COMPONENT_COLORS[k]}"></b>${escapeHTML(label)} ${range[0]}…${range[1]}</span>`).join("")
+            + "<br>Each component along the row, as fitted: premultiplied, and scaled so the dashed lines are the ends of its range. Dots are stops on the row, and the curves pass through them.";
+    }
+    for (const curve of curves) {
+        for (const value of curve.values) {
+            low = Math.min(low, value);
+            high = Math.max(high, value);
+        }
+    }
+    low = Math.max(low, -2);
+    high = Math.min(high, 3);
+    const y = value => bottom - (value - low) / (high - low) * (bottom - top);
+    const x = px => left + px / state.width * (right - left);
+
+    ctx.strokeStyle = `rgba(${ink}, 0.3)`;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    for (const value of state.view === "basis" ? [0] : [0, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(left, y(value));
+        ctx.lineTo(right, y(value));
+        ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    // Stops near the row.
+    for (const center of currentSpline.centers) {
+        const stop = state.stops[center.stop];
+        const distance = Math.abs(stop.pos[1] - state.row);
+        if (distance > 10)
+            continue;
+        const px = stop.pos[0] / 100 * state.width;
+        ctx.globalAlpha = 1 - distance / 10;
+        ctx.strokeStyle = `rgba(${ink}, 0.25)`;
+        ctx.beginPath();
+        ctx.moveTo(x(px), top - 8);
+        ctx.lineTo(x(px), bottom);
+        ctx.stroke();
+        ctx.fillStyle = parseColor(stop.color) ? stop.color : "#000";
+        ctx.beginPath();
+        ctx.arc(x(px), 9, 5, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.strokeStyle = `rgba(${ink}, 0.5)`;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        if (distance < 0.5 && state.view !== "basis") {
+            info.forEach(({ range }, k) => {
+                ctx.fillStyle = COMPONENT_COLORS[k];
+                ctx.beginPath();
+                ctx.arc(x(px), y(normalizedComponent(center.color[k], range)), 4, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+        }
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, top - 10, width, bottom - top + 16);
+    ctx.clip();
+    for (const curve of curves) {
+        ctx.strokeStyle = curve.color;
+        ctx.lineWidth = 1.75;
+        ctx.beginPath();
+        curve.values.forEach((value, i) => i ? ctx.lineTo(x(xAt(i)), y(value)) : ctx.moveTo(x(xAt(i)), y(value)));
+        ctx.stroke();
+    }
+    ctx.restore();
+}
+
+// MARK: Sample
+
+let lastSamplePosition = null;
+
+function hideSample() {
+    lastSamplePosition = null;
+    $("sample").style.display = "none";
+}
+
+function sampleHTML([px, py]) {
+    const spline = viewSpline(currentSpline);
+    const info = components();
+    const x = (px - spline.origin[0]) / spline.scale, y = (py - spline.origin[1]) / spline.scale;
+    const lines = [];
+    const muted = text => `<span class="muted">${escapeHTML(text)}</span>`;
+    lines.push(`(${px.toFixed(0)}, ${py.toFixed(0)})px ${muted("→ normalized")} p = (${x.toFixed(3)}, ${y.toFixed(3)})`);
+
+    if (state.view === "basis") {
+        const center = selectedCenter(currentSpline);
+        if (!center)
+            return lines.join("\n");
+        const dx = x - center.position[0], dy = y - center.position[1];
+        const r = Math.hypot(dx, dy);
+        lines.push(`${swatchHTML(center.stop)} r = |p − p${center.stop + 1}| = ${r.toFixed(3)}`);
+        lines.push(`U(r) = r²·log r = ${radialBasis(r * r).toFixed(4)}`);
+        return lines.join("\n");
+    }
+
+    const labelWidth = 17, columnWidth = 9;
+    const row = (label, values, labelHTML = escapeHTML(label)) => labelHTML + " ".repeat(Math.max(1, labelWidth - label.length))
+        + values.map((value, k) => (typeof value === "string" ? value : signed(value, digitsFor(info[k].range))).padStart(columnWidth)).join("");
+    lines.push("");
+    lines.push(muted(" ".repeat(labelWidth) + info.map(({ label }) => label.padStart(columnWidth)).join("")));
+    const total = [0, 1, 2, 3].map(k => spline.polynomial[0][k] + spline.polynomial[1][k] * x + spline.polynomial[2][k] * y);
+    lines.push(row(linearPartText(spline), total));
+    const terms = spline.centers.map(center => {
+        const dx = x - center.position[0], dy = y - center.position[1];
+        const u = radialBasis(dx * dx + dy * dy);
+        return { center, r: Math.hypot(dx, dy), values: center.weight.map(w => w * u) };
+    });
+    const shown = terms.length > 12 ? 11 : terms.length;
+    for (const term of terms.slice(0, shown)) {
+        const label = `  w${term.center.stop + 1}·U(${term.r.toFixed(2)})`;
+        lines.push(row(label, term.values, `${swatchHTML(term.center.stop)} ${escapeHTML(label.slice(2))}`));
+    }
+    if (terms.length > shown) {
+        const rest = terms.slice(shown);
+        lines.push(row(`  ${rest.length} more stops`, [0, 1, 2, 3].map(k => rest.reduce((sum, term) => sum + term.values[k], 0))));
+    }
+    for (const term of terms) {
+        for (let k = 0; k < 4; ++k)
+            total[k] += term.values[k];
+    }
+    lines.push(muted("─".repeat(labelWidth + 4 * columnWidth)));
+    lines.push(row("= premultiplied", total));
+    const color = unpremultipliedColor(total, spline.hueIndex);
+    lines.push(row("÷ clamped α", color));
+    const display = displayColor(color);
+    lines.push(`${`<span class="swatch large" style="background: ${cssForDisplayColor(display)}"></span>`} ${escapeHTML(state.space)}(${color.slice(0, 3).map((v, k) => signed(v, digitsFor(info[k].range)).trim()).join(" ")} / ${+color[3].toFixed(3)})`);
+    return lines.join("\n");
+}
+
+function showSample(event) {
+    lastSamplePosition = { clientX: event.clientX, clientY: event.clientY, pointerType: event.pointerType };
+    if (!state.sample || !currentSpline)
+        return hideSample();
+    // The stage may be scaled down to fit a narrow screen, so this goes by its drawn size.
+    const rect = stage.getBoundingClientRect();
+    const u = (event.clientX - rect.left) / rect.width, v = (event.clientY - rect.top) / rect.height;
+    if (u < 0 || u > 1 || v < 0 || v > 1) {
+        $("sample").style.display = "none";
+        return;
+    }
+    const sample = $("sample");
+    sample.innerHTML = sampleHTML([u * state.width, v * state.height]);
+    sample.style.display = "block";
+    // Beside a mouse pointer, and above a finger, which would cover it otherwise.
+    const { width, height } = sample.getBoundingClientRect();
+    const viewportWidth = document.documentElement.clientWidth;
+    let x, y;
+    if (event.pointerType === "mouse") {
+        x = event.clientX + 18 + width > viewportWidth ? event.clientX - 18 - width : event.clientX + 18;
+        y = Math.min(event.clientY + 18, innerHeight - height - 8);
+    } else {
+        x = clamp(event.clientX - width / 2, 8, viewportWidth - width - 8);
+        y = event.clientY - height - 36 >= 8 ? event.clientY - height - 36 : event.clientY + 36;
+    }
+    sample.style.left = `${Math.max(8, x) + scrollX}px`;
+    sample.style.top = `${Math.max(8, y) + scrollY}px`;
+}
+
+// A mouse samples as it hovers. A finger samples where it touches, unless it is dragging a stop, and the sample stays
+// once it lifts.
+stage.addEventListener("pointermove", event => {
+    if (event.pointerType === "mouse" || !drag)
+        showSample(event);
+});
+stage.addEventListener("pointerdown", event => {
+    if (event.pointerType !== "mouse" && !drag)
+        showSample(event);
+});
+stage.addEventListener("pointerleave", event => {
+    if (event.pointerType === "mouse")
+        hideSample();
+});
+
+// MARK: 3D
+
+let sheetYaw = -0.6;
+let sheetTilt = 40 * Math.PI / 180;
+let sheetGrid = null;
+const SHEET_GRID = 24;
+
+// The index of the Height choice that shows every component's surface at once.
+const ALL_COMPONENTS = 4;
+
+function computeSheet() {
+    const spline = viewSpline(currentSpline);
+    const center = selectedCenter(currentSpline);
+    const info = components();
+    const all = state.sheetComponent === ALL_COMPONENTS && state.view !== "basis";
+    const shown = all ? [0, 1, 2, 3] : [Math.min(state.sheetComponent, 3)];
+
+    // Samples on the grid's vertices, for the heights, and at the centers of its cells, for the colors.
+    const sampleGrid = (count, offset) => Array.from({ length: count }, (_, i) => Array.from({ length: count }, (_, j) => {
+        const position = [(i + offset) / SHEET_GRID * state.width, (j + offset) / SHEET_GRID * state.height];
+        if (state.view === "basis")
+            return center ? radialBasisAt(spline, center, position) : 0;
+        return interpolatedColor(spline, position);
+    }));
+    const vertexValues = sampleGrid(SHEET_GRID + 1, 0);
+    const faceValues = sampleGrid(SHEET_GRID, 0.5);
+
+    // Samples along the cross-section's row, where its plane cuts each surface.
+    const SECTION_SAMPLES = SHEET_GRID * 4;
+    const sectionValues = !state.crossSection ? null : Array.from({ length: SECTION_SAMPLES + 1 }, (_, i) => {
+        const position = [i / SECTION_SAMPLES * state.width, state.row / 100 * state.height];
+        if (state.view === "basis")
+            return center ? radialBasisAt(spline, center, position) : 0;
+        return interpolatedColor(spline, position);
+    });
+
+    let sheets;
+    if (state.view === "basis") {
+        // U(r) grows without bound, so it is scaled down to fit.
+        const largest = Math.max(1, ...vertexValues.flat());
+        sheets = [{
+            vertices: vertexValues.map(column => column.map(value => value / largest)),
+            faces: faceValues.map(column => column.map(value => cssForDisplayColor([...radialBasisDisplayColor(value), 1]))),
+            section: sectionValues?.map(value => value / largest),
+            sectionColor: null,
+        }];
+    } else {
+        const gradientColors = all ? null : faceValues.map(column => column.map(color => cssForDisplayColor(displayColor(unpremultipliedColor(color, spline.hueIndex)))));
+        sheets = shown.map(k => ({
+            component: k,
+            vertices: vertexValues.map(column => column.map(color => normalizedComponent(color[k], info[k].range))),
+            // With every surface shown, each is tinted with its component's color, so they can be told apart.
+            faces: gradientColors ?? faceValues.map(column => column.map(() => COMPONENT_COLORS[k] + "a0")),
+            section: sectionValues?.map(color => normalizedComponent(color[k], info[k].range)),
+            sectionColor: COMPONENT_COLORS[k],
+        }));
+    }
+
+    const pegs = [];
+    if (state.view === "basis") {
+        if (center)
+            pegs.push({ stop: center.stop, height: 0 });
+    } else {
+        for (const k of shown) {
+            for (const c of currentSpline.centers)
+                pegs.push({ stop: c.stop, height: normalizedComponent(c.color[k], info[k].range), ring: all ? COMPONENT_COLORS[k] : null });
+        }
+    }
+    const label = state.view === "basis" ? "U(r)" : all ? "" : info[shown[0]].label;
+    sheetGrid = { sheets, pegs, label, range: all ? [0, 1] : info[shown[0]].range, all };
+}
+
+function drawSheet({ recompute = false } = { }) {
+    if (!state.sheet)
+        return;
+    if (recompute || !sheetGrid)
+        computeSheet();
+    const { ctx, width, height } = sizeCanvas($("sheet"));
+    const { sheets, pegs, label, range, all } = sheetGrid;
+    const longest = Math.max(state.width, state.height);
+    const extentX = state.width / longest, extentY = state.height / longest;
+    const zScale = 0.45;
+    const fit = Math.min(width, height * 1.3) * 0.62;
+    const project = (u, v, z) => {
+        const x0 = (u - 0.5) * extentX, y0 = (v - 0.5) * extentY, z0 = z * zScale;
+        const cosYaw = Math.cos(sheetYaw), sinYaw = Math.sin(sheetYaw);
+        const xr = x0 * cosYaw - y0 * sinYaw, yr = x0 * sinYaw + y0 * cosYaw;
+        const cosTilt = Math.cos(sheetTilt), sinTilt = Math.sin(sheetTilt);
+        return [width / 2 + xr * fit, height / 2 + 30 + (yr * sinTilt - z0 * cosTilt) * fit, yr * cosTilt + z0 * sinTilt];
+    };
+    const ink = isDark() ? "255, 255, 255" : "0, 0, 0";
+
+    const outline = (z, dash, alpha) => {
+        const corners = [[0, 0], [1, 0], [1, 1], [0, 1]].map(([u, v]) => project(u, v, z));
+        ctx.setLineDash(dash);
+        ctx.strokeStyle = `rgba(${ink}, ${alpha})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        corners.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+        ctx.closePath();
+        ctx.stroke();
+        ctx.setLineDash([]);
+        return corners;
+    };
+    const floor = outline(0, [], 0.35);
+    ctx.fillStyle = `rgba(${ink}, 0.05)`;
+    ctx.beginPath();
+    floor.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+    ctx.fill();
+    if (state.view !== "basis") {
+        const top = outline(1, [4, 4], 0.3);
+        ctx.fillStyle = `rgba(${ink}, 0.6)`;
+        ctx.font = "11px -apple-system, system-ui, sans-serif";
+        ctx.fillText(all ? "top of each range" : `${label} = ${range[1]}`, top[0][0] + 6, top[0][1] - 4);
+        ctx.fillText(all ? "bottom of each range" : `${label} = ${range[0]}`, floor[0][0] + 6, floor[0][1] + 14);
+    }
+
+    const items = [];
+    for (const { vertices, faces } of sheets) {
+        for (let i = 0; i < SHEET_GRID; ++i) {
+            for (let j = 0; j < SHEET_GRID; ++j) {
+                const quad = [[i, j], [i + 1, j], [i + 1, j + 1], [i, j + 1]].map(([a, b]) => project(a / SHEET_GRID, b / SHEET_GRID, vertices[a][b]));
+                const depth = quad.reduce((sum, p) => sum + p[2], 0) / 4;
+                items.push({ depth, draw: () => {
+                    ctx.beginPath();
+                    quad.forEach(([x, y], k) => k ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+                    ctx.closePath();
+                    ctx.fillStyle = faces[i][j];
+                    ctx.fill();
+                    ctx.strokeStyle = `rgba(${ink}, 0.1)`;
+                    ctx.lineWidth = 0.5;
+                    ctx.stroke();
+                } });
+            }
+        }
+    }
+    if (state.crossSection) {
+        // The cross-section's plane, standing on its row, cut into strips so it sorts among the surface's cells.
+        const v = state.row / 100;
+        const zLow = Math.min(0, ...sheets.flatMap(({ vertices }) => vertices.flat()));
+        const zHigh = Math.max(1, ...sheets.flatMap(({ vertices }) => vertices.flat()));
+        for (let i = 0; i < SHEET_GRID; ++i) {
+            const u0 = i / SHEET_GRID, u1 = (i + 1) / SHEET_GRID;
+            const quad = [project(u0, v, zLow), project(u1, v, zLow), project(u1, v, zHigh), project(u0, v, zHigh)];
+            const depth = quad.reduce((sum, p) => sum + p[2], 0) / 4;
+            items.push({ depth, draw: () => {
+                ctx.beginPath();
+                quad.forEach(([x, y], k) => k ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+                ctx.closePath();
+                ctx.fillStyle = `rgba(${ink}, 0.18)`;
+                ctx.fill();
+                ctx.strokeStyle = `rgba(${ink}, 0.5)`;
+                ctx.lineWidth = 1;
+                ctx.setLineDash([6, 4]);
+                for (const [a, b] of [[0, 1], [3, 2]]) {
+                    ctx.beginPath();
+                    ctx.moveTo(...quad[a].slice(0, 2));
+                    ctx.lineTo(...quad[b].slice(0, 2));
+                    ctx.stroke();
+                }
+                ctx.setLineDash([]);
+            } });
+        }
+        for (const edge of [0, 1]) {
+            const ends = [project(edge, v, zLow), project(edge, v, zHigh)];
+            items.push({ depth: (ends[0][2] + ends[1][2]) / 2, draw: () => {
+                ctx.strokeStyle = `rgba(${ink}, 0.5)`;
+                ctx.lineWidth = 1;
+                ctx.setLineDash([6, 4]);
+                ctx.beginPath();
+                ctx.moveTo(...ends[0].slice(0, 2));
+                ctx.lineTo(...ends[1].slice(0, 2));
+                ctx.stroke();
+                ctx.setLineDash([]);
+            } });
+        }
+        // Where the plane cuts each surface: the curves the cross-section plot draws.
+        for (const { section, sectionColor } of sheets) {
+            const points = section.map((z, i) => project(i / (section.length - 1), v, z));
+            for (let i = 0; i + 1 < points.length; ++i) {
+                const [a, b] = [points[i], points[i + 1]];
+                items.push({ depth: (a[2] + b[2]) / 2 - 0.01, draw: () => {
+                    ctx.strokeStyle = sectionColor ?? `rgba(${ink}, 0.9)`;
+                    ctx.lineWidth = 2.5;
+                    ctx.lineCap = "round";
+                    ctx.beginPath();
+                    ctx.moveTo(a[0], a[1]);
+                    ctx.lineTo(b[0], b[1]);
+                    ctx.stroke();
+                    ctx.lineCap = "butt";
+                } });
+            }
+        }
+    }
+    for (const peg of pegs) {
+        const stop = state.stops[peg.stop];
+        const u = stop.pos[0] / 100, v = stop.pos[1] / 100;
+        const base = project(u, v, 0), tip = project(u, v, peg.height);
+        items.push({ depth: tip[2] + 0.02, draw: () => {
+            ctx.strokeStyle = `rgba(${ink}, 0.85)`;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(base[0], base[1]);
+            ctx.lineTo(tip[0], tip[1]);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(tip[0], tip[1], peg.stop === selected ? 7 : 6, 0, 2 * Math.PI);
+            ctx.fillStyle = parseColor(stop.color) ? stop.color : "#000";
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = peg.ring ?? (peg.stop === selected ? "#0a84ff" : "#fff");
+            ctx.stroke();
+        } });
+    }
+    items.sort((a, b) => b.depth - a.depth).forEach(item => item.draw());
+}
+
+{
+    let rotating = null;
+    const sheet = $("sheet");
+    sheet.addEventListener("pointerdown", event => {
+        rotating = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+        sheet.setPointerCapture(event.pointerId);
+        sheet.style.cursor = "grabbing";
+    });
+    sheet.addEventListener("pointermove", event => {
+        if (!rotating || rotating.pointerId !== event.pointerId)
+            return;
+        sheetYaw += (event.clientX - rotating.x) * 0.01;
+        sheetTilt = clamp(sheetTilt + (event.clientY - rotating.y) * 0.006, 10 * Math.PI / 180, 85 * Math.PI / 180);
+        rotating.x = event.clientX;
+        rotating.y = event.clientY;
+        $("tilt").value = Math.round(sheetTilt * 180 / Math.PI);
+        drawSheet();
+    });
+    const stop = () => {
+        rotating = null;
+        sheet.style.cursor = "grab";
+    };
+    sheet.addEventListener("pointerup", stop);
+    sheet.addEventListener("pointercancel", stop);
+}
+
+// MARK: Coefficients
+
+function updateCoefficients() {
+    if (!$("coefficientsDetails").open)
+        return;
+    const spline = currentSpline;
+    const info = components();
+    const labelWidth = 10, columnWidth = 10;
+    // A swatch takes about two characters' room.
+    const row = (label, values, swatch = null) => (swatch === null ? label.padEnd(labelWidth) : `${swatchHTML(swatch)} ${label.padEnd(labelWidth - 2)}`)
+        + values.map((value, k) => signed(value, digitsFor(info[k].range) + 1).padStart(columnWidth)).join("");
+    const lines = [];
+    lines.push(`centroid (${spline.origin.map(v => v.toFixed(1)).join(", ")})px, scale ${spline.scale.toFixed(1)}px`);
+    let linear = linearPartText(spline);
+    if (spline.terms.length === 2)
+        linear += `, t = ${spline.terms[1][1].toFixed(3)}·x + ${spline.terms[1][2].toFixed(3)}·y`;
+    lines.push(`linear part: ${linear}`);
+    lines.push("");
+    lines.push(" ".repeat(labelWidth) + info.map(({ label }) => label.padStart(columnWidth)).join(""));
+    ["a", "b", "c"].forEach((name, i) => lines.push(row(name, spline.polynomial[i])));
+    for (const center of spline.centers)
+        lines.push(row(`w${center.stop + 1}`, center.weight, center.stop));
+    const sums = [
+        ["Σw", () => 1],
+        ["Σw·x", c => c.position[0]],
+        ["Σw·y", c => c.position[1]],
+    ];
+    lines.push("");
+    for (const [name, factor] of sums)
+        lines.push(row(name, [0, 1, 2, 3].map(k => spline.centers.reduce((sum, c) => sum + c.weight[k] * factor(c), 0))));
+    lines.push("The sums are 0, up to rounding.");
+    $("splineNumbers").innerHTML = lines.join("\n");
+}
+$("coefficientsDetails").addEventListener("toggle", updateCoefficients);
+
+// MARK: Visualize controls
+
+$("view").addEventListener("change", () => {
+    state.view = $("view").value;
+    changed();
+});
+for (const [id, key] of [["normalizationToggle", "normalization"], ["sampleToggle", "sample"], ["crossSectionToggle", "crossSection"], ["sheetToggle", "sheet"]]) {
+    $(id).addEventListener("change", () => {
+        state[key] = $(id).checked;
+        if (key === "sample" && !state.sample)
+            hideSample();
+        changed();
+    });
+}
+$("row").addEventListener("input", () => {
+    state.row = Number($("row").value);
+    changed({ dragging: true });
+});
+$("row").addEventListener("change", writeHash);
+$("sheetComponent").addEventListener("change", () => {
+    state.sheetComponent = Number($("sheetComponent").value);
+    changed();
+});
+$("tilt").addEventListener("input", () => {
+    sheetTilt = Number($("tilt").value) * Math.PI / 180;
+    drawSheet();
+});
+
 // MARK: - Controls
 
 function updateControls() {
@@ -1674,6 +2578,7 @@ function updateControls() {
     for (const radio of document.querySelectorAll("input[name=renderer]"))
         radio.checked = radio.value === state.renderer;
     $("overlayToggle").checked = state.overlay;
+    updateVisualizationControls();
 
     const stop = state.stops[selected];
     $("stopTitle").textContent = `Stop ${selected + 1} of ${state.stops.length}`;
