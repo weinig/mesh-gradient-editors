@@ -322,8 +322,18 @@ input[type=range] { flex: 1; min-width: 80px; }
             <div class="row" title="The optional / <number> after a stop's position. WebKit parses it, but doesn't use it yet: the draft doesn't define how it affects the colors.">
                 <label for="stopWeight">Weight</label>
                 <input id="stopWeight" type="number" step="0.1" placeholder="none">
-                <span class="note">Not used yet</span>
+                <span id="stopWeightNote" class="note">Not used yet</span>
             </div>
+            <div class="row" title="Not in the draft, which doesn't say how a weight changes the colors: experiments to compare.">
+                <label for="weightModel">Weight model</label>
+                <select id="weightModel">
+                    <option value="none">None, as WebKit</option>
+                    <option value="hint">Hint</option>
+                    <option value="spread">Spread</option>
+                    <option value="nearest">Nearest</option>
+                </select>
+            </div>
+            <p id="weightModelNote" class="note"></p>
             <div class="row">
                 <button id="addStop" class="small">Add stop</button>
                 <button id="removeStop" class="small">Remove stop</button>
@@ -810,6 +820,15 @@ function cssText() {
 // What the box shows. Only "gradient" is what WebKit draws; the others draw parts of the spline.
 const VIEWS = ["gradient", "plane", "term", "basis"];
 
+// Not in the draft or WebKit: ways a stop's weight could make its color dominate. See warpedPosition().
+const WEIGHT_MODELS = ["none", "hint", "spread", "nearest"];
+const WEIGHT_MODEL_NOTES = {
+    none: "The draft says a weight changes how much a stop's color dominates, relative to the others, but not how. WebKit parses it and doesn't use it.",
+    hint: "Experimental. Two stops meet at s₁ / (s₁ + s₂) of the way from the first, with s = 2^weight, so a weight 1 more than another's takes ⅔ of the way. Between them the colors follow a power curve, as with a CSS color hint. Drawn with WebGPU.",
+    spread: "Experimental. Two stops meet at s₁ / (s₁ + s₂) of the way from the first, with s = 2^weight. The stronger stop holds its color flat, then the colors ramp evenly to the other, like a disc of solid color. Drawn with WebGPU.",
+    nearest: "Experimental. Two stops meet at s₁ / (s₁ + s₂) of the way from the first, with s = 2^weight. The colors stay near each stop's and change quickly at the meeting point, more sharply the more the weights differ, like inverse distance weighting. Drawn with WebGPU.",
+};
+
 // MARK: - URL fragment
 
 function encodeState() {
@@ -828,6 +847,7 @@ function encodeState() {
         m: state.sample ? 1 : 0,
         d: state.sheet ? 1 : 0,
         dc: state.sheetComponent,
+        wm: state.weightModel,
         p: state.stops.map(stop => stop.weight === null ? [stop.color, ...stop.pos] : [stop.color, ...stop.pos, stop.weight]),
     };
     const bytes = new TextEncoder().encode(JSON.stringify(data));
@@ -859,6 +879,7 @@ function decodeState(text) {
             sample: data.m === 1,
             sheet: data.d === 1,
             sheetComponent: clamp(Math.round(number(data.dc) ?? 0), 0, 4),
+            weightModel: WEIGHT_MODELS.includes(data.wm) ? data.wm : "none",
             stops,
         };
     } catch {
@@ -979,6 +1000,7 @@ function presetState(index) {
         sample: state?.sample ?? false,
         sheet: state?.sheet ?? false,
         sheetComponent: state?.sheetComponent ?? 0,
+        weightModel: state?.weightModel ?? "none",
         ...preset,
     };
 }
@@ -1156,13 +1178,85 @@ function fitSpline() {
                 polynomial[coefficient][component] += terms[k][coefficient] * solution[count + k][component];
         }
     }
-    return { hueIndex, origin, scale, centers, polynomial, terms };
+    return { hueIndex, origin, scale, centers, polynomial, terms, pairs: weightPairs(centers) };
+}
+
+// MARK: - Weight models (experimental)
+
+// Not in the draft or WebKit. Each pair of stops i and j meets, where the colors are half one and half the other, at
+// f = sᵢ / (sᵢ + sⱼ) of the way from i to j, with s = 2^weight: a stop with a weight 1 more than another's takes twice
+// as much of the way between them. Only differences between weights matter, and equal weights give today's gradient.
+//
+// A point is moved along each pair's axis before the spline is evaluated: from t, its position along the axis, to
+// profile(t), where profile(0) = 0, profile(1) = 1, and profile(f) = 1/2. With two stops the spline is a plane, so the
+// colors along the axis are exactly the profile's. With more, the moves are averaged, each pair weighted by
+// 1 / (dᵢ² · dⱼ²), so the pairs whose stops are both near the point count most, and a stop never moves.
+function weightPairs(centers) {
+    if (state.weightModel === "none")
+        return [];
+    const weights = centers.map(center => state.stops[center.stop].weight ?? 0);
+    if (weights.every(weight => weight === weights[0]))
+        return [];
+    const pairs = [];
+    for (let i = 0; i < centers.length; ++i) {
+        for (let j = i + 1; j < centers.length; ++j) {
+            const difference = weights[i] - weights[j];
+            const meeting = clamp(1 / (1 + 2 ** -difference), 1e-4, 1 - 1e-4);
+            pairs.push({ from: centers[i].position, to: centers[j].position, meeting, sharpness: 1 + Math.abs(difference) });
+        }
+    }
+    return pairs;
+}
+
+// Where along a pair's axis a point at t, from 0 to 1, takes its color from.
+function weightProfile(t, meeting, sharpness) {
+    if (t <= 0)
+        return 0;
+    if (t >= 1)
+        return 1;
+    switch (state.weightModel) {
+    case "hint":
+        // A CSS color hint at the meeting point: a power curve, with no flat parts.
+        return t ** (Math.log(0.5) / Math.log(meeting));
+    case "spread":
+        // The stronger stop holds its color, flat, then the colors ramp evenly to the other.
+        if (meeting >= 0.5) {
+            const shelf = 2 * meeting - 1;
+            return Math.max(0, t - shelf) / (1 - shelf);
+        }
+        return Math.min(1, t / (2 * meeting));
+    case "nearest": {
+        // Like inverse distance weighting by (s / d)^k: flat near both stops, and sharper the more the weights differ.
+        const a = t ** sharpness, b = (meeting / (1 - meeting) * (1 - t)) ** sharpness;
+        return a / (a + b);
+    }
+    default:
+        return t;
+    }
+}
+
+// A normalized position moved by the weights. Equivalent to warpedPosition() in the shader.
+function warpedPosition(pairs, [x, y]) {
+    if (!pairs?.length)
+        return [x, y];
+    let moveX = 0, moveY = 0, total = 0;
+    for (const { from, to, meeting, sharpness } of pairs) {
+        const ex = to[0] - from[0], ey = to[1] - from[1];
+        const fx = x - from[0], fy = y - from[1], gx = x - to[0], gy = y - to[1];
+        const t = clamp((fx * ex + fy * ey) / (ex * ex + ey * ey), 0, 1);
+        const weight = 1 / ((fx * fx + fy * fy + 1e-6) * (gx * gx + gy * gy + 1e-6));
+        const move = weight * (weightProfile(t, meeting, sharpness) - t);
+        moveX += move * ex;
+        moveY += move * ey;
+        total += weight;
+    }
+    return [x + moveX / total, y + moveY / total];
 }
 
 // The color at a position in CSS pixels, in the interpolation color space, premultiplied. Equivalent to
 // FreeformGradient::interpolatedColor() in FreeformGradient.cpp.
 function interpolatedColor(spline, [px, py]) {
-    const x = (px - spline.origin[0]) / spline.scale, y = (py - spline.origin[1]) / spline.scale;
+    const [x, y] = warpedPosition(spline.pairs, [(px - spline.origin[0]) / spline.scale, (py - spline.origin[1]) / spline.scale]);
     const color = [0, 1, 2, 3].map(k => spline.polynomial[0][k] + spline.polynomial[1][k] * x + spline.polynomial[2][k] * y);
     for (const center of spline.centers) {
         const dx = x - center.position[0], dy = y - center.position[1];
@@ -1240,10 +1334,72 @@ struct Uniforms {
     outputIsDisplayP3: u32,
     // Not in WebKit: 1 draws U(r) around the one center instead of the color.
     view: u32,
+    // Not in WebKit: the weight model, an index into WEIGHT_MODELS, and how many pairs it moves positions by.
+    weightModel: u32,
+    pairCount: u32,
+};
+
+// Not in WebKit: a pair of stops, for the weight models.
+struct Pair {
+    start: vec2f,
+    end: vec2f,
+    meeting: f32,
+    sharpness: f32,
 };
 
 @group(0) @binding(0) var<storage, read> centers: array<Center>;
 @group(0) @binding(1) var<uniform> uniforms: Uniforms;
+@group(0) @binding(2) var<storage, read> pairs: array<Pair>;
+
+// Equivalent to weightProfile() in the page.
+fn weightProfile(t: f32, meeting: f32, sharpness: f32) -> f32 {
+    if (t <= 0.0) {
+        return 0.0;
+    }
+    if (t >= 1.0) {
+        return 1.0;
+    }
+    switch uniforms.weightModel {
+        case 1u: {
+            return pow(t, log(0.5) / log(meeting));
+        }
+        case 2u: {
+            if (meeting >= 0.5) {
+                let shelf = 2.0 * meeting - 1.0;
+                return max(0.0, t - shelf) / (1.0 - shelf);
+            }
+            return min(1.0, t / (2.0 * meeting));
+        }
+        case 3u: {
+            let a = pow(t, sharpness);
+            let b = pow(meeting / (1.0 - meeting) * (1.0 - t), sharpness);
+            return a / (a + b);
+        }
+        default: {
+            return t;
+        }
+    }
+}
+
+// Equivalent to warpedPosition() in the page.
+fn warpedPosition(point: vec2f) -> vec2f {
+    if (uniforms.pairCount == 0u) {
+        return point;
+    }
+    var displacement = vec2f(0.0);
+    var total = 0.0;
+    for (var i = 0u; i < uniforms.pairCount; i++) {
+        let pair = pairs[i];
+        let axis = pair.end - pair.start;
+        let startOffset = point - pair.start;
+        let endOffset = point - pair.end;
+        let t = clamp(dot(startOffset, axis) / dot(axis, axis), 0.0, 1.0);
+        let weight = 1.0 / ((dot(startOffset, startOffset) + 1e-6) * (dot(endOffset, endOffset) + 1e-6));
+        displacement += weight * (weightProfile(t, pair.meeting, pair.sharpness) - t) * axis;
+        total += weight;
+    }
+    return point + displacement / total;
+}
 
 // U(r) = r^2 * log(r), from the square of r.
 fn radialBasis(squaredDistance: f32) -> f32 {
@@ -1258,7 +1414,7 @@ fn radialBasis(squaredDistance: f32) -> f32 {
 fn interpolatedColor(position: vec2f) -> vec4f {
     // Equivalent to FreeformGradient::interpolatedColor() in FreeformGradient.cpp.
 
-    let point = (position - uniforms.splineOrigin) / uniforms.splineScale;
+    let point = warpedPosition((position - uniforms.splineOrigin) / uniforms.splineScale);
 
     var color = uniforms.polynomial[0] + uniforms.polynomial[1] * point.x + uniforms.polynomial[2] * point.y;
     for (var i = 0u; i < uniforms.centerCount; i++) {
@@ -1489,8 +1645,15 @@ class WebGPUFreeformGradientRenderer {
         const centers = device.createBuffer({ size: centerData.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
         device.queue.writeBuffer(centers, 0, centerData);
 
-        // Matches Uniforms in the shader: 3 vec4fs, a vec2f, 2 f32s and 4 u32s: 80 bytes.
-        const uniformData = new ArrayBuffer(80);
+        // Matches Pair in the shader: 6 f32s. As with the centers, the buffer can't be empty.
+        const pairList = spline.pairs ?? [];
+        const pairData = new Float32Array(Math.max(1, pairList.length) * 6);
+        pairList.forEach((pair, i) => pairData.set([...pair.from, ...pair.to, pair.meeting, pair.sharpness], i * 6));
+        const pairs = device.createBuffer({ size: pairData.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+        device.queue.writeBuffer(pairs, 0, pairData);
+
+        // Matches Uniforms in the shader: 3 vec4fs, a vec2f, 2 f32s and 6 u32s, padded to 96 bytes.
+        const uniformData = new ArrayBuffer(96);
         const floats = new Float32Array(uniformData), uints = new Uint32Array(uniformData);
         spline.polynomial.forEach((coefficient, i) => floats.set(coefficient, i * 4));
         floats.set(spline.origin, 12);
@@ -1500,7 +1663,9 @@ class WebGPUFreeformGradientRenderer {
         uints[17] = SPACES.indexOf(state.space);
         uints[18] = this.outputSpace === "display-p3" ? 1 : 0;
         uints[19] = view;
-        const uniforms = device.createBuffer({ size: 80, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        uints[20] = WEIGHT_MODELS.indexOf(state.weightModel);
+        uints[21] = pairList.length;
+        const uniforms = device.createBuffer({ size: 96, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
         device.queue.writeBuffer(uniforms, 0, uniformData);
 
         const encoder = device.createCommandEncoder();
@@ -1510,13 +1675,14 @@ class WebGPUFreeformGradientRenderer {
         pass.setPipeline(this.pipeline);
         pass.setBindGroup(0, device.createBindGroup({
             layout: this.pipeline.getBindGroupLayout(0),
-            entries: [{ binding: 0, resource: { buffer: centers } }, { binding: 1, resource: { buffer: uniforms } }],
+            entries: [{ binding: 0, resource: { buffer: centers } }, { binding: 1, resource: { buffer: uniforms } }, { binding: 2, resource: { buffer: pairs } }],
         }));
         pass.draw(3);
         pass.end();
         device.queue.submit([encoder.finish()]);
         centers.destroy();
         uniforms.destroy();
+        pairs.destroy();
     }
 }
 
@@ -1573,7 +1739,8 @@ function render() {
 
     currentSpline = fitSpline();
     const shownSpline = viewSpline(currentSpline);
-    const useNative = state.renderer === "native" && state.view === "gradient";
+    // WebKit doesn't use weights, so the weight models are drawn with WebGPU.
+    const useNative = state.renderer === "native" && state.view === "gradient" && state.weightModel === "none";
     nativeView.style.display = useNative ? "" : "none";
     gpuCanvas.style.display = useNative ? "none" : "";
     const message = $("stageMessage");
@@ -2575,6 +2742,9 @@ function updateControls() {
     $("height").value = state.height;
     $("space").value = state.space;
     $("hueNote").hidden = !(state.space in HUE_INDEX);
+    $("weightModel").value = state.weightModel;
+    $("weightModelNote").textContent = WEIGHT_MODEL_NOTES[state.weightModel];
+    $("stopWeightNote").textContent = state.weightModel === "none" ? "Not used yet" : "0 if none";
     for (const radio of document.querySelectorAll("input[name=renderer]"))
         radio.checked = radio.value === state.renderer;
     $("overlayToggle").checked = state.overlay;
@@ -2630,6 +2800,10 @@ commitNumber("height", 100, 2000, value => state.height = value);
 
 $("space").addEventListener("change", () => {
     state.space = $("space").value;
+    changed();
+});
+$("weightModel").addEventListener("change", () => {
+    state.weightModel = $("weightModel").value;
     changed();
 });
 for (const radio of document.querySelectorAll("input[name=renderer]")) {
