@@ -1548,20 +1548,40 @@ function overlayPosition(event) {
 // Fingers cover more than a mouse pointer, and the stage may be drawn smaller than its own size.
 const hitSlop = event => (event.pointerType === "mouse" ? 1 : 2.5) / viewScale;
 
-for (const { overlay } of views) {
-overlay.addEventListener("pointerdown", event => {
+// Starts dragging the stop under the pointer, if there is one.
+function beginDrag(event) {
     const [x, y] = overlayPosition(event);
     const hit = hitTest(x, y, hitSlop(event));
     if (hit < 0)
-        return;
+        return false;
     event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+    } catch { }
     selected = hit;
     drag = { pointerId: event.pointerId, start: fromOverlay(x, y), startPosition: state.stops[hit].pos.slice() };
+    event.currentTarget.style.cursor = "grabbing";
     scheduleRender();
-});
+    return true;
+}
+
+// The mouse buttons held as of the last pointer event anywhere on the page. After a <select>'s menu closes, WebKit
+// still thinks the button that opened it is down, since the menu took the mouse up, so the next press comes as a
+// pointermove with a button newly held instead of a pointerdown.
+let lastMouseButtons = 0;
+for (const type of ["pointerdown", "pointermove", "pointerup", "pointercancel"]) {
+    document.addEventListener(type, event => {
+        if (event.pointerType === "mouse")
+            lastMouseButtons = event.buttons;
+    });
+}
+
+for (const { overlay } of views) {
+overlay.addEventListener("pointerdown", beginDrag);
 
 overlay.addEventListener("pointermove", event => {
+    if (!drag && event.pointerType === "mouse" && (event.buttons & 1) && !(lastMouseButtons & 1) && beginDrag(event))
+        return;
     const [x, y] = overlayPosition(event);
     if (!drag || drag.pointerId !== event.pointerId) {
         event.currentTarget.style.cursor = hitTest(x, y, hitSlop(event)) >= 0 ? "grab" : "default";
