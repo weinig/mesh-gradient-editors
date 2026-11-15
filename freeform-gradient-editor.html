@@ -2053,9 +2053,9 @@ ${wgslMatrix("linRec2020ToXYZ", M.linRec2020ToXYZ)}
 ${wgslMatrix("d50ToD65", M.d50ToD65)}
 ${wgslMatrix("okLabToLMS", M.okLabToLMS)}
 ${wgslMatrix("lmsToXYZ", M.lmsToXYZ)}
-const D50 = vec3f(${D50.map(wgslNumber).join(", ")});
 ${wgslMatrix("xyzToLMS", M.xyzToLMS)}
 ${wgslMatrix("lmsToOKLab", M.lmsToOKLab)}
+const D50 = vec3f(${D50.map(wgslNumber).join(", ")});
 
 // Equivalent to FreeformGradient::Center in FreeformGradient.h.
 struct Center {
@@ -2224,33 +2224,9 @@ fn normalizeHue(h: f32) -> f32 {
     return ((h % 360.0) + 360.0) % 360.0;
 }
 
-// The color, premultiplied in the canvas's color space.
-fn toPremultipliedColor(color: vec4f) -> vec4f {
-    // Equivalent to toPremultipliedColor() in FreeformGradient.cpp.
-
-    let alpha = saturate(color.w);
-
-    // Hues were moved by whole turns before interpolating, so normalize them back.
-    var c = color.xyz;
-    if (uniforms.space == 12u || uniforms.space == 13u) {
-        c.x = normalizeHue(c.x);
-    } else if (uniforms.space == 9u || uniforms.space == 11u) {
-        c.z = normalizeHue(c.z);
-    }
-    let xyz = toXYZ(uniforms.space, c);
-    var rgb: vec3f;
-    if (uniforms.outputIsDisplayP3 == 1u) {
-        rgb = transform(xyzToLinP3, xyz);
-    } else {
-        rgb = transform(xyzToLinSRGB, xyz);
-    }
-    rgb = clamp(srgbFromLinear(rgb), vec3f(0.0), vec3f(1.0));
-    return vec4f(rgb * alpha, alpha);
-}
-
 // Not in WebKit: CSS gamut mapping to the canvas's RGB gamut, https://drafts.csswg.org/css-color-4/#binsearch. Colors
 // are moved toward gray in OKLCh, keeping their lightness and hue, until they're within one just-noticeable difference
-// of their clipped versions. Equivalent to gamutMappedLinear() in the page.
+// of their clipped versions.
 fn xyzToOKLab(xyz: vec3f) -> vec3f {
     return transform(lmsToOKLab, powSigned(transform(xyzToLMS, xyz), 1.0 / 3.0));
 }
@@ -2319,19 +2295,31 @@ fn gamutMappedLinear(origin: vec3f) -> vec3f {
     return clipped;
 }
 
-// Not in WebKit: toPremultipliedColor(), with CSS gamut mapping in place of clipping when it's chosen.
-fn outputColor(color: vec4f) -> vec4f {
-    if (uniforms.gamutMapping == 0u) {
-        return toPremultipliedColor(color);
-    }
+// The color, premultiplied in the canvas's color space.
+fn toPremultipliedColor(color: vec4f) -> vec4f {
+    // Equivalent to toPremultipliedColor() in FreeformGradient.cpp.
+
     let alpha = saturate(color.w);
+
+    // Hues were moved by whole turns before interpolating, so normalize them back.
     var c = color.xyz;
     if (uniforms.space == 12u || uniforms.space == 13u) {
         c.x = normalizeHue(c.x);
     } else if (uniforms.space == 9u || uniforms.space == 11u) {
         c.z = normalizeHue(c.z);
     }
-    let rgb = clamp(srgbFromLinear(gamutMappedLinear(xyzToOKLab(toXYZ(uniforms.space, c)))), vec3f(0.0), vec3f(1.0));
+    let xyz = toXYZ(uniforms.space, c);
+    var rgb: vec3f;
+    if (uniforms.outputIsDisplayP3 == 1u) {
+        rgb = transform(xyzToLinP3, xyz);
+    } else {
+        rgb = transform(xyzToLinSRGB, xyz);
+    }
+    // Not in WebKit: CSS gamut mapping in place of clipping, when it's chosen.
+    if (uniforms.gamutMapping == 1u) {
+        rgb = gamutMappedLinear(xyzToOKLab(xyz));
+    }
+    rgb = clamp(srgbFromLinear(rgb), vec3f(0.0), vec3f(1.0));
     return vec4f(rgb * alpha, alpha);
 }
 
@@ -2352,7 +2340,7 @@ fn premultipliedColor(position: vec2f) -> vec4f {
         }
     }
 
-    return outputColor(color);
+    return toPremultipliedColor(color);
 }
 
 struct RasterizerData {

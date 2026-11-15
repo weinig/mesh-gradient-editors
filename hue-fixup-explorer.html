@@ -263,6 +263,13 @@ button.small { font-size: 12px; }
                 <li><span class="key"><span class="pill edge">100°</span></span><span>How far the hue travels along that edge: the difference between the hues at its two ends.</span></li>
                 <li><span class="key"><span class="pill seam">260°</span></span><span>More than half a turn. No arrow checked this edge, so its colors go the long way around the hue circle.</span></li>
             </ul>
+            <div class="row" title="Colors outside the canvas's gamut are clipped, as WebKit does, or gamut mapped as CSS Color 4 says.">
+                <label for="gamutMapping">Out of gamut</label>
+                <select id="gamutMapping">
+                    <option value="clip">Clip</option>
+                    <option value="map">Gamut map (CSS Color 4)</option>
+                </select>
+            </div>
             <p id="gpuStatus" class="status"></p>
         </section>
 
@@ -913,6 +920,7 @@ function encodeState() {
         b: state.background,
         f: state.hueOrder,
         o: state.overlay ? 1 : 0,
+        gmap: state.gamutMapping,
         x: state.hueOverlay ? 1 : 0,
         m: state.sample ? 1 : 0,
         k: state.backdrop,
@@ -958,6 +966,7 @@ function decodeState(text) {
             background: typeof data.b === "string" ? data.b : "",
             hueOrder: data.f === "columns" ? "columns" : "rows",
             overlay: data.o !== 0,
+            gamutMapping: data.gmap === "map" ? "map" : "clip",
             hueOverlay: data.x !== 0,
             sample: data.m !== 0,
             backdrop: BACKDROPS.includes(data.k) ? data.k : "checkerboard",
@@ -1029,6 +1038,7 @@ function presetState(index) {
         height: state?.height ?? 400,
         hueOrder: state?.hueOrder ?? "rows",
         overlay: state?.overlay ?? true,
+        gamutMapping: state?.gamutMapping ?? "clip",
         hueOverlay: state?.hueOverlay ?? true,
         sample: state?.sample ?? true,
         backdrop: state?.backdrop ?? "checkerboard",
@@ -1316,6 +1326,8 @@ ${wgslMatrix("linRec2020ToXYZ", M.linRec2020ToXYZ)}
 ${wgslMatrix("d50ToD65", M.d50ToD65)}
 ${wgslMatrix("okLabToLMS", M.okLabToLMS)}
 ${wgslMatrix("lmsToXYZ", M.lmsToXYZ)}
+${wgslMatrix("xyzToLMS", M.xyzToLMS)}
+${wgslMatrix("lmsToOKLab", M.lmsToOKLab)}
 const D50 = vec3f(${D50.map(wgslNumber).join(", ")});
 
 struct Uniforms {
@@ -1324,6 +1336,8 @@ struct Uniforms {
     space: u32,
     outputIsDisplayP3: u32,
     hasPointsMissingAlpha: u32,
+    // Not in WebKit: 1 maps colors outside the canvas's gamut as CSS Color 4 does, instead of clipping them.
+    gamutMapping: u32,
 };
 
 // Equivalent to MeshGradient::WeightedColor in MeshGradient.h.
@@ -1539,6 +1553,77 @@ fn normalizeHue(h: f32) -> f32 {
     return ((h % 360.0) + 360.0) % 360.0;
 }
 
+// Not in WebKit: CSS gamut mapping to the canvas's RGB gamut, https://drafts.csswg.org/css-color-4/#binsearch. Colors
+// are moved toward gray in OKLCh, keeping their lightness and hue, until they're within one just-noticeable difference
+// of their clipped versions.
+fn xyzToOKLab(xyz: vec3f) -> vec3f {
+    return transform(lmsToOKLab, powSigned(transform(xyzToLMS, xyz), 1.0 / 3.0));
+}
+
+fn okLabToOutputLinear(lab: vec3f) -> vec3f {
+    let xyz = okLabToXYZ(lab);
+    if (uniforms.outputIsDisplayP3 == 1u) {
+        return transform(xyzToLinP3, xyz);
+    }
+    return transform(xyzToLinSRGB, xyz);
+}
+
+fn outputLinearToOKLab(rgb: vec3f) -> vec3f {
+    if (uniforms.outputIsDisplayP3 == 1u) {
+        return xyzToOKLab(transform(linP3ToXYZ, rgb));
+    }
+    return xyzToOKLab(transform(linSRGBToXYZ, rgb));
+}
+
+fn inOutputGamut(rgb: vec3f) -> bool {
+    return all(rgb >= vec3f(-1e-5)) && all(rgb <= vec3f(1.0 + 1e-5));
+}
+
+fn gamutMappedLinear(origin: vec3f) -> vec3f {
+    let jnd = 0.02;
+    let epsilon = 0.0001;
+    if (origin.x >= 1.0) {
+        return vec3f(1.0);
+    }
+    if (origin.x <= 0.0) {
+        return vec3f(0.0);
+    }
+    let originRGB = okLabToOutputLinear(origin);
+    if (inOutputGamut(originRGB)) {
+        return originRGB;
+    }
+    var clipped = clamp(originRGB, vec3f(0.0), vec3f(1.0));
+    if (distance(outputLinearToOKLab(clipped), origin) < jnd) {
+        return clipped;
+    }
+    let chroma = length(origin.yz);
+    let direction = origin.yz / chroma;
+    var low = 0.0;
+    var high = chroma;
+    var lowInGamut = true;
+    while (high - low > epsilon) {
+        let middle = (low + high) / 2.0;
+        let current = vec3f(origin.x, direction * middle);
+        let currentRGB = okLabToOutputLinear(current);
+        if (lowInGamut && inOutputGamut(currentRGB)) {
+            low = middle;
+            continue;
+        }
+        clipped = clamp(currentRGB, vec3f(0.0), vec3f(1.0));
+        let difference = distance(outputLinearToOKLab(clipped), current);
+        if (difference < jnd) {
+            if (jnd - difference < epsilon) {
+                return clipped;
+            }
+            lowInGamut = false;
+            low = middle;
+        } else {
+            high = middle;
+        }
+    }
+    return clipped;
+}
+
 // The color, premultiplied in the canvas's color space.
 fn toPremultipliedColor(color: vec4f) -> vec4f {
     // Equivalent to toPremultipliedColor() in MeshGradient.cpp.
@@ -1558,6 +1643,10 @@ fn toPremultipliedColor(color: vec4f) -> vec4f {
         rgb = transform(xyzToLinP3, xyz);
     } else {
         rgb = transform(xyzToLinSRGB, xyz);
+    }
+    // Not in WebKit: CSS gamut mapping in place of clipping, when it's chosen.
+    if (uniforms.gamutMapping == 1u) {
+        rgb = gamutMappedLinear(xyzToOKLab(xyz));
     }
     rgb = clamp(srgbFromLinear(rgb), vec3f(0.0), vec3f(1.0));
     return vec4f(rgb * alpha, alpha);
@@ -1652,7 +1741,7 @@ class WebGPUMeshGradientRenderer {
         const colorsMissingAlpha = mesh.colorsMissingAlpha ? this.buffer(mesh.colorsMissingAlpha, GPUBufferUsage.STORAGE) : colors;
         // Padded to the 32 bytes of the shader's Uniforms.
         const uniforms = this.buffer(new Uint32Array([
-            mesh.subdivisions, mesh.patchCount, mesh.space, this.outputSpace === "display-p3" ? 1 : 0, mesh.colorsMissingAlpha ? 1 : 0, 0, 0, 0,
+            mesh.subdivisions, mesh.patchCount, mesh.space, this.outputSpace === "display-p3" ? 1 : 0, mesh.colorsMissingAlpha ? 1 : 0, state.gamutMapping === "map" ? 1 : 0, 0, 0,
         ]), GPUBufferUsage.UNIFORM);
         const indices = this.indices(mesh.patchCount, mesh.subdivisions);
         const indexBuffer = this.buffer(indices, GPUBufferUsage.INDEX);
@@ -2429,6 +2518,7 @@ function updateControls() {
     $("hueOrder").value = state.hueOrder;
     $("hueOrder").disabled = !(state.space in HUE_INDEX);
     $("overlayToggle").checked = state.overlay;
+    $("gamutMapping").value = state.gamutMapping;
     $("hueOverlayToggle").checked = state.hueOverlay;
     $("sampleToggle").checked = state.sample;
     $("hueLegend").hidden = !state.overlay || !state.hueOverlay || !(state.space in HUE_INDEX);
@@ -2498,6 +2588,10 @@ $("hueOrder").addEventListener("change", () => {
     changed();
     if (lastSamplePosition)
         showSample(lastSamplePosition);
+});
+$("gamutMapping").addEventListener("change", () => {
+    state.gamutMapping = $("gamutMapping").value;
+    changed();
 });
 $("overlayToggle").addEventListener("change", () => {
     state.overlay = $("overlayToggle").checked;

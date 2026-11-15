@@ -1028,8 +1028,6 @@ __SHADER_HELPERS__
 
 const SHADER = `
 __SHADER_MATRICES__
-${wgslMatrix("xyzToLMS", M.xyzToLMS)}
-${wgslMatrix("lmsToOKLab", M.lmsToOKLab)}
 
 // Equivalent to FreeformGradient::Center in FreeformGradient.h.
 struct Center {
@@ -1113,93 +1111,6 @@ fn hueIndex() -> i32 {
 
 __SHADER_COLOR__
 
-// Not in WebKit: CSS gamut mapping to the canvas's RGB gamut, https://drafts.csswg.org/css-color-4/#binsearch. Colors
-// are moved toward gray in OKLCh, keeping their lightness and hue, until they're within one just-noticeable difference
-// of their clipped versions. Equivalent to gamutMappedLinear() in the page.
-fn xyzToOKLab(xyz: vec3f) -> vec3f {
-    return transform(lmsToOKLab, powSigned(transform(xyzToLMS, xyz), 1.0 / 3.0));
-}
-
-fn okLabToOutputLinear(lab: vec3f) -> vec3f {
-    let xyz = okLabToXYZ(lab);
-    if (uniforms.outputIsDisplayP3 == 1u) {
-        return transform(xyzToLinP3, xyz);
-    }
-    return transform(xyzToLinSRGB, xyz);
-}
-
-fn outputLinearToOKLab(rgb: vec3f) -> vec3f {
-    if (uniforms.outputIsDisplayP3 == 1u) {
-        return xyzToOKLab(transform(linP3ToXYZ, rgb));
-    }
-    return xyzToOKLab(transform(linSRGBToXYZ, rgb));
-}
-
-fn inOutputGamut(rgb: vec3f) -> bool {
-    return all(rgb >= vec3f(-1e-5)) && all(rgb <= vec3f(1.0 + 1e-5));
-}
-
-fn gamutMappedLinear(origin: vec3f) -> vec3f {
-    let jnd = 0.02;
-    let epsilon = 0.0001;
-    if (origin.x >= 1.0) {
-        return vec3f(1.0);
-    }
-    if (origin.x <= 0.0) {
-        return vec3f(0.0);
-    }
-    let originRGB = okLabToOutputLinear(origin);
-    if (inOutputGamut(originRGB)) {
-        return originRGB;
-    }
-    var clipped = clamp(originRGB, vec3f(0.0), vec3f(1.0));
-    if (distance(outputLinearToOKLab(clipped), origin) < jnd) {
-        return clipped;
-    }
-    let chroma = length(origin.yz);
-    let direction = origin.yz / chroma;
-    var low = 0.0;
-    var high = chroma;
-    var lowInGamut = true;
-    while (high - low > epsilon) {
-        let middle = (low + high) / 2.0;
-        let current = vec3f(origin.x, direction * middle);
-        let currentRGB = okLabToOutputLinear(current);
-        if (lowInGamut && inOutputGamut(currentRGB)) {
-            low = middle;
-            continue;
-        }
-        clipped = clamp(currentRGB, vec3f(0.0), vec3f(1.0));
-        let difference = distance(outputLinearToOKLab(clipped), current);
-        if (difference < jnd) {
-            if (jnd - difference < epsilon) {
-                return clipped;
-            }
-            lowInGamut = false;
-            low = middle;
-        } else {
-            high = middle;
-        }
-    }
-    return clipped;
-}
-
-// Not in WebKit: toPremultipliedColor(), with CSS gamut mapping in place of clipping when it's chosen.
-fn outputColor(color: vec4f) -> vec4f {
-    if (uniforms.gamutMapping == 0u) {
-        return toPremultipliedColor(color);
-    }
-    let alpha = saturate(color.w);
-    var c = color.xyz;
-    if (uniforms.space == 12u || uniforms.space == 13u) {
-        c.x = normalizeHue(c.x);
-    } else if (uniforms.space == 9u || uniforms.space == 11u) {
-        c.z = normalizeHue(c.z);
-    }
-    let rgb = clamp(srgbFromLinear(gamutMappedLinear(xyzToOKLab(toXYZ(uniforms.space, c)))), vec3f(0.0), vec3f(1.0));
-    return vec4f(rgb * alpha, alpha);
-}
-
 fn premultipliedColor(position: vec2f) -> vec4f {
     // Equivalent to FreeformGradient::premultipliedColor() in FreeformGradient.cpp.
 
@@ -1217,7 +1128,7 @@ fn premultipliedColor(position: vec2f) -> vec4f {
         }
     }
 
-    return outputColor(color);
+    return toPremultipliedColor(color);
 }
 
 struct RasterizerData {
