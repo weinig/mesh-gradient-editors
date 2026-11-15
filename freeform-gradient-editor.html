@@ -222,10 +222,62 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
 #compare figcaption span { color: var(--muted); }
 .legend b { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: 3px; margin-right: 4px; }
 input[type=range] { flex: 1; min-width: 80px; }
+aside[hidden], .row[hidden] { display: none; }
+@media (max-width: 720px) {
+    #visualizePanel { order: 1; }
+}
 </style>
 </head>
 <body>
 <main>
+    <aside id="visualizePanel" hidden>
+        <section>
+            <h2>Visualize</h2>
+            <div class="row">
+                <label for="view">Show</label>
+                <select id="view">
+                    <option value="gradient">The gradient</option>
+                    <option value="plane">The linear part</option>
+                    <option value="term">The linear part and the selected stop's term</option>
+                    <option value="basis">U(r) around the selected stop</option>
+                </select>
+            </div>
+            <p id="viewNote" class="note"></p>
+            <div class="row">
+                <label><input type="checkbox" id="normalizationToggle"> Normalization</label>
+                <label><input type="checkbox" id="sampleToggle"> Sample</label>
+                <label><input type="checkbox" id="crossSectionToggle"> Cross-section</label>
+                <label><input type="checkbox" id="sheetToggle"> 3D</label>
+            </div>
+            <p id="normalizationNote" class="note"></p>
+            <p id="sampleNote" class="note">Hover over the box, or tap it on a phone, to see the color there added up term by term.</p>
+            <div id="crossSectionPanel">
+                <div class="row">
+                    <label for="row">Row</label>
+                    <input id="row" type="range" min="0" max="100" step="1">
+                    <span id="rowValue" class="note"></span>
+                </div>
+                <canvas id="plot"></canvas>
+                <p id="plotNote" class="note legend"></p>
+            </div>
+            <div id="sheetPanel">
+                <div class="row">
+                    <label for="sheetComponent">Height</label>
+                    <select id="sheetComponent"></select>
+                </div>
+                <div class="row">
+                    <label for="tilt">Tilt</label>
+                    <input id="tilt" type="range" min="10" max="85" value="40">
+                </div>
+                <canvas id="sheet"></canvas>
+                <p class="note">Each component is its own surface over the box: here, the height is one component and the color is the gradient's. Each stop is a peg as tall as its value, and the surface passes through the top of every peg while bending as little as it can. All shows every component's surface together, each tinted with its color in the cross-section, over its own pegs. Drag to turn it.</p>
+            </div>
+            <details id="coefficientsDetails">
+                <summary>Coefficients</summary>
+                <pre id="splineNumbers"></pre>
+            </details>
+        </section>
+    </aside>
     <div id="stageScroller">
         <div id="stageWrap">
             <div id="stage">
@@ -310,56 +362,13 @@ input[type=range] { flex: 1; min-width: 80px; }
                 <label><input type="radio" name="renderer" value="webgpu"> WebGPU</label>
                 <label><input type="checkbox" id="overlayToggle" checked> Overlay</label>
             </div>
+            <div class="row">
+                <button id="visualizeToggle" class="small" aria-controls="visualizePanel">Show Visualize</button>
+                <span class="note">How each model arrives at its colors</span>
+            </div>
             <p id="nativeStatus" class="status"></p>
             <p id="gpuStatus" class="status"></p>
             <p class="note">The colors are a thin-plate spline through the stops: the smoothest surface through their colors, one component at a time. It can overshoot the stops' colors between and beyond them. The WebGPU renderer is a port of WebKit's Metal renderer.</p>
-        </section>
-
-        <section>
-            <h2>Visualize</h2>
-            <div class="row">
-                <label for="view">Show</label>
-                <select id="view">
-                    <option value="gradient">The gradient</option>
-                    <option value="plane">The linear part</option>
-                    <option value="term">The linear part and the selected stop's term</option>
-                    <option value="basis">U(r) around the selected stop</option>
-                </select>
-            </div>
-            <p id="viewNote" class="note"></p>
-            <div class="row">
-                <label><input type="checkbox" id="normalizationToggle"> Normalization</label>
-                <label><input type="checkbox" id="sampleToggle"> Sample</label>
-                <label><input type="checkbox" id="crossSectionToggle"> Cross-section</label>
-                <label><input type="checkbox" id="sheetToggle"> 3D</label>
-            </div>
-            <p id="normalizationNote" class="note"></p>
-            <p id="sampleNote" class="note">Hover over the box, or tap it on a phone, to see the color there added up term by term.</p>
-            <div id="crossSectionPanel">
-                <div class="row">
-                    <label for="row">Row</label>
-                    <input id="row" type="range" min="0" max="100" step="1">
-                    <span id="rowValue" class="note"></span>
-                </div>
-                <canvas id="plot"></canvas>
-                <p id="plotNote" class="note legend"></p>
-            </div>
-            <div id="sheetPanel">
-                <div class="row">
-                    <label for="sheetComponent">Height</label>
-                    <select id="sheetComponent"></select>
-                </div>
-                <div class="row">
-                    <label for="tilt">Tilt</label>
-                    <input id="tilt" type="range" min="10" max="85" value="40">
-                </div>
-                <canvas id="sheet"></canvas>
-                <p class="note">Each component is its own surface over the box: here, the height is one component and the color is the gradient's. Each stop is a peg as tall as its value, and the surface passes through the top of every peg while bending as little as it can. All shows every component's surface together, each tinted with its color in the cross-section, over its own pegs. Drag to turn it.</p>
-            </div>
-            <details id="coefficientsDetails">
-                <summary>Coefficients</summary>
-                <pre id="splineNumbers"></pre>
-            </details>
         </section>
 
         <section>
@@ -378,16 +387,11 @@ input[type=range] { flex: 1; min-width: 80px; }
                 <input id="stopWeight" type="number" step="0.1" placeholder="none">
                 <span id="stopWeightNote" class="note">Not used yet</span>
             </div>
-            <div class="row" title="Not in the draft, which doesn't say how a weight changes the colors: experiments to compare.">
-                <label for="weightModel">Weight model</label>
-                <select id="weightModel">
-                    <option value="none">None</option>
-                    <option value="hint">Hint</option>
-                    <option value="spread">Spread</option>
-                    <option value="nearest">Nearest</option>
-                </select>
+            <div id="stopSpreadRow" class="row" title="Not in CSS: how far past its point radius a stop holds its color in the grid models, as a fraction of half the box's shorter side.">
+                <label for="stopSpread">Spread</label>
+                <input id="stopSpread" type="range" min="0" max="1" step="0.01">
+                <span id="stopSpreadValue" class="note"></span>
             </div>
-            <p id="weightModelNote" class="note"></p>
             <div class="row">
                 <button id="addStop" class="small">Add stop</button>
                 <button id="removeStop" class="small">Remove stop</button>
@@ -820,7 +824,8 @@ const normalizeHue = h => ((h % 360) + 360) % 360;
 // MARK: - State
 
 // Positions are percentages of the box, rounded to hundredths, so they round-trip exactly.
-// stop = { color: CSS text, pos: [x, y], weight: number | null }
+// stop = { color: CSS text, pos: [x, y], weight: number | null, spread: 0 to 1 }
+// The spread isn't in CSS: it sizes the stop's disc in the grid models.
 let state = null;
 let selected = 0;
 
@@ -830,8 +835,8 @@ const round2 = v => {
 };
 const round2Point = p => [round2(p[0]), round2(p[1])];
 
-function makeStop(color, x, y, weight = null) {
-    return { color, pos: [x, y], weight };
+function makeStop(color, x, y, weight = null, spread = 0) {
+    return { color, pos: [x, y], weight, spread };
 }
 
 // MARK: - CSS generation
@@ -874,22 +879,14 @@ function cssText() {
 // What the box shows. Only "gradient" is what WebKit draws; the others draw parts of the spline.
 const VIEWS = ["gradient", "plane", "term", "basis"];
 
-// Not in the draft or WebKit: ways a stop's weight could make its color dominate. See warpedPosition().
-const WEIGHT_MODELS = ["none", "hint", "spread", "nearest"];
 const MODEL_NOTES = {
     spline: "A stiff sheet over thin pegs, on an endless plane: exact at the stops, and past them it carries on in a straight line.",
-    biharmonic: "The same stiff sheet, ∆²u = 0, held by flat-topped posts: each stop holds a disc of its color, its radius the point radius plus its weight, as spread from 0 to 1, times half the box's shorter side. Solved on a grid and filtered up, as MeshShader2 does.",
+    biharmonic: "The same stiff sheet, ∆²u = 0, held by flat-topped posts: each stop holds a disc of its color, its radius the point radius plus the stop's spread, from 0 to 1, times half the box's shorter side. Solved on a grid and filtered up, as MeshShader2 does.",
     harmonic: "A stretched membrane, ∆u = 0, over the same posts: a tent with a crease at each stop, which never passes the stops' colors. Solved on a grid and filtered up, as MeshShader2 does.",
 };
 const EDGE_NOTES = {
     mirrored: "Mirrored edges: the grid is the box, and the surface meets each side level, as against a mirror.",
     open: "Open edges: the grid reaches half the box's size past each side, so its walls are far from the stops. Its texels are larger for it.",
-};
-const WEIGHT_MODEL_NOTES = {
-    none: "The draft says a weight changes how much a stop's color dominates, relative to the others, but not how. WebKit parses it and doesn't use it.",
-    hint: "Experimental. Two stops meet at s₁ / (s₁ + s₂) of the way from the first, with s = 2^weight, so a weight 1 more than another's takes ⅔ of the way. Between them the colors follow a power curve, as with a CSS color hint. Drawn with WebGPU.",
-    spread: "Experimental. Two stops meet at s₁ / (s₁ + s₂) of the way from the first, with s = 2^weight. The stronger stop holds its color flat, then the colors ramp evenly to the other, like a disc of solid color. Drawn with WebGPU.",
-    nearest: "Experimental. Two stops meet at s₁ / (s₁ + s₂) of the way from the first, with s = 2^weight. The colors stay near each stop's and change quickly at the meeting point, more sharply the more the weights differ, like inverse distance weighting. Drawn with WebGPU.",
 };
 
 // MARK: - URL fragment
@@ -910,12 +907,13 @@ function encodeState() {
         m: state.sample ? 1 : 0,
         d: state.sheet ? 1 : 0,
         dc: state.sheetComponent,
-        wm: state.weightModel,
         md: state.model,
         ed: state.edges,
         gr: state.gridResolution,
         pr: state.pointRadius,
         cm: state.compare ? 1 : 0,
+        vz: state.visualize ? 1 : 0,
+        sp: state.stops.some(stop => stop.spread) ? state.stops.map(stop => stop.spread) : undefined,
         p: state.stops.map(stop => stop.weight === null ? [stop.color, ...stop.pos] : [stop.color, ...stop.pos, stop.weight]),
     };
     const bytes = new TextEncoder().encode(JSON.stringify(data));
@@ -932,7 +930,10 @@ function decodeState(text) {
         const number = v => typeof v === "number" && Number.isFinite(v) ? v : null;
         if (data.v !== 1 || !Array.isArray(data.p) || !data.p.length || data.p.length > 64)
             return null;
-        const stops = data.p.map(entry => makeStop(String(entry[0] ?? "black"), number(entry[1]) ?? 50, number(entry[2]) ?? 50, number(entry[3])));
+        const spreads = Array.isArray(data.sp) ? data.sp : [];
+        const stops = data.p.map((entry, i) => makeStop(String(entry[0] ?? "black"), number(entry[1]) ?? 50, number(entry[2]) ?? 50, number(entry[3]), clamp(number(spreads[i]) ?? 0, 0, 1)));
+        // The visualizations are off while their panel is hidden.
+        const visualize = data.vz === 1;
         return {
             width: clamp(number(data.w) ?? 600, 100, 2000),
             height: clamp(number(data.h) ?? 400, 100, 2000),
@@ -940,14 +941,14 @@ function decodeState(text) {
             renderer: data.g === "webgpu" ? "webgpu" : "native",
             overlay: data.o !== 0,
             backdrop: BACKDROPS.includes(data.k) ? data.k : "checkerboard",
-            view: VIEWS.includes(data.vw) ? data.vw : "gradient",
-            normalization: data.n === 1,
-            crossSection: data.x === 1,
+            visualize,
+            view: visualize && VIEWS.includes(data.vw) ? data.vw : "gradient",
+            normalization: visualize && data.n === 1,
+            crossSection: visualize && data.x === 1,
             row: clamp(Math.round(number(data.r) ?? 50), 0, 100),
-            sample: data.m === 1,
-            sheet: data.d === 1,
+            sample: visualize && data.m === 1,
+            sheet: visualize && data.d === 1,
             sheetComponent: clamp(Math.round(number(data.dc) ?? 0), 0, 4),
-            weightModel: WEIGHT_MODELS.includes(data.wm) ? data.wm : "none",
             model: MODELS.includes(data.md) ? data.md : "spline",
             edges: data.ed === "open" ? "open" : "mirrored",
             gridResolution: GRID_RESOLUTIONS.includes(data.gr) ? data.gr : 64,
@@ -1073,7 +1074,7 @@ function presetState(index) {
         sample: state?.sample ?? false,
         sheet: state?.sheet ?? false,
         sheetComponent: state?.sheetComponent ?? 0,
-        weightModel: state?.weightModel ?? "none",
+        visualize: state?.visualize ?? false,
         model: state?.model ?? "spline",
         edges: state?.edges ?? "mirrored",
         gridResolution: state?.gridResolution ?? 64,
@@ -1146,7 +1147,7 @@ function interpolationComponents(text) {
 
 // The spline through the stops, in the interpolation color space, premultiplied. Positions are in CSS pixels, moved by
 // -origin and divided by scale first. Equivalent to FreeformGradient::fitSpline() in FreeformGradient.cpp.
-function fitThinPlateSpline(model) {
+function fitThinPlateSpline() {
     const hueIndex = HUE_INDEX[state.space];
 
     // 1. Convert each stop's color to the interpolation color space. Where stops share a position, the last one is used.
@@ -1243,7 +1244,7 @@ function fitThinPlateSpline(model) {
     const solution = solve(matrix, values, size);
     if (!solution) {
         // Distinct positions make the system solvable, so this is only reached through rounding. Use the first color.
-        return { hueIndex, origin, scale, centers: [], polynomial: [points[0].color.slice(), [0, 0, 0, 0], [0, 0, 0, 0]], terms: [[1, 0, 0]], points, pairs: [] };
+        return { hueIndex, origin, scale, centers: [], polynomial: [points[0].color.slice(), [0, 0, 0, 0], [0, 0, 0, 0]], terms: [[1, 0, 0]], points };
     }
 
     // `stop` and `color` aren't in WebKit's Center; the visualizations use them.
@@ -1256,13 +1257,13 @@ function fitThinPlateSpline(model) {
                 polynomial[coefficient][component] += terms[k][coefficient] * solution[count + k][component];
         }
     }
-    return { hueIndex, origin, scale, centers, polynomial, terms, points, pairs: model === "spline" ? weightPairs(centers) : [] };
+    return { hueIndex, origin, scale, centers, polynomial, terms, points };
 }
 
 // The spline, and for a grid model, the grid solved from the same stops. The stops' colors, hue fixup and
 // premultiplication are shared, so the models differ only in how the colors spread between the stops.
 function fitSpline(model = state.model) {
-    const spline = fitThinPlateSpline(model);
+    const spline = fitThinPlateSpline();
     if (model !== "spline")
         spline.grid = solveGrid(model, spline.points);
     return spline;
@@ -1283,7 +1284,7 @@ const gridCache = new Map();
 function solveGrid(model, points) {
     // Dragging solves at half the resolution, to keep up.
     const resolution = drag ? Math.max(24, state.gridResolution / 2) : state.gridResolution;
-    const spreads = points.map(point => clamp(state.stops[point.stop].weight ?? 0, 0, 1));
+    const spreads = points.map(point => state.stops[point.stop].spread);
     // The spline's points are normalized, so the positions come from the stops.
     const positions = points.map(point => [state.stops[point.stop].pos[0] / 100 * state.width, state.stops[point.stop].pos[1] / 100 * state.height]);
     const key = JSON.stringify([model, resolution, state.edges, state.pointRadius, state.width, state.height, positions, points.map(point => point.color), spreads]);
@@ -1454,79 +1455,7 @@ function gridColor(grid, [px, py]) {
 
 // The radius of a stop's disc, in CSS pixels.
 function discRadius(stop) {
-    return (state.pointRadius / 100 + clamp(stop.weight ?? 0, 0, 1) * 0.5) * Math.min(state.width, state.height);
-}
-
-// MARK: - Weight models (experimental)
-
-// Not in the draft or WebKit. Each pair of stops i and j meets, where the colors are half one and half the other, at
-// f = sᵢ / (sᵢ + sⱼ) of the way from i to j, with s = 2^weight: a stop with a weight 1 more than another's takes twice
-// as much of the way between them. Only differences between weights matter, and equal weights give today's gradient.
-//
-// A point is moved along each pair's axis before the spline is evaluated: from t, its position along the axis, to
-// profile(t), where profile(0) = 0, profile(1) = 1, and profile(f) = 1/2. With two stops the spline is a plane, so the
-// colors along the axis are exactly the profile's. With more, the moves are averaged, each pair weighted by
-// 1 / (dᵢ² · dⱼ²), so the pairs whose stops are both near the point count most, and a stop never moves.
-function weightPairs(centers) {
-    if (state.weightModel === "none")
-        return [];
-    const weights = centers.map(center => state.stops[center.stop].weight ?? 0);
-    if (weights.every(weight => weight === weights[0]))
-        return [];
-    const pairs = [];
-    for (let i = 0; i < centers.length; ++i) {
-        for (let j = i + 1; j < centers.length; ++j) {
-            const difference = weights[i] - weights[j];
-            const meeting = clamp(1 / (1 + 2 ** -difference), 1e-4, 1 - 1e-4);
-            pairs.push({ from: centers[i].position, to: centers[j].position, meeting, sharpness: 1 + Math.abs(difference) });
-        }
-    }
-    return pairs;
-}
-
-// Where along a pair's axis a point at t, from 0 to 1, takes its color from.
-function weightProfile(t, meeting, sharpness) {
-    if (t <= 0)
-        return 0;
-    if (t >= 1)
-        return 1;
-    switch (state.weightModel) {
-    case "hint":
-        // A CSS color hint at the meeting point: a power curve, with no flat parts.
-        return t ** (Math.log(0.5) / Math.log(meeting));
-    case "spread":
-        // The stronger stop holds its color, flat, then the colors ramp evenly to the other.
-        if (meeting >= 0.5) {
-            const shelf = 2 * meeting - 1;
-            return Math.max(0, t - shelf) / (1 - shelf);
-        }
-        return Math.min(1, t / (2 * meeting));
-    case "nearest": {
-        // Like inverse distance weighting by (s / d)^k: flat near both stops, and sharper the more the weights differ.
-        const a = t ** sharpness, b = (meeting / (1 - meeting) * (1 - t)) ** sharpness;
-        return a / (a + b);
-    }
-    default:
-        return t;
-    }
-}
-
-// A normalized position moved by the weights. Equivalent to warpedPosition() in the shader.
-function warpedPosition(pairs, [x, y]) {
-    if (!pairs?.length)
-        return [x, y];
-    let moveX = 0, moveY = 0, total = 0;
-    for (const { from, to, meeting, sharpness } of pairs) {
-        const ex = to[0] - from[0], ey = to[1] - from[1];
-        const fx = x - from[0], fy = y - from[1], gx = x - to[0], gy = y - to[1];
-        const t = clamp((fx * ex + fy * ey) / (ex * ex + ey * ey), 0, 1);
-        const weight = 1 / ((fx * fx + fy * fy + 1e-6) * (gx * gx + gy * gy + 1e-6));
-        const move = weight * (weightProfile(t, meeting, sharpness) - t);
-        moveX += move * ex;
-        moveY += move * ey;
-        total += weight;
-    }
-    return [x + moveX / total, y + moveY / total];
+    return (state.pointRadius / 100 + stop.spread * 0.5) * Math.min(state.width, state.height);
 }
 
 // The color at a position in CSS pixels, in the interpolation color space, premultiplied. Equivalent to
@@ -1534,7 +1463,7 @@ function warpedPosition(pairs, [x, y]) {
 function interpolatedColor(spline, [px, py]) {
     if (spline.grid)
         return gridColor(spline.grid, [px, py]);
-    const [x, y] = warpedPosition(spline.pairs, [(px - spline.origin[0]) / spline.scale, (py - spline.origin[1]) / spline.scale]);
+    const x = (px - spline.origin[0]) / spline.scale, y = (py - spline.origin[1]) / spline.scale;
     const color = [0, 1, 2, 3].map(k => spline.polynomial[0][k] + spline.polynomial[1][k] * x + spline.polynomial[2][k] * y);
     for (const center of spline.centers) {
         const dx = x - center.position[0], dy = y - center.position[1];
@@ -1612,9 +1541,6 @@ struct Uniforms {
     outputIsDisplayP3: u32,
     // Not in WebKit: 1 draws U(r) around the one center instead of the color.
     view: u32,
-    // Not in WebKit: the weight model, an index into WEIGHT_MODELS, and how many pairs it moves positions by.
-    weightModel: u32,
-    pairCount: u32,
     // Not in WebKit: a grid model's solution, used instead of the spline when gridWidth isn't 0.
     gridWidth: u32,
     gridHeight: u32,
@@ -1622,18 +1548,9 @@ struct Uniforms {
     gridTexel: vec2f,
 };
 
-// Not in WebKit: a pair of stops, for the weight models.
-struct Pair {
-    start: vec2f,
-    end: vec2f,
-    meeting: f32,
-    sharpness: f32,
-};
-
 @group(0) @binding(0) var<storage, read> centers: array<Center>;
 @group(0) @binding(1) var<uniform> uniforms: Uniforms;
-@group(0) @binding(2) var<storage, read> pairs: array<Pair>;
-@group(0) @binding(3) var<storage, read> grid: array<vec4f>;
+@group(0) @binding(2) var<storage, read> grid: array<vec4f>;
 
 // Equivalent to gridColor() in the page.
 fn gridColor(position: vec2f) -> vec4f {
@@ -1648,56 +1565,6 @@ fn gridColor(position: vec2f) -> vec4f {
     let top = mix(grid[y0 * w + x0], grid[y0 * w + x1], t.x);
     let bottom = mix(grid[y1 * w + x0], grid[y1 * w + x1], t.x);
     return mix(top, bottom, t.y);
-}
-
-// Equivalent to weightProfile() in the page.
-fn weightProfile(t: f32, meeting: f32, sharpness: f32) -> f32 {
-    if (t <= 0.0) {
-        return 0.0;
-    }
-    if (t >= 1.0) {
-        return 1.0;
-    }
-    switch uniforms.weightModel {
-        case 1u: {
-            return pow(t, log(0.5) / log(meeting));
-        }
-        case 2u: {
-            if (meeting >= 0.5) {
-                let shelf = 2.0 * meeting - 1.0;
-                return max(0.0, t - shelf) / (1.0 - shelf);
-            }
-            return min(1.0, t / (2.0 * meeting));
-        }
-        case 3u: {
-            let a = pow(t, sharpness);
-            let b = pow(meeting / (1.0 - meeting) * (1.0 - t), sharpness);
-            return a / (a + b);
-        }
-        default: {
-            return t;
-        }
-    }
-}
-
-// Equivalent to warpedPosition() in the page.
-fn warpedPosition(point: vec2f) -> vec2f {
-    if (uniforms.pairCount == 0u) {
-        return point;
-    }
-    var displacement = vec2f(0.0);
-    var total = 0.0;
-    for (var i = 0u; i < uniforms.pairCount; i++) {
-        let pair = pairs[i];
-        let axis = pair.end - pair.start;
-        let startOffset = point - pair.start;
-        let endOffset = point - pair.end;
-        let t = clamp(dot(startOffset, axis) / dot(axis, axis), 0.0, 1.0);
-        let weight = 1.0 / ((dot(startOffset, startOffset) + 1e-6) * (dot(endOffset, endOffset) + 1e-6));
-        displacement += weight * (weightProfile(t, pair.meeting, pair.sharpness) - t) * axis;
-        total += weight;
-    }
-    return point + displacement / total;
 }
 
 // U(r) = r^2 * log(r), from the square of r.
@@ -1717,7 +1584,7 @@ fn interpolatedColor(position: vec2f) -> vec4f {
         return gridColor(position);
     }
 
-    let point = warpedPosition((position - uniforms.splineOrigin) / uniforms.splineScale);
+    let point = (position - uniforms.splineOrigin) / uniforms.splineScale;
 
     var color = uniforms.polynomial[0] + uniforms.polynomial[1] * point.x + uniforms.polynomial[2] * point.y;
     for (var i = 0u; i < uniforms.centerCount; i++) {
@@ -1948,19 +1815,12 @@ class WebGPUFreeformGradientRenderer {
         const centers = device.createBuffer({ size: centerData.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
         device.queue.writeBuffer(centers, 0, centerData);
 
-        // Matches Pair in the shader: 6 f32s. As with the centers, the buffer can't be empty.
-        const pairList = spline.pairs ?? [];
-        const pairData = new Float32Array(Math.max(1, pairList.length) * 6);
-        pairList.forEach((pair, i) => pairData.set([...pair.from, ...pair.to, pair.meeting, pair.sharpness], i * 6));
-        const pairs = device.createBuffer({ size: pairData.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
-        device.queue.writeBuffer(pairs, 0, pairData);
-
         // Not in WebKit: a grid model's solution, 4 f32s a texel. As with the centers, the buffer can't be empty.
         const gridData = spline.grid ? spline.grid.values : new Float32Array(4);
         const grid = device.createBuffer({ size: gridData.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
         device.queue.writeBuffer(grid, 0, gridData);
 
-        // Matches Uniforms in the shader: 3 vec4fs, a vec2f, 2 f32s, 8 u32s and 2 vec2fs: 112 bytes.
+        // Matches Uniforms in the shader: 3 vec4fs, a vec2f, 2 f32s, 6 u32s and 2 vec2fs, padded to 112 bytes.
         const uniformData = new ArrayBuffer(112);
         const floats = new Float32Array(uniformData), uints = new Uint32Array(uniformData);
         spline.polynomial.forEach((coefficient, i) => floats.set(coefficient, i * 4));
@@ -1971,12 +1831,10 @@ class WebGPUFreeformGradientRenderer {
         uints[17] = SPACES.indexOf(state.space);
         uints[18] = this.outputSpace === "display-p3" ? 1 : 0;
         uints[19] = view;
-        uints[20] = WEIGHT_MODELS.indexOf(state.weightModel);
-        uints[21] = pairList.length;
-        uints[22] = spline.grid?.columns ?? 0;
-        uints[23] = spline.grid?.rows ?? 0;
-        floats.set(spline.grid?.origin ?? [0, 0], 24);
-        floats.set(spline.grid?.texel ?? [1, 1], 26);
+        uints[20] = spline.grid?.columns ?? 0;
+        uints[21] = spline.grid?.rows ?? 0;
+        floats.set(spline.grid?.origin ?? [0, 0], 22);
+        floats.set(spline.grid?.texel ?? [1, 1], 24);
         const uniforms = device.createBuffer({ size: 112, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
         device.queue.writeBuffer(uniforms, 0, uniformData);
 
@@ -1987,14 +1845,13 @@ class WebGPUFreeformGradientRenderer {
         pass.setPipeline(this.pipeline);
         pass.setBindGroup(0, device.createBindGroup({
             layout: this.pipeline.getBindGroupLayout(0),
-            entries: [{ binding: 0, resource: { buffer: centers } }, { binding: 1, resource: { buffer: uniforms } }, { binding: 2, resource: { buffer: pairs } }, { binding: 3, resource: { buffer: grid } }],
+            entries: [{ binding: 0, resource: { buffer: centers } }, { binding: 1, resource: { buffer: uniforms } }, { binding: 2, resource: { buffer: grid } }],
         }));
         pass.draw(3);
         pass.end();
         device.queue.submit([encoder.finish()]);
         centers.destroy();
         uniforms.destroy();
-        pairs.destroy();
         grid.destroy();
     }
 }
@@ -2052,11 +1909,10 @@ function render() {
 
     currentSpline = fitSpline();
     const shownSpline = viewSpline(currentSpline);
-    // WebKit doesn't use weights, so the weight models are drawn with WebGPU.
     // A grid model has only the gradient to show.
     if (state.model !== "spline")
         state.view = "gradient";
-    const useNative = state.renderer === "native" && state.view === "gradient" && state.weightModel === "none" && state.model === "spline";
+    const useNative = state.renderer === "native" && state.view === "gradient" && state.model === "spline";
     nativeView.style.display = useNative ? "" : "none";
     gpuCanvas.style.display = useNative ? "none" : "";
     const message = $("stageMessage");
@@ -3107,11 +2963,9 @@ function updateControls() {
         $("pointRadius").value = state.pointRadius;
     $("modelNote").textContent = MODEL_NOTES[state.model] + (gridModel ? " " + EDGE_NOTES[state.edges] : "");
     $("compareToggle").checked = state.compare;
-    $("weightModel").value = state.weightModel;
-    $("weightModel").closest(".row").hidden = gridModel;
-    $("weightModelNote").hidden = gridModel;
-    $("weightModelNote").textContent = WEIGHT_MODEL_NOTES[state.weightModel];
-    $("stopWeightNote").textContent = gridModel ? "Spread, 0 to 1" : state.weightModel === "none" ? "Not used yet" : "0 if none";
+    $("visualizePanel").hidden = !state.visualize;
+    $("visualizeToggle").textContent = state.visualize ? "Hide Visualize" : "Show Visualize";
+    $("visualizeToggle").setAttribute("aria-expanded", String(state.visualize));
     for (const radio of document.querySelectorAll("input[name=renderer]"))
         radio.checked = radio.value === state.renderer;
     $("overlayToggle").checked = state.overlay;
@@ -3130,6 +2984,9 @@ function updateControls() {
         $("stopY").value = stop.pos[1];
     if (document.activeElement !== $("stopWeight"))
         $("stopWeight").value = stop.weight ?? "";
+    $("stopSpreadRow").hidden = !gridModel;
+    $("stopSpread").value = stop.spread;
+    $("stopSpreadValue").textContent = stop.spread.toFixed(2);
     $("removeStop").disabled = state.stops.length < 2;
 
     const list = $("stopList");
@@ -3169,8 +3026,19 @@ $("space").addEventListener("change", () => {
     state.space = $("space").value;
     changed();
 });
-$("weightModel").addEventListener("change", () => {
-    state.weightModel = $("weightModel").value;
+// Hiding the panel turns the visualizations off, and showing it again turns them back on.
+let hiddenVisualizations = null;
+$("visualizeToggle").addEventListener("click", () => {
+    const keys = ["view", "normalization", "sample", "crossSection", "sheet"];
+    state.visualize = !state.visualize;
+    if (state.visualize) {
+        if (hiddenVisualizations)
+            Object.assign(state, hiddenVisualizations);
+    } else {
+        hiddenVisualizations = Object.fromEntries(keys.map(key => [key, state[key]]));
+        Object.assign(state, { view: "gradient", normalization: false, sample: false, crossSection: false, sheet: false });
+        hideSample();
+    }
     changed();
 });
 for (const resolution of GRID_RESOLUTIONS)
@@ -3305,6 +3173,11 @@ $("stopWeight").addEventListener("change", () => {
     state.stops[selected].weight = Number.isFinite(value) ? value : null;
     changed();
 });
+$("stopSpread").addEventListener("input", () => {
+    state.stops[selected].spread = clamp(Number($("stopSpread").value), 0, 1);
+    changed({ dragging: true });
+});
+$("stopSpread").addEventListener("change", () => changed());
 $("addStop").addEventListener("click", () => {
     // In the middle of the box, or, if a stop is there, a little way from it.
     const taken = position => state.stops.some(stop => Math.hypot(stop.pos[0] - position[0], stop.pos[1] - position[1]) < 4);
