@@ -1378,12 +1378,18 @@ function updateStats(view) {
     // Solves round, so less than a thousandth counts as none.
     const percent = value => value < 0.001 ? "0%" : value < 0.005 ? "under 1%" : `${Math.round(value * 100)}%`;
     const statsText = view.figure.querySelector(".modelStats");
-    let line = `Overshoot: ${percent(stats.overshoot)} · Clipped: ${percent(stats.clippedFraction)} of the box`;
+    const gamut = GAMUT_NAMES[stats.outputSpace];
+    const sentences = [
+        percent(stats.overshoot) === "0%" ? "Its colors stay within the stops' colors." : `Its colors go up to ${percent(stats.overshoot)} of a component's range past the stops' colors.`,
+        percent(stats.clippedFraction) === "0%" ? `All of the box fits in ${gamut}.` : `${percent(stats.clippedFraction)[0].toUpperCase() + percent(stats.clippedFraction).slice(1)} of the box is outside ${gamut}, and is clipped.`,
+    ];
     if (state.view === "difference" && view.model !== referenceModel() && view.difference)
-        line += ` · From ${MODEL_NAMES[view.difference.reference].toLowerCase()}: ΔE OK ${view.difference.mean.toFixed(3)} on average, ${view.difference.largest.toFixed(3)} at most`;
-    statsText.textContent = line;
-    statsText.title = `How far the colors go past the stops' (in premultiplied components, as a fraction of each one's range), and how much of the box is outside ${stats.outputSpace} or 0 to 1 alpha.`;
+        sentences.push(`It differs from the ${MODEL_NAMES[view.difference.reference].toLowerCase()} by ${view.difference.mean.toFixed(3)} on average and ${view.difference.largest.toFixed(3)} at most, in Oklab (ΔE OK).`);
+    statsText.textContent = sentences.join(" ");
+    statsText.title = `Past the stops' colors: how far any component, premultiplied, goes beyond the stops' smallest and largest values. Clipped: the share of the box whose color is outside ${gamut}, or whose alpha is outside 0 to 1.`;
 }
+
+const GAMUT_NAMES = { "srgb": "sRGB", "display-p3": "Display P3", "rec2020": "Rec. 2020" };
 
 // The boxes share one size and margin, scaled down together to fit side by side, or one above another on a narrow
 // screen.
