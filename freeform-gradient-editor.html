@@ -254,7 +254,7 @@ input[type=range] { flex: 1; min-width: 80px; }
 }
 .view figcaption { font-size: 12px; margin: 4px auto 0; }
 .view .modelSource { font-style: italic; }
-.view figcaption .modelStats, .view figcaption .modelSummary { display: block; margin-top: 2px; }
+.view figcaption .modelSummary { display: block; margin-top: 2px; }
 .viewDetails { margin: 0 auto; max-width: 100%; }
 .viewDetails [hidden] { display: none; }
 #splineParts { margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--border); }
@@ -263,6 +263,11 @@ aside[hidden], .row[hidden] { display: none; }
     #views { flex-direction: column; }
     .view { flex: none; width: 100%; }
 }
+#numbersTable { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
+#numbersTable th, #numbersTable td { text-align: left; vertical-align: top; padding: 3px 6px 3px 0; border-bottom: 1px solid var(--border); }
+#numbersTable th { font-weight: 600; }
+#numbersTable td:first-child { color: var(--muted); }
+#numbersPanel[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -287,7 +292,7 @@ aside[hidden], .row[hidden] { display: none; }
                     </div>
                 </div>
                 <div class="viewDetails">
-                    <figcaption><b>Thin-plate spline</b><span class="modelSummary"></span><span class="note modelStats"></span></figcaption>
+                    <figcaption><b>Thin-plate spline</b><span class="modelSummary"></span></figcaption>
                     <canvas class="plot"></canvas>
                     <p class="note legend plotNote"></p>
                     <canvas class="sheet"></canvas>
@@ -310,7 +315,7 @@ aside[hidden], .row[hidden] { display: none; }
                     </div>
                 </div>
                 <div class="viewDetails">
-                    <figcaption><b>Biharmonic grid</b><span class="modelSummary"></span><span class="note modelStats"></span></figcaption>
+                    <figcaption><b>Biharmonic grid</b><span class="modelSummary"></span></figcaption>
                     <canvas class="plot"></canvas>
                     <p class="note legend plotNote"></p>
                     <canvas class="sheet"></canvas>
@@ -333,7 +338,7 @@ aside[hidden], .row[hidden] { display: none; }
                     </div>
                 </div>
                 <div class="viewDetails">
-                    <figcaption><b>Harmonic grid</b><span class="modelSummary"></span><span class="note modelStats"></span></figcaption>
+                    <figcaption><b>Harmonic grid</b><span class="modelSummary"></span></figcaption>
                     <canvas class="plot"></canvas>
                     <p class="note legend plotNote"></p>
                     <canvas class="sheet"></canvas>
@@ -410,6 +415,14 @@ aside[hidden], .row[hidden] { display: none; }
                 <label><input type="radio" name="renderer" value="webgpu"> WebGPU</label>
                 <label><input type="checkbox" id="overlayToggle" checked> Overlay</label>
             </div>
+            <div class="row">
+                <label for="gamutMapping">Out of gamut</label>
+                <select id="gamutMapping">
+                    <option value="clip">Clip</option>
+                    <option value="map">Gamut map (CSS Color 4)</option>
+                </select>
+            </div>
+            <p class="note">Colors outside the canvas's gamut are clipped, as WebKit does, or mapped as CSS Color 4 says: moved toward gray, keeping their lightness and hue, until they're within a just-noticeable difference of their clipped versions. It applies to what WebGPU draws; Native draws as the browser does.</p>
             <p id="nativeStatus" class="status"></p>
             <p id="gpuStatus" class="status"></p>
             <p class="note">Native draws the thin-plate spline's box with the browser's own freeform-gradient(). WebGPU draws every box, and anything other than the colors.</p>
@@ -417,7 +430,7 @@ aside[hidden], .row[hidden] { display: none; }
 
         <section>
             <h2>Visualize</h2>
-            <p class="note">Drawn in and under each model's box, so the models can be compared. Under each name, a line says how far its colors go past the stops' colors, and how much of its box is outside the gamut chosen below.</p>
+            <p class="note">Drawn in and under each model's box, so the models can be compared.</p>
             <div class="row">
                 <label for="view">Show</label>
                 <select id="view">
@@ -478,7 +491,11 @@ aside[hidden], .row[hidden] { display: none; }
                 </div>
                 <p class="note">Each component is its own surface over the box: the height is one component, and the color is the gradient's. Each stop is a peg as tall as its value. The thin-plate spline bends as little as it can through the top of every peg, on an endless plane. The biharmonic grid bends as little as it can too, but inside the box and held flat over each stop's disc. The harmonic grid stretches like a membrane between the discs. All shows every component together. Drag any of them to turn them all.</p>
             </div>
-            <p id="numbersNote" class="note">The thin-plate spline's fitted coefficients, and each grid's size and solve time.</p>
+            <div id="numbersPanel" hidden>
+                <table id="numbersTable"></table>
+                <p class="note">How far each model's colors go past the stops' colors, in Oklab: lighter than the lightest stop, darker than the darkest, or more colorful than the most colorful. A ring on each box marks where it goes furthest. Then how much of each box is outside the gamut chosen under Clipped against. Under each box are the thin-plate spline's fitted coefficients, or the grid's size and solve time.</p>
+                <button id="copyNumbers" class="small">Copy as Markdown</button>
+            </div>
         </section>
 
         <section>
@@ -1052,6 +1069,7 @@ function encodeState() {
         nb: state.numbers ? 1 : 0,
         cl: state.clipping ? 1 : 0,
         gm: state.gamut,
+        gmap: state.gamutMapping,
         sp: state.stops.some(stop => stop.spread) ? state.stops.map(stop => stop.spread) : undefined,
         p: state.stops.map(stop => stop.weight === null ? [stop.color, ...stop.pos] : [stop.color, ...stop.pos, stop.weight]),
     };
@@ -1081,6 +1099,7 @@ function decodeState(text) {
             numbers: data.nb === 1,
             clipping: data.cl === 1,
             gamut: ["srgb", "display-p3", "rec2020"].includes(data.gm) ? data.gm : "display-p3",
+            gamutMapping: data.gmap === "map" ? "map" : "clip",
             view: VIEWS.includes(data.vw) ? data.vw : "gradient",
             normalization: data.n === 1,
             crossSection: data.x === 1,
@@ -1250,6 +1269,7 @@ function presetState(index) {
         numbers: state?.numbers ?? false,
         clipping: state?.clipping ?? false,
         gamut: state?.gamut ?? "display-p3",
+        gamutMapping: state?.gamutMapping ?? "clip",
         model: state?.model ?? "spline",
         models: state?.models ?? ["spline"],
         edges: state?.edges ?? "mirrored",
@@ -1849,6 +1869,8 @@ ${wgslMatrix("d50ToD65", M.d50ToD65)}
 ${wgslMatrix("okLabToLMS", M.okLabToLMS)}
 ${wgslMatrix("lmsToXYZ", M.lmsToXYZ)}
 const D50 = vec3f(${D50.map(wgslNumber).join(", ")});
+${wgslMatrix("xyzToLMS", M.xyzToLMS)}
+${wgslMatrix("lmsToOKLab", M.lmsToOKLab)}
 
 // Equivalent to FreeformGradient::Center in FreeformGradient.h.
 struct Center {
@@ -1872,6 +1894,8 @@ struct Uniforms {
     gridHeight: u32,
     gridOrigin: vec2f,
     gridTexel: vec2f,
+    // Not in WebKit: 1 maps colors outside the canvas's gamut as CSS Color 4 does, instead of clipping them.
+    gamutMapping: u32,
 };
 
 @group(0) @binding(0) var<storage, read> centers: array<Center>;
@@ -2039,6 +2063,93 @@ fn toPremultipliedColor(color: vec4f) -> vec4f {
     return vec4f(rgb * alpha, alpha);
 }
 
+// Not in WebKit: CSS gamut mapping to the canvas's RGB gamut, https://drafts.csswg.org/css-color-4/#binsearch. Colors
+// are moved toward gray in OKLCh, keeping their lightness and hue, until they're within one just-noticeable difference
+// of their clipped versions. Equivalent to gamutMappedLinear() in the page.
+fn xyzToOKLab(xyz: vec3f) -> vec3f {
+    return transform(lmsToOKLab, powSigned(transform(xyzToLMS, xyz), 1.0 / 3.0));
+}
+
+fn okLabToOutputLinear(lab: vec3f) -> vec3f {
+    let xyz = okLabToXYZ(lab);
+    if (uniforms.outputIsDisplayP3 == 1u) {
+        return transform(xyzToLinP3, xyz);
+    }
+    return transform(xyzToLinSRGB, xyz);
+}
+
+fn outputLinearToOKLab(rgb: vec3f) -> vec3f {
+    if (uniforms.outputIsDisplayP3 == 1u) {
+        return xyzToOKLab(transform(linP3ToXYZ, rgb));
+    }
+    return xyzToOKLab(transform(linSRGBToXYZ, rgb));
+}
+
+fn inOutputGamut(rgb: vec3f) -> bool {
+    return all(rgb >= vec3f(-1e-5)) && all(rgb <= vec3f(1.0 + 1e-5));
+}
+
+fn gamutMappedLinear(origin: vec3f) -> vec3f {
+    let jnd = 0.02;
+    let epsilon = 0.0001;
+    if (origin.x >= 1.0) {
+        return vec3f(1.0);
+    }
+    if (origin.x <= 0.0) {
+        return vec3f(0.0);
+    }
+    let originRGB = okLabToOutputLinear(origin);
+    if (inOutputGamut(originRGB)) {
+        return originRGB;
+    }
+    var clipped = clamp(originRGB, vec3f(0.0), vec3f(1.0));
+    if (distance(outputLinearToOKLab(clipped), origin) < jnd) {
+        return clipped;
+    }
+    let chroma = length(origin.yz);
+    let direction = origin.yz / chroma;
+    var low = 0.0;
+    var high = chroma;
+    var lowInGamut = true;
+    while (high - low > epsilon) {
+        let middle = (low + high) / 2.0;
+        let current = vec3f(origin.x, direction * middle);
+        let currentRGB = okLabToOutputLinear(current);
+        if (lowInGamut && inOutputGamut(currentRGB)) {
+            low = middle;
+            continue;
+        }
+        clipped = clamp(currentRGB, vec3f(0.0), vec3f(1.0));
+        let difference = distance(outputLinearToOKLab(clipped), current);
+        if (difference < jnd) {
+            if (jnd - difference < epsilon) {
+                return clipped;
+            }
+            lowInGamut = false;
+            low = middle;
+        } else {
+            high = middle;
+        }
+    }
+    return clipped;
+}
+
+// Not in WebKit: toPremultipliedColor(), with CSS gamut mapping in place of clipping when it's chosen.
+fn outputColor(color: vec4f) -> vec4f {
+    if (uniforms.gamutMapping == 0u) {
+        return toPremultipliedColor(color);
+    }
+    let alpha = saturate(color.w);
+    var c = color.xyz;
+    if (uniforms.space == 12u || uniforms.space == 13u) {
+        c.x = normalizeHue(c.x);
+    } else if (uniforms.space == 9u || uniforms.space == 11u) {
+        c.z = normalizeHue(c.z);
+    }
+    let rgb = clamp(srgbFromLinear(gamutMappedLinear(xyzToOKLab(toXYZ(uniforms.space, c)))), vec3f(0.0), vec3f(1.0));
+    return vec4f(rgb * alpha, alpha);
+}
+
 fn premultipliedColor(position: vec2f) -> vec4f {
     // Equivalent to FreeformGradient::premultipliedColor() in FreeformGradient.cpp.
 
@@ -2056,7 +2167,7 @@ fn premultipliedColor(position: vec2f) -> vec4f {
         }
     }
 
-    return toPremultipliedColor(color);
+    return outputColor(color);
 }
 
 struct RasterizerData {
@@ -2188,6 +2299,7 @@ class WebGPUFreeformGradientRenderer {
         uints[21] = spline.grid?.rows ?? 0;
         floats.set(spline.grid?.origin ?? [0, 0], 22);
         floats.set(spline.grid?.texel ?? [1, 1], 24);
+        uints[26] = state.gamutMapping === "map" ? 1 : 0;
         const uniforms = device.createBuffer({ size: 112, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
         device.queue.writeBuffer(uniforms, 0, uniformData);
 
@@ -2330,6 +2442,7 @@ function render() {
         });
     }
     updateControls();
+    updateNumbersTable();
     time("controls");
     renderTimings.total = performance.now() - start;
     if (lastSamplePosition)
@@ -2386,30 +2499,38 @@ function renderView(view, css, dpr) {
     }
 }
 
-// How far a model's colors go past the stops', and how much of the box is clipped to the canvas's gamut, from a grid of
-// samples. Overshoot is in premultiplied components, as a fraction of each one's range; hue is left out.
+// How far a model's colors go past the stops' colors, and how much of the box is outside the chosen gamut, from a grid
+// of samples. Going past is measured in Oklab: how much lighter than the lightest stop, darker than the darkest, or
+// more colorful than the most colorful any point is. Nearly transparent points, whose colors barely show, are left out.
 const STATS_COLUMNS = 64;
 function gamutStats(fit) {
-    const info = components();
     const hueIndex = fit.hueIndex;
-    const colors = fit.points.map(point => point.color);
-    const low = [0, 1, 2, 3].map(k => Math.min(...colors.map(c => c[k])));
-    const high = [0, 1, 2, 3].map(k => Math.max(...colors.map(c => c[k])));
+    const oklab = color => fromXYZ("oklab", toXYZ(state.space, color.slice(0, 3).map(v => Number.isNaN(v) ? 0 : v)));
+    const stopColors = fit.points.map(point => oklab(unpremultipliedColor(point.color, hueIndex)));
+    const lightest = Math.max(...stopColors.map(c => c[0])), darkest = Math.min(...stopColors.map(c => c[0]));
+    const mostColorful = Math.max(...stopColors.map(c => Math.hypot(c[1], c[2])));
     const outputSpace = state.gamut;
     // Coarser while dragging, to keep up.
     const columns = drag ? STATS_COLUMNS / 2 : STATS_COLUMNS, rows = Math.max(1, Math.round(columns * state.height / state.width));
     const clipped = new Uint8Array(columns * rows);
-    let overshoot = 0, clippedCount = 0;
+    let lighter = 0, darker = 0, moreColorful = 0, worst = 0, worstPoint = null, clippedCount = 0;
     for (let j = 0; j < rows; ++j) {
         for (let i = 0; i < columns; ++i) {
-            const raw = interpolatedColor(fit, [(i + 0.5) / columns * state.width, (j + 0.5) / rows * state.height]);
-            for (let k = 0; k < 4; ++k) {
-                if (k === hueIndex)
-                    continue;
-                const range = info[k].range[1] - info[k].range[0];
-                overshoot = Math.max(overshoot, (low[k] - raw[k]) / range, (raw[k] - high[k]) / range);
-            }
+            const position = [(i + 0.5) / columns * state.width, (j + 0.5) / rows * state.height];
+            const raw = interpolatedColor(fit, position);
             const color = unpremultipliedColor(raw, hueIndex);
+            if (color[3] >= 0.05) {
+                const [L, a, b] = oklab(color);
+                const past = [L - lightest, darkest - L, Math.hypot(a, b) - mostColorful];
+                lighter = Math.max(lighter, past[0]);
+                darker = Math.max(darker, past[1]);
+                moreColorful = Math.max(moreColorful, past[2]);
+                const furthest = Math.max(...past);
+                if (furthest > worst) {
+                    worst = furthest;
+                    worstPoint = position;
+                }
+            }
             const rgb = fromXYZ(outputSpace, toXYZ(state.space, color.slice(0, 3).map(v => Number.isNaN(v) ? 0 : v)));
             const epsilon = 1 / 1024;
             if (raw[3] < -epsilon || raw[3] > 1 + epsilon || rgb.some(v => v < -epsilon || v > 1 + epsilon)) {
@@ -2418,24 +2539,58 @@ function gamutStats(fit) {
             }
         }
     }
-    return { overshoot: Math.max(0, overshoot), clippedFraction: clippedCount / (columns * rows), clipped, columns, rows, outputSpace };
+    return { lighter, darker, moreColorful, worst, worstPoint, clippedFraction: clippedCount / (columns * rows), clipped, columns, rows, outputSpace };
 }
 
+// Less than this in Oklab is too little to see, and is reported as staying within the stops' colors.
+const PAST_THRESHOLD = 0.005;
+
 function updateStats(view) {
-    const stats = view.stats = gamutStats(splines[view.model]);
-    // Solves round, so less than a thousandth counts as none.
-    const percent = value => value < 0.001 ? "0%" : value < 0.005 ? "under 1%" : `${Math.round(value * 100)}%`;
-    const statsText = view.figure.querySelector(".modelStats");
-    const gamut = GAMUT_NAMES[stats.outputSpace];
-    const sentences = [
-        percent(stats.overshoot) === "0%" ? "Its colors stay within the stops' colors." : `Its colors go up to ${percent(stats.overshoot)} of a component's range past the stops' colors.`,
-        percent(stats.clippedFraction) === "0%" ? `All of the box fits in ${gamut}.` : `${percent(stats.clippedFraction)[0].toUpperCase() + percent(stats.clippedFraction).slice(1)} of the box is outside ${gamut}, and is clipped.`,
-    ];
-    if (state.view === "difference" && view.model !== referenceModel() && view.difference)
-        sentences.push(`It differs from the ${MODEL_NAMES[view.difference.reference].toLowerCase()} by ${view.difference.mean.toFixed(3)} on average and ${view.difference.largest.toFixed(3)} at most, in Oklab (ΔE OK).`);
-    statsText.textContent = sentences.join(" ");
-    statsText.title = `Past the stops' colors: how far any component, premultiplied, goes beyond the stops' smallest and largest values. Clipped: the share of the box whose color is outside ${gamut}, or whose alpha is outside 0 to 1.`;
+    view.stats = gamutStats(splines[view.model]);
 }
+
+// The models side by side, in a table under Visualize when Numbers is on. Copy as Markdown gives the same table, for
+// pasting into an issue.
+function numbersTable() {
+    const shown = views.filter(view => !view.figure.hidden && view.stats);
+    const gamut = GAMUT_NAMES[state.gamut];
+    const past = ({ lighter, darker, moreColorful }) => {
+        const parts = [];
+        if (lighter > PAST_THRESHOLD)
+            parts.push(`${lighter.toFixed(2)} lighter`);
+        if (darker > PAST_THRESHOLD)
+            parts.push(`${darker.toFixed(2)} darker`);
+        if (moreColorful > PAST_THRESHOLD)
+            parts.push(`${moreColorful.toFixed(2)} more colorful`);
+        return parts.length ? parts.join(", ") : "no";
+    };
+    const percent = value => value < 0.001 ? "none" : value < 0.005 ? "under 1%" : `${Math.round(value * 100)}%`;
+    const rows = [
+        ["Goes past the stops' colors (Oklab)", shown.map(view => past(view.stats))],
+        [`Outside ${gamut}, so ${state.gamutMapping === "map" ? "gamut mapped" : "clipped"}`, shown.map(view => `${percent(view.stats.clippedFraction)} of the box`)],
+    ];
+    if (state.view === "difference") {
+        rows.push([`Differs from the ${MODEL_NAMES[referenceModel()].toLowerCase()} (ΔE OK, average / largest)`,
+            shown.map(view => view.model === referenceModel() || !view.difference ? "—" : `${view.difference.mean.toFixed(3)} / ${view.difference.largest.toFixed(3)}`)]);
+    }
+    return { header: ["", ...shown.map(view => MODEL_NAMES[view.model])], rows: rows.map(([label, cells]) => [label, ...cells]) };
+}
+
+function updateNumbersTable() {
+    const panel = $("numbersPanel");
+    panel.hidden = !state.numbers;
+    if (!state.numbers)
+        return;
+    const { header, rows } = numbersTable();
+    const cells = (row, tag) => row.map(cell => `<${tag}>${escapeHTML(cell)}</${tag}>`).join("");
+    $("numbersTable").innerHTML = `<thead><tr>${cells(header, "th")}</tr></thead><tbody>${rows.map(row => `<tr>${cells(row, "td")}</tr>`).join("")}</tbody>`;
+}
+
+$("copyNumbers").addEventListener("click", () => {
+    const { header, rows } = numbersTable();
+    const line = row => `| ${row.join(" | ")} |`;
+    copy([line(header), line(header.map(() => "---")), ...rows.map(line)].join("\n"), "the table");
+});
 
 const GAMUT_NAMES = { "srgb": "sRGB", "display-p3": "Display P3", "rec2020": "Rec. 2020" };
 
@@ -2501,7 +2656,7 @@ function drawOverlay(view, width, height, dpr) {
     overlay.style.top = `${-margin.y}px`;
     overlay.style.width = `${cssWidth}px`;
     overlay.style.height = `${cssHeight}px`;
-    const visualizing = state.normalization || state.crossSection || state.view === "term" || state.view === "basis" || state.clipping || requestedView === "grid";
+    const visualizing = state.normalization || state.crossSection || state.view === "term" || state.view === "basis" || state.clipping || requestedView === "grid" || state.numbers;
     const discs = view.model !== "spline" && state.overlay;
     overlay.style.display = state.overlay || visualizing ? "" : "none";
     // With the stops hidden, they can't be dragged, and the box can still be sampled.
@@ -2515,6 +2670,8 @@ function drawOverlay(view, width, height, dpr) {
     ctx.clearRect(0, 0, cssWidth, cssHeight);
     if (state.clipping && view.stats && requestedView === "gradient")
         drawClipping(ctx, view.stats, width, height);
+    if (state.numbers && view.stats?.worstPoint && view.stats.worst > PAST_THRESHOLD)
+        drawWorstOvershoot(ctx, view.stats.worstPoint);
     if (requestedView === "grid" && splines[view.model]?.grid)
         drawGridTexels(ctx, splines[view.model].grid);
     if (visualizing)
@@ -2578,6 +2735,24 @@ function drawOverlay(view, width, height, dpr) {
         ctx.strokeStyle = "rgba(0, 0, 0, 0.55)";
         ctx.stroke();
     });
+}
+
+// A ring where a model's colors go furthest past the stops'.
+function drawWorstOvershoot(ctx, [px, py]) {
+    const x = margin.x + px, y = margin.y + py, radius = 7 / Math.max(viewScale, 0.25);
+    strokeTwice(ctx, () => {
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, 2 * Math.PI);
+        ctx.moveTo(x - radius * 1.6, y);
+        ctx.lineTo(x - radius * 0.6, y);
+        ctx.moveTo(x + radius * 0.6, y);
+        ctx.lineTo(x + radius * 1.6, y);
+        ctx.moveTo(x, y - radius * 1.6);
+        ctx.lineTo(x, y - radius * 0.6);
+        ctx.moveTo(x, y + radius * 0.6);
+        ctx.lineTo(x, y + radius * 1.6);
+    });
+    drawLabel(ctx, "furthest past the stops", x, y + radius * 2.6);
 }
 
 // Diagonal hatching over the samples that are clipped.
@@ -2734,6 +2909,66 @@ let requestedView = "gradient";
 const referenceModel = () => state.models.includes(state.reference) ? state.reference : state.models[0];
 
 // White where a model agrees with the one compared with, purple where it differs, from a grid of samples.
+// CSS gamut mapping, https://drafts.csswg.org/css-color-4/#binsearch: an OKLab color mapped into an RGB space's gamut,
+// returned as that space's linear components. Equivalent to gamutMappedLinear() in the shader.
+function gamutMappedLinear(origin, space) {
+    const JND = 0.02, EPSILON = 0.0001;
+    const toLinear = lab => {
+        const rgb = fromXYZ(space, toXYZ("oklab", lab));
+        return rgb.map(v => Math.sign(v) * (space === "rec2020" ? Math.abs(v) ** 2.4 : srgbLinearOf(Math.abs(v))));
+    };
+    const linearToOKLab = rgb => fromXYZ("oklab", toXYZ(space, rgb.map(v => Math.sign(v) * (space === "rec2020" ? Math.abs(v) ** (1 / 2.4) : srgbEncodedOf(Math.abs(v))))));
+    const inGamut = rgb => rgb.every(v => v >= -1e-5 && v <= 1 + 1e-5);
+    const clip = rgb => rgb.map(v => clamp(v, 0, 1));
+    const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    if (origin[0] >= 1)
+        return [1, 1, 1];
+    if (origin[0] <= 0)
+        return [0, 0, 0];
+    const originRGB = toLinear(origin);
+    if (inGamut(originRGB))
+        return originRGB;
+    let clipped = clip(originRGB);
+    if (distance(linearToOKLab(clipped), origin) < JND)
+        return clipped;
+    const chroma = Math.hypot(origin[1], origin[2]);
+    const direction = [origin[1] / chroma, origin[2] / chroma];
+    let low = 0, high = chroma, lowInGamut = true;
+    while (high - low > EPSILON) {
+        const middle = (low + high) / 2;
+        const current = [origin[0], direction[0] * middle, direction[1] * middle];
+        const currentRGB = toLinear(current);
+        if (lowInGamut && inGamut(currentRGB)) {
+            low = middle;
+            continue;
+        }
+        clipped = clip(currentRGB);
+        const difference = distance(linearToOKLab(clipped), current);
+        if (difference < JND) {
+            if (JND - difference < EPSILON)
+                return clipped;
+            lowInGamut = false;
+            low = middle;
+        } else
+            high = middle;
+    }
+    return clipped;
+}
+
+// The sRGB transfer function and its inverse, which Display P3 shares.
+const srgbLinearOf = v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+const srgbEncodedOf = v => v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055;
+
+// A color as it's seen in an RGB space: clipped, or with gamut mapping chosen, mapped.
+function seenColor({ space, c, alpha }, outputSpace) {
+    if (state.gamutMapping !== "map")
+        return toOutput({ space, c, alpha }, outputSpace);
+    const lab = fromXYZ("oklab", toXYZ(space, c.map(v => Number.isNaN(v) ? 0 : v)));
+    const linear = gamutMappedLinear(lab, outputSpace);
+    const encoded = linear.map(v => clamp(outputSpace === "rec2020" ? v ** (1 / 2.4) : srgbEncodedOf(v), 0, 1));
+    return [...encoded, Number.isNaN(alpha) ? 0 : alpha];
+}
+
 function drawDifference(view) {
     const reference = referenceModel();
     const fit = splines[view.model], other = splines[reference];
@@ -2748,7 +2983,7 @@ function drawDifference(view) {
     // What's seen: each color clipped to the gamut the clipping is measured against, in Oklab, with its alpha.
     const oklab = (color, hueIndex) => {
         const c = unpremultipliedColor(color, hueIndex);
-        const rgb = toOutput({ space: state.space, c: c.slice(0, 3), alpha: c[3] }, state.gamut);
+        const rgb = seenColor({ space: state.space, c: c.slice(0, 3), alpha: c[3] }, state.gamut);
         return [...fromXYZ("oklab", toXYZ(state.gamut, rgb.slice(0, 3))), clamp(c[3], 0, 1)];
     };
     let total = 0, largest = 0;
@@ -3036,9 +3271,9 @@ function updateVisualizationControls() {
     $("sampleNote").hidden = !state.sample;
     $("crossSectionPanel").hidden = !state.crossSection;
     $("sheetPanel").hidden = !state.sheet;
-    $("numbersNote").hidden = !state.numbers;
     $("clippingNote").hidden = !state.clipping;
     $("gamut").value = state.gamut;
+    $("gamutMapping").value = state.gamutMapping;
     const preset = matchingPreset();
     $("preset").value = preset < 0 ? "" : String(preset);
     $("presetNote").textContent = preset < 0 ? "" : PRESETS[preset].note ?? "";
@@ -3641,6 +3876,10 @@ function updateCoefficients() {
 
 // MARK: Visualize controls
 
+$("gamutMapping").addEventListener("change", () => {
+    state.gamutMapping = $("gamutMapping").value;
+    changed();
+});
 $("gamut").addEventListener("change", () => {
     state.gamut = $("gamut").value;
     changed();

@@ -111,7 +111,7 @@ input[type=range] { flex: 1; min-width: 80px; }
 }
 .view figcaption { font-size: 12px; margin: 4px auto 0; }
 .view .modelSource { font-style: italic; }
-.view figcaption .modelStats, .view figcaption .modelSummary { display: block; margin-top: 2px; }
+.view figcaption .modelSummary { display: block; margin-top: 2px; }
 .viewDetails { margin: 0 auto; max-width: 100%; }
 .viewDetails [hidden] { display: none; }
 #splineParts { margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--border); }
@@ -120,3 +120,8 @@ aside[hidden], .row[hidden] { display: none; }
     #views { flex-direction: column; }
     .view { flex: none; width: 100%; }
 }
+#numbersTable { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
+#numbersTable th, #numbersTable td { text-align: left; vertical-align: top; padding: 3px 6px 3px 0; border-bottom: 1px solid var(--border); }
+#numbersTable th { font-weight: 600; }
+#numbersTable td:first-child { color: var(--muted); }
+#numbersPanel[hidden] { display: none; }

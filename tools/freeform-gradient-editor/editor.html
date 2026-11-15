@@ -20,7 +20,7 @@
                     </div>
                 </div>
                 <div class="viewDetails">
-                    <figcaption><b>Thin-plate spline</b><span class="modelSummary"></span><span class="note modelStats"></span></figcaption>
+                    <figcaption><b>Thin-plate spline</b><span class="modelSummary"></span></figcaption>
                     <canvas class="plot"></canvas>
                     <p class="note legend plotNote"></p>
                     <canvas class="sheet"></canvas>
@@ -43,7 +43,7 @@
                     </div>
                 </div>
                 <div class="viewDetails">
-                    <figcaption><b>Biharmonic grid</b><span class="modelSummary"></span><span class="note modelStats"></span></figcaption>
+                    <figcaption><b>Biharmonic grid</b><span class="modelSummary"></span></figcaption>
                     <canvas class="plot"></canvas>
                     <p class="note legend plotNote"></p>
                     <canvas class="sheet"></canvas>
@@ -66,7 +66,7 @@
                     </div>
                 </div>
                 <div class="viewDetails">
-                    <figcaption><b>Harmonic grid</b><span class="modelSummary"></span><span class="note modelStats"></span></figcaption>
+                    <figcaption><b>Harmonic grid</b><span class="modelSummary"></span></figcaption>
                     <canvas class="plot"></canvas>
                     <p class="note legend plotNote"></p>
                     <canvas class="sheet"></canvas>
@@ -143,6 +143,14 @@
                 <label><input type="radio" name="renderer" value="webgpu"> WebGPU</label>
                 <label><input type="checkbox" id="overlayToggle" checked> Overlay</label>
             </div>
+            <div class="row">
+                <label for="gamutMapping">Out of gamut</label>
+                <select id="gamutMapping">
+                    <option value="clip">Clip</option>
+                    <option value="map">Gamut map (CSS Color 4)</option>
+                </select>
+            </div>
+            <p class="note">Colors outside the canvas's gamut are clipped, as WebKit does, or mapped as CSS Color 4 says: moved toward gray, keeping their lightness and hue, until they're within a just-noticeable difference of their clipped versions. It applies to what WebGPU draws; Native draws as the browser does.</p>
             <p id="nativeStatus" class="status"></p>
             <p id="gpuStatus" class="status"></p>
             <p class="note">Native draws the thin-plate spline's box with the browser's own freeform-gradient(). WebGPU draws every box, and anything other than the colors.</p>
@@ -150,7 +158,7 @@
 
         <section>
             <h2>Visualize</h2>
-            <p class="note">Drawn in and under each model's box, so the models can be compared. Under each name, a line says how far its colors go past the stops' colors, and how much of its box is outside the gamut chosen below.</p>
+            <p class="note">Drawn in and under each model's box, so the models can be compared.</p>
             <div class="row">
                 <label for="view">Show</label>
                 <select id="view">
@@ -211,7 +219,11 @@
                 </div>
                 <p class="note">Each component is its own surface over the box: the height is one component, and the color is the gradient's. Each stop is a peg as tall as its value. The thin-plate spline bends as little as it can through the top of every peg, on an endless plane. The biharmonic grid bends as little as it can too, but inside the box and held flat over each stop's disc. The harmonic grid stretches like a membrane between the discs. All shows every component together. Drag any of them to turn them all.</p>
             </div>
-            <p id="numbersNote" class="note">The thin-plate spline's fitted coefficients, and each grid's size and solve time.</p>
+            <div id="numbersPanel" hidden>
+                <table id="numbersTable"></table>
+                <p class="note">How far each model's colors go past the stops' colors, in Oklab: lighter than the lightest stop, darker than the darkest, or more colorful than the most colorful. A ring on each box marks where it goes furthest. Then how much of each box is outside the gamut chosen under Clipped against. Under each box are the thin-plate spline's fitted coefficients, or the grid's size and solve time.</p>
+                <button id="copyNumbers" class="small">Copy as Markdown</button>
+            </div>
         </section>
 
         <section>
