@@ -1337,6 +1337,8 @@ function render() {
     const css = cssText();
     $("output").value = `background-image: ${css};`;
 
+    if (!viewAvailable(state.view))
+        state.view = "gradient";
     requestedView = state.view;
     splines = Object.fromEntries(state.models.map(model => [model, fitSpline(model)]));
     influences = state.view !== "influence" ? { } : Object.fromEntries(state.models.map(model => [model, fitSpline(model, selected)]));
@@ -1576,7 +1578,7 @@ function drawOverlay(view, width, height, dpr) {
     ctx.clearRect(0, 0, cssWidth, cssHeight);
     if (state.clipping && view.stats && requestedView === "gradient")
         drawClipping(ctx, view.stats, width, height);
-    if (state.numbers && view.stats?.worstPoint && view.stats.worst > PAST_THRESHOLD)
+    if (state.numbers && requestedView === "gradient" && view.stats?.worstPoint && view.stats.worst > PAST_THRESHOLD)
         drawWorstOvershoot(ctx, view.stats.worstPoint);
     if (requestedView === "grid" && splines[view.model]?.grid)
         drawGridTexels(ctx, splines[view.model].grid);
@@ -2155,13 +2157,29 @@ const VIEW_NOTES = {
     difference: "Each box but the one compared with is white where the two models agree and purple where they differ, darkest at a difference of 0.15 in Oklab (ΔE OK) or more. Differences under about 0.02 are hard to see. Colors are compared as they're seen: clipped to the gamut chosen for clipping, and scaled by their alpha.",
     grid: "The grid each grid model is solved on, with the texels the stops hold outlined in their colors. Every other texel is solved for: in the harmonic grid, each is the average of its four neighbors; in the biharmonic grid, each one's Laplacian is the average of its neighbors'. The thin-plate spline has no grid.",
     influence: "Every model is linear in the stops' colors, so each point's color is a weighted sum of them. This shows the selected stop's weight: orange where it adds its color, white where it adds none, blue where it takes it away, and dark red past 1. The thin-plate spline's goes negative and keeps growing outside the box. The biharmonic grid's has negative lobes too, and can pass 1, but ends at the box's edges. The harmonic grid's is never below 0 or above 1.",
-    gradient: "For the thin-plate spline, f(p) = a + b·x + c·y + Σ wᵢ·U(|p − pᵢ|), for each component. The weights wᵢ and a, b and c are solved for together, so that f is each stop's color at its position, and the terms add no tilt of their own: Σ wᵢ = Σ wᵢ·xᵢ = Σ wᵢ·yᵢ = 0.",
-    plane: "Just the linear part, without the stops' terms. It bends nothing, so it is free; it is the tilt that the terms are added to, and on its own it reaches few of the stops' colors.",
+    gradient: "The gradient each model draws from the same stops.",
+    plane: "The thin-plate spline is f(p) = a + b·x + c·y + Σ wᵢ·U(|p − pᵢ|), for each component, with the weights wᵢ and a, b and c solved for together so that f is each stop's color at its position. This is just its linear part, a + b·x + c·y: the tilt the stops' terms are added to. On its own it reaches few of the stops' colors.",
     term: "The linear part, bent by only the selected stop's term, wᵢ·U(r). Where a weight is positive the term lowers that component near the stop and raises it far away; where it is negative, the opposite. It changes sign at r = 1, the dashed circle, since U(1) = 0.",
     basis: "U(r) = r²·log r, the shape a thin plate takes when pushed at one point. Every stop's term is this shape around the stop, scaled by its weights. It is 0 at the stop and at r = 1 (the dashed circle), below 0 between them (blue), and grows past r = 1 (orange). r is measured in normalized units.",
 };
 
+// Which models each Show view is for. The others' boxes show the gradient.
+const VIEW_MODELS = {
+    gradient: MODELS, influence: MODELS, difference: MODELS,
+    grid: ["biharmonic", "harmonic"],
+    plane: ["spline"], term: ["spline"], basis: ["spline"],
+};
+
+// A view is offered when a model it's for is on, and the difference view when there's another model to compare with.
+function viewAvailable(view) {
+    if (view === "difference")
+        return state.models.length > 1;
+    return VIEW_MODELS[view].some(model => state.models.includes(model));
+}
+
 function updateVisualizationControls() {
+    for (const option of $("view").options)
+        option.disabled = !viewAvailable(option.value);
     $("view").value = state.view;
     const reference = $("reference");
     if ([...reference.options].map(option => option.value).join() !== state.models.join())
@@ -2169,15 +2187,33 @@ function updateVisualizationControls() {
     reference.value = referenceModel();
     $("referenceRow").hidden = state.view !== "difference";
     let note = VIEW_NOTES[state.view];
-    if (state.view !== "gradient" && state.renderer === "native")
+    const others = state.models.filter(model => !VIEW_MODELS[state.view].includes(model));
+    if (others.length)
+        note += ` ${others.map(model => `the ${MODEL_NAMES[model].toLowerCase()}'s`).join(" and ").replace(/^t/, "T")} box${others.length > 1 ? "es show" : " shows"} the gradient.`;
+    if (state.view !== "gradient" && state.renderer === "native" && state.models.includes("spline"))
         note += " Drawn with WebGPU.";
+    $("normalizationRow").hidden = !state.models.includes("spline");
+    $("otherCurvesRow").hidden = state.models.length < 2 || !["gradient", "influence"].includes(state.view);
     $("viewNote").textContent = note;
     for (const [id, key] of VISUALIZATION_TOGGLES)
         $(id).checked = state[key];
     $("sampleNote").hidden = !state.sample;
     $("crossSectionPanel").hidden = !state.crossSection;
     $("sheetPanel").hidden = !state.sheet;
+    // Hatching is over the gradient, and the influence and U(r) views have one surface each, so no Height.
+    const showingGradient = state.view === "gradient";
+    $("clippingToggle").disabled = !showingGradient;
+    $("clippingToggle").closest("label").title = showingGradient ? "" : "Only over the gradient";
     $("clippingNote").hidden = !state.clipping;
+    $("clippingNote").textContent = showingGradient
+        ? "Hatched where a box's colors are outside the gamut chosen under Gamut, below, or its alpha is outside 0 to 1."
+        : "The hatching is only drawn over the gradient.";
+    $("sheetComponent").closest(".row").hidden = state.view === "influence" || state.view === "basis";
+    $("sheetNote").textContent = (state.view === "influence"
+        ? "The selected stop's influence as a surface over each box, with each stop a peg at 0, or at 1 for the selected one."
+        : state.view === "basis"
+        ? "U(r) as a surface over the thin-plate spline's box; the others show their components."
+        : "Each component as a surface over each box, colored with the gradient, with each stop a peg as tall as its value.") + " Drag any of them to turn them all.";
     $("gamut").value = state.gamut;
     $("gamutMapping").value = state.gamutMapping;
     const preset = matchingPreset();
@@ -2185,7 +2221,9 @@ function updateVisualizationControls() {
     $("presetNote").textContent = preset < 0 ? "" : PRESETS[preset].note ?? "";
     $("presetNote").hidden = !$("presetNote").textContent;
     $("crossSectionNote").textContent = state.view === "influence"
-        ? "The selected stop's influence along the row, in each box. Dots are the stops on the row."
+        ? "The selected stop's influence along the row. Dots are the stops on the row."
+        : state.view === "basis"
+        ? "U(r) along the row, under the thin-plate spline's box; the others show their components."
         : "Each component along the row, premultiplied, and scaled so the dashed lines are the ends of its range. Dots are the stops on the row.";
     $("row").value = state.row;
     $("rowValue").textContent = `${state.row}%`;
@@ -2265,8 +2303,12 @@ function drawPlot() {
         activeView.plotNote.innerHTML = info.map(({ label, range }, k) => `<span><b style="background: ${COMPONENT_COLORS[k]}"></b>${escapeHTML(label)} ${range[0]}…${range[1]}</span>`).join("");
     }
     // The other models' curves, dashed, from the same row.
-    const others = state.otherCurves && state.view === "gradient" ? state.models.filter(model => model !== state.model) : [];
+    const others = state.otherCurves && ["gradient", "influence"].includes(state.view) ? state.models.filter(model => model !== state.model) : [];
     for (const model of others) {
+        if (state.view === "influence") {
+            curves.push({ color: `rgb(${ink})`, dash: CURVE_DASHES[model], values: Array.from({ length: samples + 1 }, (_, i) => interpolatedColor(influences[model], [xAt(i), rowY])[0]) });
+            continue;
+        }
         info.forEach(({ range }, k) => curves.push({
             color: COMPONENT_COLORS[k],
             dash: CURVE_DASHES[model],

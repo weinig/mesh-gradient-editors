@@ -268,6 +268,8 @@ aside[hidden], .row[hidden] { display: none; }
 #numbersTable th { font-weight: 600; }
 #numbersTable td:first-child { color: var(--muted); }
 #numbersPanel[hidden] { display: none; }
+h3.subhead { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 14px 0 2px; }
+h3.subhead + .row { margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -430,17 +432,25 @@ aside[hidden], .row[hidden] { display: none; }
 
         <section>
             <h2>Visualize</h2>
-            <p class="note">Drawn in and under each model's box, so the models can be compared.</p>
+            <p class="note">Ways to see how each model works and how they differ, drawn in, under and over each model's box.</p>
+
+            <h3 class="subhead">In each box</h3>
             <div class="row">
                 <label for="view">Show</label>
                 <select id="view">
-                    <option value="gradient">The colors</option>
-                    <option value="influence">The selected stop's influence</option>
-                    <option value="difference">The difference from another model</option>
-                    <option value="grid">The grids' texels, and the ones the stops hold</option>
-                    <option value="plane">Thin-plate spline: the linear part</option>
-                    <option value="term">Thin-plate spline: the linear part and the selected stop's term</option>
-                    <option value="basis">Thin-plate spline: U(r) around the selected stop</option>
+                    <optgroup label="Every model">
+                        <option value="gradient">The gradient</option>
+                        <option value="influence">The selected stop's influence</option>
+                        <option value="difference">The difference from another model</option>
+                    </optgroup>
+                    <optgroup label="Biharmonic and harmonic grids">
+                        <option value="grid">The grid, and the texels the stops hold</option>
+                    </optgroup>
+                    <optgroup label="Thin-plate spline">
+                        <option value="plane">The linear part</option>
+                        <option value="term">The linear part and the selected stop's term</option>
+                        <option value="basis">U(r) around the selected stop</option>
+                    </optgroup>
                 </select>
             </div>
             <div id="referenceRow" class="row">
@@ -449,34 +459,28 @@ aside[hidden], .row[hidden] { display: none; }
             </div>
             <p id="viewNote" class="note"></p>
             <div class="row">
-                <label><input type="checkbox" id="clippingToggle"> Clipping</label>
-                <label><input type="checkbox" id="normalizationToggle"> Normalization</label>
+                <label><input type="checkbox" id="clippingToggle"> Hatch what's outside the gamut</label>
             </div>
-            <div class="row">
-                <label for="gamut">Clipped against</label>
-                <select id="gamut">
-                    <option value="srgb">sRGB</option>
-                    <option value="display-p3">Display P3</option>
-                    <option value="rec2020">Rec. 2020</option>
-                </select>
+            <p id="clippingNote" class="note">Hatched where a box's colors are outside the gamut chosen under Gamut, below, or its alpha is outside 0 to 1.</p>
+            <div id="normalizationRow" class="row">
+                <label><input type="checkbox" id="normalizationToggle"> The thin-plate spline's normalization</label>
             </div>
-            <p id="clippingNote" class="note">Hatched where a box's colors are outside the gamut chosen above, or its alpha outside 0 to 1. What's drawn is clipped to the canvas's gamut, which depends on the display.</p>
             <p id="normalizationNote" class="note"></p>
+
+            <h3 class="subhead">Under each box</h3>
             <div class="row">
                 <label><input type="checkbox" id="crossSectionToggle"> Cross-section</label>
                 <label><input type="checkbox" id="sheetToggle"> 3D</label>
-                <label><input type="checkbox" id="sampleToggle"> Sample</label>
                 <label><input type="checkbox" id="numbersToggle"> Numbers</label>
             </div>
-            <p id="sampleNote" class="note">Hover over any box, or tap it on a phone, to see the color there, added up term by term for the thin-plate spline.</p>
             <div id="crossSectionPanel">
                 <div class="row">
                     <label for="row">Row</label>
                     <input id="row" type="range" min="0" max="100" step="1">
                     <span id="rowValue" class="note"></span>
                 </div>
-                <div class="row">
-                    <label><input type="checkbox" id="otherCurvesToggle"> The other models' curves too, dashed</label>
+                <div id="otherCurvesRow" class="row">
+                    <label><input type="checkbox" id="otherCurvesToggle"> Also the other models' curves, dashed</label>
                 </div>
                 <p id="crossSectionNote" class="note"></p>
             </div>
@@ -489,13 +493,30 @@ aside[hidden], .row[hidden] { display: none; }
                     <label for="tilt">Tilt</label>
                     <input id="tilt" type="range" min="10" max="85" value="40">
                 </div>
-                <p class="note">Each component is its own surface over the box: the height is one component, and the color is the gradient's. Each stop is a peg as tall as its value. The thin-plate spline bends as little as it can through the top of every peg, on an endless plane. The biharmonic grid bends as little as it can too, but inside the box and held flat over each stop's disc. The harmonic grid stretches like a membrane between the discs. All shows every component together. Drag any of them to turn them all.</p>
+                <p id="sheetNote" class="note"></p>
             </div>
             <div id="numbersPanel" hidden>
                 <table id="numbersTable"></table>
-                <p class="note">How far each model's colors go past the stops' colors, in Oklab: lighter than the lightest stop, darker than the darkest, or more colorful than the most colorful. A ring on each box marks where it goes furthest. Then how much of each box is outside the gamut chosen under Clipped against. Under each box are the thin-plate spline's fitted coefficients, or the grid's size and solve time.</p>
+                <p class="note">How far each model's colors go past the stops' colors, in Oklab: lighter than the lightest stop, darker than the darkest, or more colorful than the most colorful. A ring on each box marks where it goes furthest. Then how much of each box is outside the gamut chosen under Gamut. Under each box are the thin-plate spline's fitted coefficients, or the grid's size and solve time.</p>
                 <button id="copyNumbers" class="small">Copy as Markdown</button>
             </div>
+
+            <h3 class="subhead">Over each box</h3>
+            <div class="row">
+                <label><input type="checkbox" id="sampleToggle"> Sample the color under the pointer</label>
+            </div>
+            <p id="sampleNote" class="note">Hover over any box, or tap it on a phone, to see the color there and each stop's share of it, and for the thin-plate spline, its terms.</p>
+
+            <h3 class="subhead">Gamut</h3>
+            <div class="row">
+                <label for="gamut">Measure against</label>
+                <select id="gamut">
+                    <option value="srgb">sRGB</option>
+                    <option value="display-p3">Display P3</option>
+                    <option value="rec2020">Rec. 2020</option>
+                </select>
+            </div>
+            <p class="note">For the hatching, the Numbers table and the difference view, so they're the same for everyone who opens the link, whatever their display.</p>
         </section>
 
         <section>
@@ -2402,6 +2423,8 @@ function render() {
     const css = cssText();
     $("output").value = `background-image: ${css};`;
 
+    if (!viewAvailable(state.view))
+        state.view = "gradient";
     requestedView = state.view;
     splines = Object.fromEntries(state.models.map(model => [model, fitSpline(model)]));
     influences = state.view !== "influence" ? { } : Object.fromEntries(state.models.map(model => [model, fitSpline(model, selected)]));
@@ -2670,7 +2693,7 @@ function drawOverlay(view, width, height, dpr) {
     ctx.clearRect(0, 0, cssWidth, cssHeight);
     if (state.clipping && view.stats && requestedView === "gradient")
         drawClipping(ctx, view.stats, width, height);
-    if (state.numbers && view.stats?.worstPoint && view.stats.worst > PAST_THRESHOLD)
+    if (state.numbers && requestedView === "gradient" && view.stats?.worstPoint && view.stats.worst > PAST_THRESHOLD)
         drawWorstOvershoot(ctx, view.stats.worstPoint);
     if (requestedView === "grid" && splines[view.model]?.grid)
         drawGridTexels(ctx, splines[view.model].grid);
@@ -3249,13 +3272,29 @@ const VIEW_NOTES = {
     difference: "Each box but the one compared with is white where the two models agree and purple where they differ, darkest at a difference of 0.15 in Oklab (ΔE OK) or more. Differences under about 0.02 are hard to see. Colors are compared as they're seen: clipped to the gamut chosen for clipping, and scaled by their alpha.",
     grid: "The grid each grid model is solved on, with the texels the stops hold outlined in their colors. Every other texel is solved for: in the harmonic grid, each is the average of its four neighbors; in the biharmonic grid, each one's Laplacian is the average of its neighbors'. The thin-plate spline has no grid.",
     influence: "Every model is linear in the stops' colors, so each point's color is a weighted sum of them. This shows the selected stop's weight: orange where it adds its color, white where it adds none, blue where it takes it away, and dark red past 1. The thin-plate spline's goes negative and keeps growing outside the box. The biharmonic grid's has negative lobes too, and can pass 1, but ends at the box's edges. The harmonic grid's is never below 0 or above 1.",
-    gradient: "For the thin-plate spline, f(p) = a + b·x + c·y + Σ wᵢ·U(|p − pᵢ|), for each component. The weights wᵢ and a, b and c are solved for together, so that f is each stop's color at its position, and the terms add no tilt of their own: Σ wᵢ = Σ wᵢ·xᵢ = Σ wᵢ·yᵢ = 0.",
-    plane: "Just the linear part, without the stops' terms. It bends nothing, so it is free; it is the tilt that the terms are added to, and on its own it reaches few of the stops' colors.",
+    gradient: "The gradient each model draws from the same stops.",
+    plane: "The thin-plate spline is f(p) = a + b·x + c·y + Σ wᵢ·U(|p − pᵢ|), for each component, with the weights wᵢ and a, b and c solved for together so that f is each stop's color at its position. This is just its linear part, a + b·x + c·y: the tilt the stops' terms are added to. On its own it reaches few of the stops' colors.",
     term: "The linear part, bent by only the selected stop's term, wᵢ·U(r). Where a weight is positive the term lowers that component near the stop and raises it far away; where it is negative, the opposite. It changes sign at r = 1, the dashed circle, since U(1) = 0.",
     basis: "U(r) = r²·log r, the shape a thin plate takes when pushed at one point. Every stop's term is this shape around the stop, scaled by its weights. It is 0 at the stop and at r = 1 (the dashed circle), below 0 between them (blue), and grows past r = 1 (orange). r is measured in normalized units.",
 };
 
+// Which models each Show view is for. The others' boxes show the gradient.
+const VIEW_MODELS = {
+    gradient: MODELS, influence: MODELS, difference: MODELS,
+    grid: ["biharmonic", "harmonic"],
+    plane: ["spline"], term: ["spline"], basis: ["spline"],
+};
+
+// A view is offered when a model it's for is on, and the difference view when there's another model to compare with.
+function viewAvailable(view) {
+    if (view === "difference")
+        return state.models.length > 1;
+    return VIEW_MODELS[view].some(model => state.models.includes(model));
+}
+
 function updateVisualizationControls() {
+    for (const option of $("view").options)
+        option.disabled = !viewAvailable(option.value);
     $("view").value = state.view;
     const reference = $("reference");
     if ([...reference.options].map(option => option.value).join() !== state.models.join())
@@ -3263,15 +3302,33 @@ function updateVisualizationControls() {
     reference.value = referenceModel();
     $("referenceRow").hidden = state.view !== "difference";
     let note = VIEW_NOTES[state.view];
-    if (state.view !== "gradient" && state.renderer === "native")
+    const others = state.models.filter(model => !VIEW_MODELS[state.view].includes(model));
+    if (others.length)
+        note += ` ${others.map(model => `the ${MODEL_NAMES[model].toLowerCase()}'s`).join(" and ").replace(/^t/, "T")} box${others.length > 1 ? "es show" : " shows"} the gradient.`;
+    if (state.view !== "gradient" && state.renderer === "native" && state.models.includes("spline"))
         note += " Drawn with WebGPU.";
+    $("normalizationRow").hidden = !state.models.includes("spline");
+    $("otherCurvesRow").hidden = state.models.length < 2 || !["gradient", "influence"].includes(state.view);
     $("viewNote").textContent = note;
     for (const [id, key] of VISUALIZATION_TOGGLES)
         $(id).checked = state[key];
     $("sampleNote").hidden = !state.sample;
     $("crossSectionPanel").hidden = !state.crossSection;
     $("sheetPanel").hidden = !state.sheet;
+    // Hatching is over the gradient, and the influence and U(r) views have one surface each, so no Height.
+    const showingGradient = state.view === "gradient";
+    $("clippingToggle").disabled = !showingGradient;
+    $("clippingToggle").closest("label").title = showingGradient ? "" : "Only over the gradient";
     $("clippingNote").hidden = !state.clipping;
+    $("clippingNote").textContent = showingGradient
+        ? "Hatched where a box's colors are outside the gamut chosen under Gamut, below, or its alpha is outside 0 to 1."
+        : "The hatching is only drawn over the gradient.";
+    $("sheetComponent").closest(".row").hidden = state.view === "influence" || state.view === "basis";
+    $("sheetNote").textContent = (state.view === "influence"
+        ? "The selected stop's influence as a surface over each box, with each stop a peg at 0, or at 1 for the selected one."
+        : state.view === "basis"
+        ? "U(r) as a surface over the thin-plate spline's box; the others show their components."
+        : "Each component as a surface over each box, colored with the gradient, with each stop a peg as tall as its value.") + " Drag any of them to turn them all.";
     $("gamut").value = state.gamut;
     $("gamutMapping").value = state.gamutMapping;
     const preset = matchingPreset();
@@ -3279,7 +3336,9 @@ function updateVisualizationControls() {
     $("presetNote").textContent = preset < 0 ? "" : PRESETS[preset].note ?? "";
     $("presetNote").hidden = !$("presetNote").textContent;
     $("crossSectionNote").textContent = state.view === "influence"
-        ? "The selected stop's influence along the row, in each box. Dots are the stops on the row."
+        ? "The selected stop's influence along the row. Dots are the stops on the row."
+        : state.view === "basis"
+        ? "U(r) along the row, under the thin-plate spline's box; the others show their components."
         : "Each component along the row, premultiplied, and scaled so the dashed lines are the ends of its range. Dots are the stops on the row.";
     $("row").value = state.row;
     $("rowValue").textContent = `${state.row}%`;
@@ -3359,8 +3418,12 @@ function drawPlot() {
         activeView.plotNote.innerHTML = info.map(({ label, range }, k) => `<span><b style="background: ${COMPONENT_COLORS[k]}"></b>${escapeHTML(label)} ${range[0]}…${range[1]}</span>`).join("");
     }
     // The other models' curves, dashed, from the same row.
-    const others = state.otherCurves && state.view === "gradient" ? state.models.filter(model => model !== state.model) : [];
+    const others = state.otherCurves && ["gradient", "influence"].includes(state.view) ? state.models.filter(model => model !== state.model) : [];
     for (const model of others) {
+        if (state.view === "influence") {
+            curves.push({ color: `rgb(${ink})`, dash: CURVE_DASHES[model], values: Array.from({ length: samples + 1 }, (_, i) => interpolatedColor(influences[model], [xAt(i), rowY])[0]) });
+            continue;
+        }
         info.forEach(({ range }, k) => curves.push({
             color: COMPONENT_COLORS[k],
             dash: CURVE_DASHES[model],

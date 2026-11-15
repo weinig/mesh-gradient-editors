@@ -158,17 +158,25 @@
 
         <section>
             <h2>Visualize</h2>
-            <p class="note">Drawn in and under each model's box, so the models can be compared.</p>
+            <p class="note">Ways to see how each model works and how they differ, drawn in, under and over each model's box.</p>
+
+            <h3 class="subhead">In each box</h3>
             <div class="row">
                 <label for="view">Show</label>
                 <select id="view">
-                    <option value="gradient">The colors</option>
-                    <option value="influence">The selected stop's influence</option>
-                    <option value="difference">The difference from another model</option>
-                    <option value="grid">The grids' texels, and the ones the stops hold</option>
-                    <option value="plane">Thin-plate spline: the linear part</option>
-                    <option value="term">Thin-plate spline: the linear part and the selected stop's term</option>
-                    <option value="basis">Thin-plate spline: U(r) around the selected stop</option>
+                    <optgroup label="Every model">
+                        <option value="gradient">The gradient</option>
+                        <option value="influence">The selected stop's influence</option>
+                        <option value="difference">The difference from another model</option>
+                    </optgroup>
+                    <optgroup label="Biharmonic and harmonic grids">
+                        <option value="grid">The grid, and the texels the stops hold</option>
+                    </optgroup>
+                    <optgroup label="Thin-plate spline">
+                        <option value="plane">The linear part</option>
+                        <option value="term">The linear part and the selected stop's term</option>
+                        <option value="basis">U(r) around the selected stop</option>
+                    </optgroup>
                 </select>
             </div>
             <div id="referenceRow" class="row">
@@ -177,34 +185,28 @@
             </div>
             <p id="viewNote" class="note"></p>
             <div class="row">
-                <label><input type="checkbox" id="clippingToggle"> Clipping</label>
-                <label><input type="checkbox" id="normalizationToggle"> Normalization</label>
+                <label><input type="checkbox" id="clippingToggle"> Hatch what's outside the gamut</label>
             </div>
-            <div class="row">
-                <label for="gamut">Clipped against</label>
-                <select id="gamut">
-                    <option value="srgb">sRGB</option>
-                    <option value="display-p3">Display P3</option>
-                    <option value="rec2020">Rec. 2020</option>
-                </select>
+            <p id="clippingNote" class="note">Hatched where a box's colors are outside the gamut chosen under Gamut, below, or its alpha is outside 0 to 1.</p>
+            <div id="normalizationRow" class="row">
+                <label><input type="checkbox" id="normalizationToggle"> The thin-plate spline's normalization</label>
             </div>
-            <p id="clippingNote" class="note">Hatched where a box's colors are outside the gamut chosen above, or its alpha outside 0 to 1. What's drawn is clipped to the canvas's gamut, which depends on the display.</p>
             <p id="normalizationNote" class="note"></p>
+
+            <h3 class="subhead">Under each box</h3>
             <div class="row">
                 <label><input type="checkbox" id="crossSectionToggle"> Cross-section</label>
                 <label><input type="checkbox" id="sheetToggle"> 3D</label>
-                <label><input type="checkbox" id="sampleToggle"> Sample</label>
                 <label><input type="checkbox" id="numbersToggle"> Numbers</label>
             </div>
-            <p id="sampleNote" class="note">Hover over any box, or tap it on a phone, to see the color there, added up term by term for the thin-plate spline.</p>
             <div id="crossSectionPanel">
                 <div class="row">
                     <label for="row">Row</label>
                     <input id="row" type="range" min="0" max="100" step="1">
                     <span id="rowValue" class="note"></span>
                 </div>
-                <div class="row">
-                    <label><input type="checkbox" id="otherCurvesToggle"> The other models' curves too, dashed</label>
+                <div id="otherCurvesRow" class="row">
+                    <label><input type="checkbox" id="otherCurvesToggle"> Also the other models' curves, dashed</label>
                 </div>
                 <p id="crossSectionNote" class="note"></p>
             </div>
@@ -217,13 +219,30 @@
                     <label for="tilt">Tilt</label>
                     <input id="tilt" type="range" min="10" max="85" value="40">
                 </div>
-                <p class="note">Each component is its own surface over the box: the height is one component, and the color is the gradient's. Each stop is a peg as tall as its value. The thin-plate spline bends as little as it can through the top of every peg, on an endless plane. The biharmonic grid bends as little as it can too, but inside the box and held flat over each stop's disc. The harmonic grid stretches like a membrane between the discs. All shows every component together. Drag any of them to turn them all.</p>
+                <p id="sheetNote" class="note"></p>
             </div>
             <div id="numbersPanel" hidden>
                 <table id="numbersTable"></table>
-                <p class="note">How far each model's colors go past the stops' colors, in Oklab: lighter than the lightest stop, darker than the darkest, or more colorful than the most colorful. A ring on each box marks where it goes furthest. Then how much of each box is outside the gamut chosen under Clipped against. Under each box are the thin-plate spline's fitted coefficients, or the grid's size and solve time.</p>
+                <p class="note">How far each model's colors go past the stops' colors, in Oklab: lighter than the lightest stop, darker than the darkest, or more colorful than the most colorful. A ring on each box marks where it goes furthest. Then how much of each box is outside the gamut chosen under Gamut. Under each box are the thin-plate spline's fitted coefficients, or the grid's size and solve time.</p>
                 <button id="copyNumbers" class="small">Copy as Markdown</button>
             </div>
+
+            <h3 class="subhead">Over each box</h3>
+            <div class="row">
+                <label><input type="checkbox" id="sampleToggle"> Sample the color under the pointer</label>
+            </div>
+            <p id="sampleNote" class="note">Hover over any box, or tap it on a phone, to see the color there and each stop's share of it, and for the thin-plate spline, its terms.</p>
+
+            <h3 class="subhead">Gamut</h3>
+            <div class="row">
+                <label for="gamut">Measure against</label>
+                <select id="gamut">
+                    <option value="srgb">sRGB</option>
+                    <option value="display-p3">Display P3</option>
+                    <option value="rec2020">Rec. 2020</option>
+                </select>
+            </div>
+            <p class="note">For the hatching, the Numbers table and the difference view, so they're the same for everyone who opens the link, whatever their display.</p>
         </section>
 
         <section>
