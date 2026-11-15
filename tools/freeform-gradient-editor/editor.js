@@ -20,7 +20,7 @@ const round2 = v => {
 };
 const round2Point = p => [round2(p[0]), round2(p[1])];
 
-function makeStop(color, x, y, weight = null, spread = 0) {
+function makeStop(color, x, y, weight = null, spread = null) {
     return { color, pos: [x, y], weight, spread };
 }
 
@@ -66,8 +66,8 @@ const VIEWS = ["gradient", "influence", "difference", "grid", "plane", "term", "
 
 const MODEL_NOTES = {
     spline: "A stiff sheet over thin pegs, on an endless plane: exact at the stops, and past them it carries on in a straight line.",
-    biharmonic: "A stiff sheet, ∆²u = 0, like the thin-plate spline's, but held by flat-topped posts and cut to the box: each stop holds a disc of its color, its radius the point radius plus the stop's spread, from 0 to 1, times half the box's shorter side. Solved on a grid and filtered up.",
-    harmonic: "A stretched membrane, ∆u = 0, over the same posts: a tent with a crease at each stop, which never passes the stops' colors. Solved on a grid and filtered up.",
+    biharmonic: "A stiff sheet, ∆²u = 0, like the thin-plate spline's, but cut to the box, and held at each stop: at the one texel it's in, or with Stop size set to A disc, across a flat-topped disc. Solved on a grid and filtered up.",
+    harmonic: "A stretched membrane, ∆u = 0, held at the stops in the same way: a tent with a crease at each stop, which never passes the stops' colors. Solved on a grid and filtered up.",
 };
 // What a spec would need to define for each model, for engines to agree.
 const MODEL_SPECS = {
@@ -88,8 +88,8 @@ const EDGE_NOTES = {
     free: "Free edges, as Finch et al. do: the grid grows until it holds every stop, plus a quarter of the box on each side, and the biharmonic grid minimizes the thin-plate energy with nothing holding its edges, so it comes close to the thin-plate spline. For the harmonic grid, a free edge is the same as a mirrored one.",
 };
 const HOLD_NOTES = {
-    discs: "Discs: each stop holds a disc of its color, sized by Point radius and its spread, as MeshShader2 does.",
-    points: "Points: each stop holds only the texel it's in, as Finch et al. do. Change Grid to see which model needs discs: the biharmonic grid barely changes, while the harmonic grid flattens toward one color as the texels shrink.",
+    discs: "A disc: every texel within a stop's disc takes its color. A disc's radius is the stop's spread, or Default spread, times half the box's shorter side.",
+    points: "One texel: each stop fixes just the texel it's in, as Finch et al. do. Change Grid to see which model needs discs: the biharmonic grid barely changes, while the harmonic grid flattens toward one color as the texels shrink.",
 };
 // What sets each model apart, in a line.
 const MODEL_SUMMARIES = {
@@ -106,7 +106,6 @@ function encodeState() {
         w: state.width,
         h: state.height,
         s: state.space,
-        g: state.renderer,
         o: state.overlay ? 1 : 0,
         k: state.backdrop,
         vw: state.view,
@@ -122,13 +121,13 @@ function encodeState() {
         rf: state.reference,
         oc: state.otherCurves ? 1 : 0,
         gr: state.gridResolution,
-        pr: state.pointRadius,
+        ds: state.defaultSpread,
         ms: state.models,
         nb: state.numbers ? 1 : 0,
         cl: state.clipping ? 1 : 0,
         gm: state.gamut,
         gmap: state.gamutMapping,
-        sp: state.stops.some(stop => stop.spread) ? state.stops.map(stop => stop.spread) : undefined,
+        sp: state.stops.some(stop => stop.spread !== null) ? state.stops.map(stop => stop.spread) : undefined,
         p: state.stops.map(stop => stop.weight === null ? [stop.color, ...stop.pos] : [stop.color, ...stop.pos, stop.weight]),
     };
     const bytes = new TextEncoder().encode(JSON.stringify(data));
@@ -146,18 +145,27 @@ function decodeState(text) {
         if (data.v !== 1 || !Array.isArray(data.p) || !data.p.length || data.p.length > 64)
             return null;
         const spreads = Array.isArray(data.sp) ? data.sp : [];
-        const stops = data.p.map((entry, i) => makeStop(String(entry[0] ?? "black"), number(entry[1]) ?? 50, number(entry[2]) ?? 50, number(entry[3]), clamp(number(spreads[i]) ?? 0, 0, 1)));
+        // Links from before Default spread had a disc radius, pr, in percent of the box's shorter side, that every stop's
+        // spread was added to. A spread is a fraction of half that side, so the radius is twice as much in spread.
+        const discRadius = data.ds === undefined ? number(data.pr) : null;
+        const defaultSpread = discRadius !== null ? clamp(2 * discRadius / 100, 0, 1) : clamp(number(data.ds) ?? 0.02, 0, 1);
+        const spreadOfEntry = i => {
+            const spread = number(spreads[i]);
+            if (discRadius !== null)
+                return spread ? clamp(defaultSpread + spread, 0, 1) : null;
+            return spread === null ? null : clamp(spread, 0, 1);
+        };
+        const stops = data.p.map((entry, i) => makeStop(String(entry[0] ?? "black"), number(entry[1]) ?? 50, number(entry[2]) ?? 50, number(entry[3]), spreadOfEntry(i)));
         return {
             width: clamp(number(data.w) ?? 600, 100, 2000),
             height: clamp(number(data.h) ?? 400, 100, 2000),
             space: SPACES.includes(data.s) ? data.s : "oklab",
-            renderer: data.g === "webgpu" ? "webgpu" : "native",
             overlay: data.o !== 0,
             backdrop: BACKDROPS.includes(data.k) ? data.k : "checkerboard",
             numbers: data.nb === 1,
             clipping: data.cl === 1,
             gamut: ["srgb", "display-p3", "rec2020"].includes(data.gm) ? data.gm : "display-p3",
-            gamutMapping: data.gmap === "map" ? "map" : "clip",
+            gamutMapping: data.gmap === "clip" ? "clip" : "map",
             view: VIEWS.includes(data.vw) ? data.vw : "gradient",
             normalization: data.n === 1,
             crossSection: data.x === 1,
@@ -167,11 +175,12 @@ function decodeState(text) {
             sheetComponent: clamp(Math.round(number(data.dc) ?? 0), 0, 4),
             ...modelsFrom(data),
             edges: ["open", "free"].includes(data.ed) ? data.ed : "mirrored",
+            // Links from before the choice existed had discs.
             hold: data.ho === "points" ? "points" : "discs",
             reference: MODELS.includes(data.rf) ? data.rf : "spline",
             otherCurves: data.oc === 1,
             gridResolution: GRID_RESOLUTIONS.includes(data.gr) ? data.gr : 64,
-            pointRadius: clamp(number(data.pr) ?? 1, 0.1, 20),
+            defaultSpread,
             stops,
         };
     } catch {
@@ -302,6 +311,22 @@ const PRESETS = [
         },
     },
     {
+        name: "Stops just outside the box",
+        note: "The magenta and green stops are just outside the box, as CSS allows. The thin-plate spline uses them wherever they are. With Edges set to Mirrored, the grids end at the box, so a stop outside it fixes nothing unless its disc reaches in, and the grids ignore these two. Set Edges to Open or Free, and the grids reach past the box and take them in.",
+        state: {
+            width: 600, height: 400, space: "oklab",
+            stops: [makeStop("#ff3b30", 20, 30), makeStop("#0a84ff", 70, 25), makeStop("#ffd60a", 45, 78), makeStop("#e040fb", 104, 55), makeStop("#30d158", -6, 92)],
+        },
+    },
+    {
+        name: "Stops with spread",
+        note: "Three of the stops have a spread, which only matters when Stop size is A disc. Switch Stop size: with discs, each holds its color across its disc, and the harmonic grid's tents become plateaus; with one texel, the harmonic grid sinks toward the stops' average between them. Then, with one texel, change Grid: the harmonic grid flattens further as the texels shrink, and the biharmonic grid barely changes.",
+        state: {
+            width: 600, height: 400, space: "oklab",
+            stops: [makeStop("#ff3b30", 22, 30, null, 0.3), makeStop("#0a84ff", 75, 28, null, 0.2), makeStop("#ffd60a", 48, 78, null, 0.25), makeStop("#30d158", 88, 80)],
+        },
+    },
+    {
         name: "One stop",
         note: "A single stop: every model draws its color everywhere.",
         state: {
@@ -314,7 +339,6 @@ const PRESETS = [
 function presetState(index) {
     const preset = structuredClone(PRESETS[index].state);
     return {
-        renderer: state?.renderer ?? defaultRenderer(),
         overlay: state?.overlay ?? true,
         backdrop: state?.backdrop ?? "checkerboard",
         view: state?.view ?? "gradient",
@@ -327,15 +351,15 @@ function presetState(index) {
         numbers: state?.numbers ?? false,
         clipping: state?.clipping ?? false,
         gamut: state?.gamut ?? "display-p3",
-        gamutMapping: state?.gamutMapping ?? "clip",
+        gamutMapping: state?.gamutMapping ?? "map",
         model: state?.model ?? "spline",
         models: state?.models ?? ["spline"],
         edges: state?.edges ?? "mirrored",
-        hold: state?.hold ?? "discs",
+        hold: state?.hold ?? "points",
         reference: state?.reference ?? "spline",
         otherCurves: state?.otherCurves ?? false,
         gridResolution: state?.gridResolution ?? 64,
-        pointRadius: state?.pointRadius ?? 1,
+        defaultSpread: state?.defaultSpread ?? 0.02,
         ...preset,
     };
 }
@@ -562,7 +586,7 @@ const factorCache = new Map();
 function gridFactor(model, positions, spreads) {
     // Dragging solves at half the resolution, to keep up.
     const resolution = drag ? Math.max(24, state.gridResolution / 2) : state.gridResolution;
-    const key = JSON.stringify([model, resolution, state.edges, state.hold, state.pointRadius, state.width, state.height, positions, spreads]);
+    const key = JSON.stringify([model, resolution, state.edges, state.hold, state.width, state.height, positions, spreads]);
     const cached = factorCache.get(key);
     if (cached)
         return cached;
@@ -664,7 +688,7 @@ function gridFactor(model, positions, spreads) {
     const held = new Int32Array(count).fill(-1);
     const shorter = Math.min(state.width, state.height);
     positions.forEach(([px, py], k) => {
-        const radius = state.hold === "points" ? 0 : (state.pointRadius / 100 + spreads[k] * 0.5) * shorter;
+        const radius = state.hold === "points" ? 0 : spreads[k] * 0.5 * shorter;
         // A stop on the grid's right or bottom edge, as at 100%, holds the texel at that edge.
         const cx = Math.min(Math.floor((px - domain.x) / texel[0]), px <= domain.x + domain.width ? columns - 1 : columns);
         const cy = Math.min(Math.floor((py - domain.y) / texel[1]), py <= domain.y + domain.height ? rows - 1 : rows);
@@ -793,7 +817,7 @@ function gridSolve(factor, values, channels) {
 const gridCache = new Map();
 
 function solveGrid(model, points) {
-    const spreads = points.map(point => state.stops[point.stop].spread);
+    const spreads = points.map(point => spreadOf(state.stops[point.stop]));
     // The spline's points are normalized, so the positions come from the stops.
     const positions = points.map(point => [state.stops[point.stop].pos[0] / 100 * state.width, state.stops[point.stop].pos[1] / 100 * state.height]);
     const factor = gridFactor(model, positions, spreads);
@@ -855,11 +879,14 @@ function gridColor(grid, [px, py]) {
         + (v[(y1 * w + x0) * 4 + c] * (1 - tx) + v[(y1 * w + x1) * 4 + c] * tx) * ty);
 }
 
+// A stop's spread: its own, or the default. A disc's radius is its spread times half the box's shorter side.
+const spreadOf = stop => stop.spread ?? state.defaultSpread;
+
 // The radius of a stop's disc, in CSS pixels.
 function discRadius(stop) {
     if (state.hold === "points")
         return 0;
-    return (state.pointRadius / 100 + stop.spread * 0.5) * Math.min(state.width, state.height);
+    return spreadOf(stop) * 0.5 * Math.min(state.width, state.height);
 }
 
 // The color at a position in CSS pixels, in the interpolation color space, premultiplied. Equivalent to
@@ -1268,7 +1295,6 @@ const views = [...document.querySelectorAll(".view")].map(figure => {
         box: figure.querySelector(".viewBox"),
         wrap: figure.querySelector(".stageWrap"),
         stage: figure.querySelector(".stage"),
-        native: figure.querySelector(".native"),
         gpu: figure.querySelector(".gpu"),
         message: figure.querySelector(".stageMessage"),
         diff: figure.querySelector(".diff"),
@@ -1287,13 +1313,8 @@ const views = [...document.querySelectorAll(".view")].map(figure => {
 let splines = { };
 let influences = { };
 
-const nativeSupported = typeof CSS !== "undefined" && CSS.supports("background-image", "freeform-gradient(red 0 0)");
 let gpuRenderer = null;
 let gpuError = null;
-
-function defaultRenderer() {
-    return nativeSupported ? "native" : "webgpu";
-}
 
 for (const space of SPACES)
     $("space").add(new Option(space, space));
@@ -1348,13 +1369,13 @@ function render() {
     for (const view of views) {
         view.figure.hidden = !state.models.includes(view.model);
         if (!view.figure.hidden)
-            renderView(view, css, dpr);
+            renderView(view, dpr);
     }
     time("boxes");
 
-    $("nativeStatus").textContent = nativeSupported ? "Native: freeform-gradient() is supported." : "Native: freeform-gradient() isn't supported in this browser.";
-    $("nativeStatus").className = nativeSupported ? "status" : "status error";
-    $("gpuStatus").textContent = gpuRenderer ? `WebGPU: ready, drawing into a ${gpuRenderer.outputSpace} canvas.` : gpuError ? `WebGPU: ${gpuError}` : "WebGPU: starting…";
+    // Only said while WebGPU is starting, or if it can't draw.
+    $("gpuStatus").hidden = !!gpuRenderer && !gpuError;
+    $("gpuStatus").textContent = gpuError ? `WebGPU: ${gpuError}` : "WebGPU: starting…";
     $("gpuStatus").className = gpuError ? "status error" : "status";
 
     updateMargin(width, height);
@@ -1386,7 +1407,7 @@ function render() {
         showSample(lastSamplePosition, lastSamplePosition.view);
 }
 
-function renderView(view, css, dpr) {
+function renderView(view, dpr) {
     const { width, height } = state;
     view.stage.style.width = `${width}px`;
     view.stage.style.height = `${height}px`;
@@ -1402,23 +1423,8 @@ function renderView(view, css, dpr) {
     if (comparing)
         drawDifference(view);
     const shownSpline = viewName === "gradient" ? fit : viewName === "influence" ? influences[view.model] : viewSpline(fit);
-    const useNative = state.renderer === "native" && viewName === "gradient" && view.model === "spline";
-    view.native.style.display = useNative ? "" : "none";
-    view.gpu.style.display = useNative ? "none" : "";
     const message = view.message;
     message.style.display = "none";
-    if (useNative) {
-        view.native.style.backgroundImage = "";
-        view.native.style.backgroundImage = css;
-        if (!nativeSupported) {
-            message.textContent = "This browser doesn't support freeform-gradient(). Use a WebKit build with the CSSFreeformGradientsEnabled preference on, or switch to WebGPU.";
-            message.style.display = "flex";
-        } else if (!view.native.style.backgroundImage) {
-            message.textContent = "The generated CSS didn't parse.";
-            message.style.display = "flex";
-        }
-        return;
-    }
     const pixelWidth = Math.round(width * dpr), pixelHeight = Math.round(height * dpr);
     if (view.gpu.width !== pixelWidth || view.gpu.height !== pixelHeight) {
         view.gpu.width = pixelWidth;
@@ -1486,8 +1492,7 @@ function updateStats(view) {
     view.stats = gamutStats(splines[view.model]);
 }
 
-// The models side by side, in a table under Visualize when Numbers is on. Copy as Markdown gives the same table, for
-// pasting into an issue.
+// The models side by side, in a table under Visualize when Numbers is on.
 function numbersTable() {
     const shown = views.filter(view => !view.figure.hidden && view.stats);
     const gamut = GAMUT_NAMES[state.gamut];
@@ -1523,11 +1528,6 @@ function updateNumbersTable() {
     $("numbersTable").innerHTML = `<thead><tr>${cells(header, "th")}</tr></thead><tbody>${rows.map(row => `<tr>${cells(row, "td")}</tr>`).join("")}</tbody>`;
 }
 
-$("copyNumbers").addEventListener("click", () => {
-    const { header, rows } = numbersTable();
-    const line = row => `| ${row.join(" | ")} |`;
-    copy([line(header), line(header.map(() => "---")), ...rows.map(line)].join("\n"), "the table");
-});
 
 const GAMUT_NAMES = { "srgb": "sRGB", "display-p3": "Display P3", "rec2020": "Rec. 2020" };
 
@@ -2155,7 +2155,7 @@ function drawVisualization(ctx, width, height) {
 
 const VIEW_NOTES = {
     difference: "Each box but the one compared with is white where the two models agree and purple where they differ, darkest at a difference of 0.15 in Oklab (ΔE OK) or more. Differences under about 0.02 are hard to see. Colors are compared as they're seen: clipped to the gamut chosen for clipping, and scaled by their alpha.",
-    grid: "The grid each grid model is solved on, with the texels the stops hold outlined in their colors. Every other texel is solved for: in the harmonic grid, each is the average of its four neighbors; in the biharmonic grid, each one's Laplacian is the average of its neighbors'. The thin-plate spline has no grid.",
+    grid: "The grid each grid model is solved on, with the texels the stops fix outlined in their colors. Every other texel is solved for: in the harmonic grid, each is the average of its four neighbors; in the biharmonic grid, each one's Laplacian is the average of its neighbors'. The thin-plate spline has no grid.",
     influence: "Every model is linear in the stops' colors, so each point's color is a weighted sum of them. This shows the selected stop's weight: orange where it adds its color, white where it adds none, blue where it takes it away, and dark red past 1. The thin-plate spline's goes negative and keeps growing outside the box. The biharmonic grid's has negative lobes too, and can pass 1, but ends at the box's edges. The harmonic grid's is never below 0 or above 1.",
     gradient: "The gradient each model draws from the same stops.",
     plane: "The thin-plate spline is f(p) = a + b·x + c·y + Σ wᵢ·U(|p − pᵢ|), for each component, with the weights wᵢ and a, b and c solved for together so that f is each stop's color at its position. This is just its linear part, a + b·x + c·y: the tilt the stops' terms are added to. On its own it reaches few of the stops' colors.",
@@ -2190,8 +2190,6 @@ function updateVisualizationControls() {
     const others = state.models.filter(model => !VIEW_MODELS[state.view].includes(model));
     if (others.length)
         note += ` ${others.map(model => `the ${MODEL_NAMES[model].toLowerCase()}'s`).join(" and ").replace(/^t/, "T")} box${others.length > 1 ? "es show" : " shows"} the gradient.`;
-    if (state.view !== "gradient" && state.renderer === "native" && state.models.includes("spline"))
-        note += " Drawn with WebGPU.";
     $("normalizationRow").hidden = !state.models.includes("spline");
     $("otherCurvesRow").hidden = state.models.length < 2 || !["gradient", "influence"].includes(state.view);
     $("viewNote").textContent = note;
@@ -2791,7 +2789,7 @@ function updateCoefficients() {
     const spline = currentSpline;
     if (spline.grid) {
         const grid = spline.grid;
-        activeView.numbers.textContent = `${state.model} grid, ${grid.columns}×${grid.rows} texels of ${grid.texel.map(v => v.toFixed(1)).join("×")}px, ${state.edges} edges\n${grid.heldCount} texels held by the stops' ${state.hold}\nfactored in ${grid.factor.milliseconds.toFixed(0)} ms, then solved for the colors in ${grid.milliseconds.toFixed(0)} ms`;
+        activeView.numbers.textContent = `${state.model} grid, ${grid.columns}×${grid.rows} texels of ${grid.texel.map(v => v.toFixed(1)).join("×")}px, ${state.edges} edges\n${grid.heldCount} texels fixed by the stops${state.hold === "points" ? "" : "' discs"}\nfactored in ${grid.factor.milliseconds.toFixed(0)} ms, then solved for the colors in ${grid.milliseconds.toFixed(0)} ms`;
         return;
     }
     const info = components();
@@ -2875,14 +2873,12 @@ function updateControls() {
         button.setAttribute("aria-pressed", String(state.models.includes(button.dataset.model)));
     $("edges").value = state.edges;
     $("gridResolution").value = String(state.gridResolution);
-    if (document.activeElement !== $("pointRadius"))
-        $("pointRadius").value = state.pointRadius;
-    $("edgeNote").textContent = EDGE_NOTES[state.edges];
+    if (document.activeElement !== $("defaultSpread"))
+        $("defaultSpread").value = state.defaultSpread;
+    $("edges").title = EDGE_NOTES[state.edges];
     $("hold").value = state.hold;
-    $("holdNote").textContent = HOLD_NOTES[state.hold];
-    $("pointRadius").disabled = state.hold === "points";
-    for (const radio of document.querySelectorAll("input[name=renderer]"))
-        radio.checked = radio.value === state.renderer;
+    $("hold").title = HOLD_NOTES[state.hold];
+    $("defaultSpreadRow").hidden = state.hold !== "discs";
     $("overlayToggle").checked = state.overlay;
     updateVisualizationControls();
 
@@ -2899,8 +2895,11 @@ function updateControls() {
         $("stopY").value = stop.pos[1];
     if (document.activeElement !== $("stopWeight"))
         $("stopWeight").value = stop.weight ?? "";
-    $("stopSpread").value = stop.spread;
-    $("stopSpreadValue").textContent = gridModel ? stop.spread.toFixed(2) : `${stop.spread.toFixed(2)}, only used by the grid models`;
+    $("stopSpread").value = spreadOf(stop);
+    const spreadUsed = gridModel && state.hold === "discs";
+    $("stopSpread").disabled = !spreadUsed;
+    $("stopSpreadValue").textContent = spreadOf(stop).toFixed(2) + (stop.spread === null ? ", the default" : "") + (spreadUsed ? "" : ", only used when Stop size is A disc");
+    $("stopSpreadDefault").hidden = stop.spread === null;
     $("removeStop").disabled = state.stops.length < 2;
 
     const list = $("stopList");
@@ -2969,19 +2968,13 @@ $("gridResolution").addEventListener("change", () => {
     state.gridResolution = Number($("gridResolution").value);
     changed();
 });
-$("pointRadius").addEventListener("change", () => {
-    const value = parseFloat($("pointRadius").value);
-    state.pointRadius = Number.isFinite(value) ? clamp(value, 0.1, 20) : 1;
+$("defaultSpread").addEventListener("change", () => {
+    const value = parseFloat($("defaultSpread").value);
+    state.defaultSpread = Number.isFinite(value) ? clamp(value, 0, 1) : 0.02;
     changed();
 });
 
 
-for (const radio of document.querySelectorAll("input[name=renderer]")) {
-    radio.addEventListener("change", () => {
-        state.renderer = radio.value;
-        changed();
-    });
-}
 $("overlayToggle").addEventListener("change", () => {
     state.overlay = $("overlayToggle").checked;
     changed();
@@ -2996,7 +2989,7 @@ $("preset").addEventListener("change", () => {
 
 // The preset the gradient still matches, by its box, color space and stops, or -1 once anything there has changed.
 function matchingPreset() {
-    const describe = ({ width, height, space, stops }) => JSON.stringify([width, height, space, stops.map(stop => [stop.color, ...stop.pos, stop.weight ?? null, stop.spread ?? 0])]);
+    const describe = ({ width, height, space, stops }) => JSON.stringify([width, height, space, stops.map(stop => [stop.color, ...stop.pos, stop.weight ?? null, stop.spread ?? null])]);
     const current = describe(state);
     return PRESETS.findIndex(preset => describe(preset.state) === current);
 }
@@ -3039,6 +3032,10 @@ $("stopSpread").addEventListener("input", () => {
     changed({ dragging: true });
 });
 $("stopSpread").addEventListener("change", () => changed());
+$("stopSpreadDefault").addEventListener("click", () => {
+    state.stops[selected].spread = null;
+    changed();
+});
 $("addStop").addEventListener("click", () => {
     // In the middle of the box, or, if a stop is there, a little way from it.
     const taken = position => state.stops.some(stop => Math.hypot(stop.pos[0] - position[0], stop.pos[1] - position[1]) < 4);

@@ -11,7 +11,6 @@
                 <div class="viewBox">
                     <div class="stageWrap">
                         <div class="stage">
-                            <div class="native"></div>
                             <canvas class="gpu"></canvas>
                             <canvas class="diff" hidden></canvas>
                             <div class="stageMessage"></div>
@@ -25,8 +24,11 @@
                     <p class="note legend plotNote"></p>
                     <canvas class="sheet"></canvas>
                     <pre class="numbers"></pre>
+                    <h4 class="modelHeading">How it works</h4>
                     <p class="note modelNote"></p>
+                    <h4 class="modelHeading">Where it comes from</h4>
                     <p class="note modelSource"></p>
+                    <h4 class="modelHeading">What a spec would need</h4>
                     <p class="note modelSpec"></p>
                 </div>
             </figure>
@@ -34,7 +36,6 @@
                 <div class="viewBox">
                     <div class="stageWrap">
                         <div class="stage">
-                            <div class="native"></div>
                             <canvas class="gpu"></canvas>
                             <canvas class="diff" hidden></canvas>
                             <div class="stageMessage"></div>
@@ -48,8 +49,11 @@
                     <p class="note legend plotNote"></p>
                     <canvas class="sheet"></canvas>
                     <pre class="numbers"></pre>
+                    <h4 class="modelHeading">How it works</h4>
                     <p class="note modelNote"></p>
+                    <h4 class="modelHeading">Where it comes from</h4>
                     <p class="note modelSource"></p>
+                    <h4 class="modelHeading">What a spec would need</h4>
                     <p class="note modelSpec"></p>
                 </div>
             </figure>
@@ -57,7 +61,6 @@
                 <div class="viewBox">
                     <div class="stageWrap">
                         <div class="stage">
-                            <div class="native"></div>
                             <canvas class="gpu"></canvas>
                             <canvas class="diff" hidden></canvas>
                             <div class="stageMessage"></div>
@@ -71,8 +74,11 @@
                     <p class="note legend plotNote"></p>
                     <canvas class="sheet"></canvas>
                     <pre class="numbers"></pre>
+                    <h4 class="modelHeading">How it works</h4>
                     <p class="note modelNote"></p>
+                    <h4 class="modelHeading">Where it comes from</h4>
                     <p class="note modelSource"></p>
+                    <h4 class="modelHeading">What a spec would need</h4>
                     <p class="note modelSpec"></p>
                 </div>
             </figure>
@@ -96,31 +102,6 @@
                 <label for="space">Interpolate in</label>
                 <select id="space"></select>
             </div>
-            <div class="row">
-                <label for="edges">Edges</label>
-                <select id="edges">
-                    <option value="mirrored">Mirrored</option>
-                    <option value="open">Open</option>
-                    <option value="free">Free</option>
-                </select>
-            </div>
-            <div class="row">
-                <label for="gridResolution">Grid</label>
-                <select id="gridResolution"></select>
-                <span class="note">texels on the longer side</span>
-            </div>
-            <div class="row">
-                <label for="pointRadius">Point radius</label>
-                <input id="pointRadius" class="percent" type="number" min="0.1" max="20" step="0.5"> %
-            </div>
-            <div class="row">
-                <label for="hold">Hold stops at</label>
-                <select id="hold">
-                    <option value="discs">Discs</option>
-                    <option value="points">Points</option>
-                </select>
-            </div>
-            <p class="note">Edges, Grid, Point radius and Hold only apply to the biharmonic and harmonic grids. <span id="edgeNote"></span> <span id="holdNote"></span></p>
             <p id="hueNote" class="note">Hues are moved by whole turns to within half a turn of their circular mean. The hue interpolation method isn't used, since it only describes interpolating between two hues.</p>
             <div class="row" title="What is drawn behind the box, showing through wherever the gradient is transparent. It is not part of the CSS.">
                 <label for="backdrop">Backdrop</label>
@@ -134,26 +115,72 @@
                 <button id="chooseBackdropImage" class="small" title="Choose an image, or drop one on the box">Choose…</button>
                 <input id="backdropFile" type="file" accept="image/*" hidden>
             </div>
-        </section>
-
-        <section>
-            <h2>Rendering</h2>
-            <div class="row">
-                <label><input type="radio" name="renderer" value="native"> Native</label>
-                <label><input type="radio" name="renderer" value="webgpu"> WebGPU</label>
-                <label><input type="checkbox" id="overlayToggle" checked> Overlay</label>
-            </div>
             <div class="row">
                 <label for="gamutMapping">Out of gamut</label>
                 <select id="gamutMapping">
-                    <option value="clip">Clip</option>
                     <option value="map">Gamut map (CSS Color 4)</option>
+                    <option value="clip">Clip</option>
                 </select>
             </div>
-            <p class="note">Colors outside the canvas's gamut are clipped, as WebKit does, or mapped as CSS Color 4 says: moved toward gray, keeping their lightness and hue, until they're within a just-noticeable difference of their clipped versions. It applies to what WebGPU draws; Native draws as the browser does.</p>
-            <p id="nativeStatus" class="status"></p>
+            <div class="row">
+                <label><input type="checkbox" id="overlayToggle" checked> Show the stops</label>
+            </div>
             <p id="gpuStatus" class="status"></p>
-            <p class="note">Native draws the thin-plate spline's box with the browser's own freeform-gradient(). WebGPU draws every box, and anything other than the colors.</p>
+            <h3 class="subhead" title="These settings only change the biharmonic and harmonic grids. The thin-plate spline has no grid.">Biharmonic and harmonic grids</h3>
+            <div class="row" title="How much of the grid each stop covers. The grid models fix each stop's color across what it covers, and solve for every other texel. Hover over the menu for what the current choice does.">
+                <label for="hold">Stop size</label>
+                <select id="hold">
+                    <option value="points">One texel</option>
+                    <option value="discs">A disc</option>
+                </select>
+            </div>
+            <div id="defaultSpreadRow" class="row" title="The spread of every stop without its own, from 0 to 1: its disc's radius as a fraction of half the box's shorter side. A stop's own spread is set in its settings below.">
+                <label for="defaultSpread">Default spread</label>
+                <input id="defaultSpread" type="number" min="0" max="1" step="0.01">
+            </div>
+            <div class="row" title="How many texels the grid has along its longer side. More is closer to the exact solution, and slower to solve; while dragging, the grid has half as many.">
+                <label for="gridResolution">Grid</label>
+                <select id="gridResolution"></select>
+                <span class="note">texels on the longer side</span>
+            </div>
+            <div class="row" title="What the grid does at its edges. Hover over the menu for what the current choice does.">
+                <label for="edges">Edges</label>
+                <select id="edges">
+                    <option value="mirrored">Mirrored</option>
+                    <option value="open">Open</option>
+                    <option value="free">Free</option>
+                </select>
+            </div>
+        </section>
+
+        <section>
+            <h2 id="stopTitle">Stop</h2>
+            <div class="row">
+                <input id="stopPicker" type="color" title="Pick an sRGB color">
+                <input id="stopText" type="text" spellcheck="false" title="Any CSS color. Missing (none) components are treated as 0 for now.">
+            </div>
+            <div class="row">
+                <label>Position</label>
+                <input id="stopX" class="percent" type="number" step="1" title="Horizontal position, as a percentage of the box's width"> % ×
+                <input id="stopY" class="percent" type="number" step="1" title="Vertical position, as a percentage of the box's height"> %
+            </div>
+            <div class="row" title="The optional / <number> after a stop's position. The draft doesn't define how it affects the colors, so it isn't used yet.">
+                <label for="stopWeight">Weight</label>
+                <input id="stopWeight" type="number" step="0.1" placeholder="none">
+                <span id="stopWeightNote" class="note">Not used yet</span>
+            </div>
+            <div id="stopSpreadRow" class="row" title="Not in CSS: this stop's disc radius, as a fraction of half the box's shorter side, when Stop size is A disc. Without its own, a stop uses Default spread. The thin-plate spline doesn't use it.">
+                <label for="stopSpread">Spread</label>
+                <input id="stopSpread" type="range" min="0" max="1" step="0.01">
+                <span id="stopSpreadValue" class="note"></span>
+                <button id="stopSpreadDefault" class="small">Use the default</button>
+            </div>
+            <div class="row">
+                <button id="addStop" class="small">Add stop</button>
+                <button id="removeStop" class="small">Remove stop</button>
+            </div>
+            <div id="stopList"></div>
+            <p class="note">Drag stops to move them, also outside the box. Double-click the box to add a stop with the color already there. Delete removes the selected stop.</p>
         </section>
 
         <section>
@@ -170,7 +197,7 @@
                         <option value="difference">The difference from another model</option>
                     </optgroup>
                     <optgroup label="Biharmonic and harmonic grids">
-                        <option value="grid">The grid, and the texels the stops hold</option>
+                        <option value="grid">The grid, and the texels the stops fix</option>
                     </optgroup>
                     <optgroup label="Thin-plate spline">
                         <option value="plane">The linear part</option>
@@ -224,7 +251,6 @@
             <div id="numbersPanel" hidden>
                 <table id="numbersTable"></table>
                 <p class="note">How far each model's colors go past the stops' colors, in Oklab: lighter than the lightest stop, darker than the darkest, or more colorful than the most colorful. A ring on each box marks where it goes furthest. Then how much of each box is outside the gamut chosen under Gamut. Under each box are the thin-plate spline's fitted coefficients, or the grid's size and solve time.</p>
-                <button id="copyNumbers" class="small">Copy as Markdown</button>
             </div>
 
             <h3 class="subhead">Over each box</h3>
@@ -243,35 +269,6 @@
                 </select>
             </div>
             <p class="note">For the hatching, the Numbers table and the difference view, so they're the same for everyone who opens the link, whatever their display.</p>
-        </section>
-
-        <section>
-            <h2 id="stopTitle">Stop</h2>
-            <div class="row">
-                <input id="stopPicker" type="color" title="Pick an sRGB color">
-                <input id="stopText" type="text" spellcheck="false" title="Any CSS color. Missing (none) components are treated as 0 for now.">
-            </div>
-            <div class="row">
-                <label>Position</label>
-                <input id="stopX" class="percent" type="number" step="1" title="Horizontal position, as a percentage of the box's width"> % ×
-                <input id="stopY" class="percent" type="number" step="1" title="Vertical position, as a percentage of the box's height"> %
-            </div>
-            <div class="row" title="The optional / <number> after a stop's position. The draft doesn't define how it affects the colors, so it isn't used yet.">
-                <label for="stopWeight">Weight</label>
-                <input id="stopWeight" type="number" step="0.1" placeholder="none">
-                <span id="stopWeightNote" class="note">Not used yet</span>
-            </div>
-            <div id="stopSpreadRow" class="row" title="Not in CSS: how far past the point radius a stop holds its color in the grid models, as a fraction of half the box's shorter side. The thin-plate spline doesn't use it.">
-                <label for="stopSpread">Spread</label>
-                <input id="stopSpread" type="range" min="0" max="1" step="0.01">
-                <span id="stopSpreadValue" class="note"></span>
-            </div>
-            <div class="row">
-                <button id="addStop" class="small">Add stop</button>
-                <button id="removeStop" class="small">Remove stop</button>
-            </div>
-            <div id="stopList"></div>
-            <p class="note">Drag stops to move them, also outside the box. Double-click the box to add a stop with the color already there. Delete removes the selected stop.</p>
         </section>
 
         <section>

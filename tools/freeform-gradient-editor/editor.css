@@ -93,7 +93,7 @@ input[type=range] { flex: 1; min-width: 80px; }
     background-size: 16px 16px;
 }
 .stage.image { background-position: center; background-size: cover; }
-.stage .native, .stage .gpu { position: absolute; inset: 0; width: 100%; height: 100%; }
+.stage .gpu { position: absolute; inset: 0; width: 100%; height: 100%; }
 .stage .overlay { position: absolute; touch-action: none; }
 .stage .diff { position: absolute; inset: 0; width: 100%; height: 100%; }
 .stage .diff[hidden] { display: none; }
@@ -127,3 +127,5 @@ aside[hidden], .row[hidden] { display: none; }
 #numbersPanel[hidden] { display: none; }
 h3.subhead { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 14px 0 2px; }
 h3.subhead + .row { margin-top: 4px; }
+.view h4.modelHeading { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 12px 0 2px; }
+.view h4.modelHeading + .note { margin-top: 0; }
