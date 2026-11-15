@@ -201,6 +201,25 @@ input.percent { width: 72px; }
 }
 details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
 .legend span { white-space: nowrap; margin-right: 10px; }
+#compare {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    padding: 0 16px 16px;
+}
+#compare[hidden] { display: none; }
+#compare figure { margin: 0; }
+#compare canvas {
+    width: 100%;
+    display: block;
+    outline: 1px solid var(--border);
+    background-color: #fff;
+    background-image: conic-gradient(#ddd 0 25%, #fff 0 50%, #ddd 0 75%, #fff 0);
+    background-size: 12px 12px;
+}
+#compare figure.current canvas { outline: 2px solid var(--accent); }
+#compare figcaption { font-size: 12px; margin-top: 6px; }
+#compare figcaption span { color: var(--muted); }
 .legend b { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: 3px; margin-right: 4px; }
 input[type=range] { flex: 1; min-width: 80px; }
 </style>
@@ -215,6 +234,11 @@ input[type=range] { flex: 1; min-width: 80px; }
                 <div id="stageMessage"></div>
                 <canvas id="overlay"></canvas>
             </div>
+        </div>
+        <div id="compare" hidden>
+            <figure><canvas data-model="spline"></canvas><figcaption>Thin-plate spline <span>WebKit</span></figcaption></figure>
+            <figure><canvas data-model="biharmonic"></canvas><figcaption>Biharmonic grid <span>MeshShader2</span></figcaption></figure>
+            <figure><canvas data-model="harmonic"></canvas><figcaption>Harmonic grid <span>MeshShader2</span></figcaption></figure>
         </div>
     </div>
     <div id="sample"></div>
@@ -233,6 +257,36 @@ input[type=range] { flex: 1; min-width: 80px; }
             <div class="row">
                 <label for="space">Interpolate in</label>
                 <select id="space"></select>
+            </div>
+            <div class="row">
+                <label for="model">Model</label>
+                <select id="model">
+                    <option value="spline">Thin-plate spline, as WebKit</option>
+                    <option value="biharmonic">Biharmonic grid, as MeshShader2</option>
+                    <option value="harmonic">Harmonic grid, as MeshShader2</option>
+                </select>
+            </div>
+            <div id="gridControls">
+                <div class="row">
+                    <label for="edges">Edges</label>
+                    <select id="edges">
+                        <option value="mirrored">Mirrored, as MeshShader2</option>
+                        <option value="open">Open</option>
+                    </select>
+                </div>
+                <div class="row">
+                    <label for="gridResolution">Grid</label>
+                    <select id="gridResolution"></select>
+                    <span class="note">texels on the longer side</span>
+                </div>
+                <div class="row">
+                    <label for="pointRadius">Point radius</label>
+                    <input id="pointRadius" class="percent" type="number" min="0.1" max="20" step="0.5"> %
+                </div>
+            </div>
+            <p id="modelNote" class="note"></p>
+            <div class="row">
+                <label><input type="checkbox" id="compareToggle"> Compare the three models side by side</label>
             </div>
             <p id="hueNote" class="note">Hues are moved by whole turns to within half a turn of their circular mean, as WebKit does. The hue interpolation method isn't used, since it only describes interpolating between two hues.</p>
             <div class="row" title="What is drawn behind the box, showing through wherever the gradient is transparent. It is not part of the CSS.">
@@ -822,6 +876,15 @@ const VIEWS = ["gradient", "plane", "term", "basis"];
 
 // Not in the draft or WebKit: ways a stop's weight could make its color dominate. See warpedPosition().
 const WEIGHT_MODELS = ["none", "hint", "spread", "nearest"];
+const MODEL_NOTES = {
+    spline: "A stiff sheet over thin pegs, on an endless plane: exact at the stops, and past them it carries on in a straight line.",
+    biharmonic: "The same stiff sheet, ∆²u = 0, held by flat-topped posts: each stop holds a disc of its color, its radius the point radius plus its weight, as spread from 0 to 1, times half the box's shorter side. Solved on a grid and filtered up, as MeshShader2 does.",
+    harmonic: "A stretched membrane, ∆u = 0, over the same posts: a tent with a crease at each stop, which never passes the stops' colors. Solved on a grid and filtered up, as MeshShader2 does.",
+};
+const EDGE_NOTES = {
+    mirrored: "Mirrored edges: the grid is the box, and the surface meets each side level, as against a mirror.",
+    open: "Open edges: the grid reaches half the box's size past each side, so its walls are far from the stops. Its texels are larger for it.",
+};
 const WEIGHT_MODEL_NOTES = {
     none: "The draft says a weight changes how much a stop's color dominates, relative to the others, but not how. WebKit parses it and doesn't use it.",
     hint: "Experimental. Two stops meet at s₁ / (s₁ + s₂) of the way from the first, with s = 2^weight, so a weight 1 more than another's takes ⅔ of the way. Between them the colors follow a power curve, as with a CSS color hint. Drawn with WebGPU.",
@@ -848,6 +911,11 @@ function encodeState() {
         d: state.sheet ? 1 : 0,
         dc: state.sheetComponent,
         wm: state.weightModel,
+        md: state.model,
+        ed: state.edges,
+        gr: state.gridResolution,
+        pr: state.pointRadius,
+        cm: state.compare ? 1 : 0,
         p: state.stops.map(stop => stop.weight === null ? [stop.color, ...stop.pos] : [stop.color, ...stop.pos, stop.weight]),
     };
     const bytes = new TextEncoder().encode(JSON.stringify(data));
@@ -880,6 +948,11 @@ function decodeState(text) {
             sheet: data.d === 1,
             sheetComponent: clamp(Math.round(number(data.dc) ?? 0), 0, 4),
             weightModel: WEIGHT_MODELS.includes(data.wm) ? data.wm : "none",
+            model: MODELS.includes(data.md) ? data.md : "spline",
+            edges: data.ed === "open" ? "open" : "mirrored",
+            gridResolution: GRID_RESOLUTIONS.includes(data.gr) ? data.gr : 64,
+            pointRadius: clamp(number(data.pr) ?? 1, 0.1, 20),
+            compare: data.cm === 1,
             stops,
         };
     } catch {
@@ -1001,6 +1074,11 @@ function presetState(index) {
         sheet: state?.sheet ?? false,
         sheetComponent: state?.sheetComponent ?? 0,
         weightModel: state?.weightModel ?? "none",
+        model: state?.model ?? "spline",
+        edges: state?.edges ?? "mirrored",
+        gridResolution: state?.gridResolution ?? 64,
+        pointRadius: state?.pointRadius ?? 1,
+        compare: state?.compare ?? false,
         ...preset,
     };
 }
@@ -1068,7 +1146,7 @@ function interpolationComponents(text) {
 
 // The spline through the stops, in the interpolation color space, premultiplied. Positions are in CSS pixels, moved by
 // -origin and divided by scale first. Equivalent to FreeformGradient::fitSpline() in FreeformGradient.cpp.
-function fitSpline() {
+function fitThinPlateSpline(model) {
     const hueIndex = HUE_INDEX[state.space];
 
     // 1. Convert each stop's color to the interpolation color space. Where stops share a position, the last one is used.
@@ -1165,7 +1243,7 @@ function fitSpline() {
     const solution = solve(matrix, values, size);
     if (!solution) {
         // Distinct positions make the system solvable, so this is only reached through rounding. Use the first color.
-        return { hueIndex, origin, scale, centers: [], polynomial: [points[0].color.slice(), [0, 0, 0, 0], [0, 0, 0, 0]], terms: [[1, 0, 0]] };
+        return { hueIndex, origin, scale, centers: [], polynomial: [points[0].color.slice(), [0, 0, 0, 0], [0, 0, 0, 0]], terms: [[1, 0, 0]], points, pairs: [] };
     }
 
     // `stop` and `color` aren't in WebKit's Center; the visualizations use them.
@@ -1178,7 +1256,205 @@ function fitSpline() {
                 polynomial[coefficient][component] += terms[k][coefficient] * solution[count + k][component];
         }
     }
-    return { hueIndex, origin, scale, centers, polynomial, terms, pairs: weightPairs(centers) };
+    return { hueIndex, origin, scale, centers, polynomial, terms, points, pairs: model === "spline" ? weightPairs(centers) : [] };
+}
+
+// The spline, and for a grid model, the grid solved from the same stops. The stops' colors, hue fixup and
+// premultiplication are shared, so the models differ only in how the colors spread between the stops.
+function fitSpline(model = state.model) {
+    const spline = fitThinPlateSpline(model);
+    if (model !== "spline")
+        spline.grid = solveGrid(model, spline.points);
+    return spline;
+}
+
+// MARK: - Grid models (MeshShader2)
+
+// Not in WebKit: the two models of ~/Data/Code/MeshShader2's FreeformGradient. Each stop is a disc of its color, held
+// fixed, and the colors between are a solution on a grid over the box, of
+// - the biharmonic equation, ∆²u = 0: the same thin plate as the spline, but held by discs, and inside the box;
+// - or Laplace's, ∆u = 0: a stretched membrane, creased at each stop, which never passes the stops' colors.
+// MeshShader2 solves it on the GPU, by multigrid and conjugate gradients, with antialiased discs. Here it is solved
+// directly, by banded Cholesky, with a texel held if its center is in a disc, and always the texel a stop is in.
+const MODELS = ["spline", "biharmonic", "harmonic"];
+const GRID_RESOLUTIONS = [32, 48, 64, 96, 128];
+const gridCache = new Map();
+
+function solveGrid(model, points) {
+    // Dragging solves at half the resolution, to keep up.
+    const resolution = drag ? Math.max(24, state.gridResolution / 2) : state.gridResolution;
+    const spreads = points.map(point => clamp(state.stops[point.stop].weight ?? 0, 0, 1));
+    // The spline's points are normalized, so the positions come from the stops.
+    const positions = points.map(point => [state.stops[point.stop].pos[0] / 100 * state.width, state.stops[point.stop].pos[1] / 100 * state.height]);
+    const key = JSON.stringify([model, resolution, state.edges, state.pointRadius, state.width, state.height, positions, points.map(point => point.color), spreads]);
+    const cached = gridCache.get(key);
+    if (cached)
+        return cached;
+    const start = performance.now();
+
+    // Mirrored edges hold the grid to the box. Open ones reach half the box's size past each side, so the edges are
+    // far from the stops.
+    const pad = state.edges === "open" ? 0.5 : 0;
+    const domain = { x: -pad * state.width, y: -pad * state.height, width: (1 + 2 * pad) * state.width, height: (1 + 2 * pad) * state.height };
+    const longest = Math.max(domain.width, domain.height);
+    const columns = Math.max(2, Math.round(resolution * domain.width / longest));
+    const rows = Math.max(2, Math.round(resolution * domain.height / longest));
+    const texel = [domain.width / columns, domain.height / rows];
+    const count = columns * rows;
+
+    // Texels are numbered along the shorter side, so the matrix's band is as narrow as it can be.
+    const byColumn = columns >= rows;
+    const minor = byColumn ? rows : columns;
+    const index = (x, y) => byColumn ? x * rows + y : y * columns + x;
+    const band = model === "biharmonic" ? 2 * minor : minor;
+    const stride = band + 1;
+    // The lower band: entry (i, j), for j from i - band to i.
+    const matrix = new Float64Array(count * stride);
+    const at = (i, j) => i * stride + j - i + band;
+
+    // L, the Laplacian, with mirrored edges: a texel past an edge is the texel at it, so no color flows across.
+    const neighbors = new Array(count);
+    for (let y = 0; y < rows; ++y) {
+        for (let x = 0; x < columns; ++x) {
+            const list = [];
+            if (x > 0)
+                list.push(index(x - 1, y));
+            if (x < columns - 1)
+                list.push(index(x + 1, y));
+            if (y > 0)
+                list.push(index(x, y - 1));
+            if (y < rows - 1)
+                list.push(index(x, y + 1));
+            neighbors[index(x, y)] = list;
+        }
+    }
+    const add = (i, j, value) => {
+        if (j <= i)
+            matrix[at(i, j)] += value;
+    };
+    for (let i = 0; i < count; ++i) {
+        if (model === "harmonic") {
+            // Minimizes the stretching, |∇u|²: the matrix is −L.
+            add(i, i, neighbors[i].length);
+            for (const j of neighbors[i])
+                add(i, j, -1);
+            continue;
+        }
+        // Minimizes the bending, (∆u)²: the matrix is L·L.
+        const row = [[i, -neighbors[i].length], ...neighbors[i].map(k => [k, 1])];
+        for (const [k, value] of row) {
+            add(i, k, -value * neighbors[k].length);
+            for (const j of neighbors[k])
+                add(i, j, value);
+        }
+    }
+
+    // The discs. A texel in more than one takes the later stop's color.
+    const held = new Int32Array(count).fill(-1);
+    const shorter = Math.min(state.width, state.height);
+    points.forEach((point, k) => {
+        const radius = (state.pointRadius / 100 + spreads[k] * 0.5) * shorter;
+        const [px, py] = positions[k];
+        const cx = Math.floor((px - domain.x) / texel[0]), cy = Math.floor((py - domain.y) / texel[1]);
+        if (cx >= 0 && cx < columns && cy >= 0 && cy < rows)
+            held[index(cx, cy)] = k;
+        const x0 = Math.max(0, Math.floor((px - radius - domain.x) / texel[0])), x1 = Math.min(columns - 1, Math.ceil((px + radius - domain.x) / texel[0]));
+        const y0 = Math.max(0, Math.floor((py - radius - domain.y) / texel[1])), y1 = Math.min(rows - 1, Math.ceil((py + radius - domain.y) / texel[1]));
+        for (let y = y0; y <= y1; ++y) {
+            for (let x = x0; x <= x1; ++x) {
+                if (Math.hypot(domain.x + (x + 0.5) * texel[0] - px, domain.y + (y + 0.5) * texel[1] - py) <= radius)
+                    held[index(x, y)] = k;
+            }
+        }
+    });
+    let heldCount = 0;
+    for (let i = 0; i < count; ++i)
+        heldCount += held[i] >= 0;
+
+    const values = new Float32Array(count * 4);
+    if (heldCount) {
+        // Held texels move to the right-hand side, keeping the matrix symmetric.
+        const right = [0, 1, 2, 3].map(() => new Float64Array(count));
+        for (let i = 0; i < count; ++i) {
+            for (let j = Math.max(0, i - band); j < i; ++j) {
+                const value = matrix[at(i, j)];
+                if (!value)
+                    continue;
+                const iHeld = held[i] >= 0, jHeld = held[j] >= 0;
+                if (jHeld && !iHeld) {
+                    for (let c = 0; c < 4; ++c)
+                        right[c][i] -= value * points[held[j]].color[c];
+                }
+                if (iHeld && !jHeld) {
+                    for (let c = 0; c < 4; ++c)
+                        right[c][j] -= value * points[held[i]].color[c];
+                }
+                if (iHeld || jHeld)
+                    matrix[at(i, j)] = 0;
+            }
+        }
+        for (let i = 0; i < count; ++i) {
+            if (held[i] >= 0) {
+                matrix[at(i, i)] = 1;
+                for (let c = 0; c < 4; ++c)
+                    right[c][i] = points[held[i]].color[c];
+            }
+        }
+
+        // Cholesky, in place: the band becomes L, with L·Lᵀ the matrix.
+        for (let i = 0; i < count; ++i) {
+            const low = Math.max(0, i - band), iRow = i * stride - i + band;
+            for (let j = low; j <= i; ++j) {
+                const jRow = j * stride - j + band;
+                let sum = matrix[iRow + j];
+                for (let k = low; k < j; ++k)
+                    sum -= matrix[iRow + k] * matrix[jRow + k];
+                matrix[iRow + j] = i === j ? Math.sqrt(Math.max(sum, 1e-300)) : sum / matrix[jRow + j];
+            }
+        }
+        for (let c = 0; c < 4; ++c) {
+            const forward = new Float64Array(count), solution = new Float64Array(count);
+            for (let i = 0; i < count; ++i) {
+                const low = Math.max(0, i - band), iRow = i * stride - i + band;
+                let sum = right[c][i];
+                for (let k = low; k < i; ++k)
+                    sum -= matrix[iRow + k] * forward[k];
+                forward[i] = sum / matrix[iRow + i];
+            }
+            for (let i = count - 1; i >= 0; --i) {
+                let sum = forward[i];
+                for (let k = i + 1; k <= Math.min(count - 1, i + band); ++k)
+                    sum -= matrix[at(k, i)] * solution[k];
+                solution[i] = sum / matrix[at(i, i)];
+            }
+            for (let y = 0; y < rows; ++y) {
+                for (let x = 0; x < columns; ++x)
+                    values[(y * columns + x) * 4 + c] = solution[index(x, y)];
+            }
+        }
+    }
+
+    const grid = { columns, rows, origin: [domain.x, domain.y], texel, values, heldCount, milliseconds: performance.now() - start };
+    gridCache.set(key, grid);
+    if (gridCache.size > 12)
+        gridCache.delete(gridCache.keys().next().value);
+    return grid;
+}
+
+// The grid's color at a position in CSS pixels, filtered bilinearly between texel centers, as MeshShader2 filters it
+// up to the view. Equivalent to gridColor() in the shader.
+function gridColor(grid, [px, py]) {
+    const fx = clamp((px - grid.origin[0]) / grid.texel[0] - 0.5, 0, grid.columns - 1);
+    const fy = clamp((py - grid.origin[1]) / grid.texel[1] - 0.5, 0, grid.rows - 1);
+    const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(x0 + 1, grid.columns - 1), y1 = Math.min(y0 + 1, grid.rows - 1);
+    const tx = fx - x0, ty = fy - y0, v = grid.values, w = grid.columns;
+    return [0, 1, 2, 3].map(c => (v[(y0 * w + x0) * 4 + c] * (1 - tx) + v[(y0 * w + x1) * 4 + c] * tx) * (1 - ty)
+        + (v[(y1 * w + x0) * 4 + c] * (1 - tx) + v[(y1 * w + x1) * 4 + c] * tx) * ty);
+}
+
+// The radius of a stop's disc, in CSS pixels.
+function discRadius(stop) {
+    return (state.pointRadius / 100 + clamp(stop.weight ?? 0, 0, 1) * 0.5) * Math.min(state.width, state.height);
 }
 
 // MARK: - Weight models (experimental)
@@ -1256,6 +1532,8 @@ function warpedPosition(pairs, [x, y]) {
 // The color at a position in CSS pixels, in the interpolation color space, premultiplied. Equivalent to
 // FreeformGradient::interpolatedColor() in FreeformGradient.cpp.
 function interpolatedColor(spline, [px, py]) {
+    if (spline.grid)
+        return gridColor(spline.grid, [px, py]);
     const [x, y] = warpedPosition(spline.pairs, [(px - spline.origin[0]) / spline.scale, (py - spline.origin[1]) / spline.scale]);
     const color = [0, 1, 2, 3].map(k => spline.polynomial[0][k] + spline.polynomial[1][k] * x + spline.polynomial[2][k] * y);
     for (const center of spline.centers) {
@@ -1337,6 +1615,11 @@ struct Uniforms {
     // Not in WebKit: the weight model, an index into WEIGHT_MODELS, and how many pairs it moves positions by.
     weightModel: u32,
     pairCount: u32,
+    // Not in WebKit: a grid model's solution, used instead of the spline when gridWidth isn't 0.
+    gridWidth: u32,
+    gridHeight: u32,
+    gridOrigin: vec2f,
+    gridTexel: vec2f,
 };
 
 // Not in WebKit: a pair of stops, for the weight models.
@@ -1350,6 +1633,22 @@ struct Pair {
 @group(0) @binding(0) var<storage, read> centers: array<Center>;
 @group(0) @binding(1) var<uniform> uniforms: Uniforms;
 @group(0) @binding(2) var<storage, read> pairs: array<Pair>;
+@group(0) @binding(3) var<storage, read> grid: array<vec4f>;
+
+// Equivalent to gridColor() in the page.
+fn gridColor(position: vec2f) -> vec4f {
+    let size = vec2f(f32(uniforms.gridWidth), f32(uniforms.gridHeight));
+    let f = clamp((position - uniforms.gridOrigin) / uniforms.gridTexel - 0.5, vec2f(0.0), size - 1.0);
+    let x0 = u32(floor(f.x));
+    let y0 = u32(floor(f.y));
+    let x1 = min(x0 + 1u, uniforms.gridWidth - 1u);
+    let y1 = min(y0 + 1u, uniforms.gridHeight - 1u);
+    let t = f - floor(f);
+    let w = uniforms.gridWidth;
+    let top = mix(grid[y0 * w + x0], grid[y0 * w + x1], t.x);
+    let bottom = mix(grid[y1 * w + x0], grid[y1 * w + x1], t.x);
+    return mix(top, bottom, t.y);
+}
 
 // Equivalent to weightProfile() in the page.
 fn weightProfile(t: f32, meeting: f32, sharpness: f32) -> f32 {
@@ -1413,6 +1712,10 @@ fn radialBasis(squaredDistance: f32) -> f32 {
 
 fn interpolatedColor(position: vec2f) -> vec4f {
     // Equivalent to FreeformGradient::interpolatedColor() in FreeformGradient.cpp.
+
+    if (uniforms.gridWidth > 0u) {
+        return gridColor(position);
+    }
 
     let point = warpedPosition((position - uniforms.splineOrigin) / uniforms.splineScale);
 
@@ -1652,8 +1955,13 @@ class WebGPUFreeformGradientRenderer {
         const pairs = device.createBuffer({ size: pairData.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
         device.queue.writeBuffer(pairs, 0, pairData);
 
-        // Matches Uniforms in the shader: 3 vec4fs, a vec2f, 2 f32s and 6 u32s, padded to 96 bytes.
-        const uniformData = new ArrayBuffer(96);
+        // Not in WebKit: a grid model's solution, 4 f32s a texel. As with the centers, the buffer can't be empty.
+        const gridData = spline.grid ? spline.grid.values : new Float32Array(4);
+        const grid = device.createBuffer({ size: gridData.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+        device.queue.writeBuffer(grid, 0, gridData);
+
+        // Matches Uniforms in the shader: 3 vec4fs, a vec2f, 2 f32s, 8 u32s and 2 vec2fs: 112 bytes.
+        const uniformData = new ArrayBuffer(112);
         const floats = new Float32Array(uniformData), uints = new Uint32Array(uniformData);
         spline.polynomial.forEach((coefficient, i) => floats.set(coefficient, i * 4));
         floats.set(spline.origin, 12);
@@ -1665,7 +1973,11 @@ class WebGPUFreeformGradientRenderer {
         uints[19] = view;
         uints[20] = WEIGHT_MODELS.indexOf(state.weightModel);
         uints[21] = pairList.length;
-        const uniforms = device.createBuffer({ size: 96, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        uints[22] = spline.grid?.columns ?? 0;
+        uints[23] = spline.grid?.rows ?? 0;
+        floats.set(spline.grid?.origin ?? [0, 0], 24);
+        floats.set(spline.grid?.texel ?? [1, 1], 26);
+        const uniforms = device.createBuffer({ size: 112, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
         device.queue.writeBuffer(uniforms, 0, uniformData);
 
         const encoder = device.createCommandEncoder();
@@ -1675,7 +1987,7 @@ class WebGPUFreeformGradientRenderer {
         pass.setPipeline(this.pipeline);
         pass.setBindGroup(0, device.createBindGroup({
             layout: this.pipeline.getBindGroupLayout(0),
-            entries: [{ binding: 0, resource: { buffer: centers } }, { binding: 1, resource: { buffer: uniforms } }, { binding: 2, resource: { buffer: pairs } }],
+            entries: [{ binding: 0, resource: { buffer: centers } }, { binding: 1, resource: { buffer: uniforms } }, { binding: 2, resource: { buffer: pairs } }, { binding: 3, resource: { buffer: grid } }],
         }));
         pass.draw(3);
         pass.end();
@@ -1683,6 +1995,7 @@ class WebGPUFreeformGradientRenderer {
         centers.destroy();
         uniforms.destroy();
         pairs.destroy();
+        grid.destroy();
     }
 }
 
@@ -1740,7 +2053,10 @@ function render() {
     currentSpline = fitSpline();
     const shownSpline = viewSpline(currentSpline);
     // WebKit doesn't use weights, so the weight models are drawn with WebGPU.
-    const useNative = state.renderer === "native" && state.view === "gradient" && state.weightModel === "none";
+    // A grid model has only the gradient to show.
+    if (state.model !== "spline")
+        state.view = "gradient";
+    const useNative = state.renderer === "native" && state.view === "gradient" && state.weightModel === "none" && state.model === "spline";
     nativeView.style.display = useNative ? "" : "none";
     gpuCanvas.style.display = useNative ? "none" : "";
     const message = $("stageMessage");
@@ -1778,12 +2094,15 @@ function render() {
     $("gpuStatus").textContent = gpuRenderer ? `WebGPU: ready, drawing into a ${gpuRenderer.outputSpace} canvas.` : gpuError ? `WebGPU: ${gpuError}` : "WebGPU: starting…";
     $("gpuStatus").className = gpuError ? "status error" : "status";
 
+    // Shown before the margins are worked out, since the box is centered in the room above it.
+    $("compare").hidden = !state.compare;
     updateMargin(width, height);
     drawOverlay(width, height, dpr);
     updateControls();
     drawPlot();
     drawSheet({ recompute: true });
     updateCoefficients();
+    drawCompare();
     if (lastSamplePosition)
         showSample(lastSamplePosition);
 }
@@ -1828,7 +2147,7 @@ function updateMargin(width, height) {
     } else {
         margin = {
             x: Math.max(MIN_MARGIN, Math.floor((scroller.clientWidth - width) / 2)),
-            y: Math.max(MIN_MARGIN, Math.floor((scroller.clientHeight - height) / 2)),
+            y: Math.max(MIN_MARGIN, Math.floor((scroller.clientHeight - $("compare").offsetHeight - height) / 2)),
         };
         viewScale = 1;
         scroller.style.height = "";
@@ -1844,7 +2163,7 @@ function drawOverlay(width, height, dpr) {
     overlay.style.top = `${-margin.y}px`;
     overlay.style.width = `${cssWidth}px`;
     overlay.style.height = `${cssHeight}px`;
-    const visualizing = state.normalization || state.crossSection || state.view === "term" || state.view === "basis";
+    const visualizing = state.normalization || state.crossSection || state.view === "term" || state.view === "basis" || state.model !== "spline";
     overlay.style.display = state.overlay || visualizing ? "" : "none";
     // With the stops hidden, they can't be dragged, and the box can still be sampled.
     overlay.style.pointerEvents = state.overlay ? "" : "none";
@@ -2111,7 +2430,21 @@ function drawVisualization(ctx, width, height) {
         drawLabel(ctx, "cross-section", margin.x + 6, y - 14, "left");
     }
 
-    if (state.normalization) {
+    if (state.model !== "spline") {
+        // The discs the grid holds, where they're big enough to see.
+        for (const stop of state.stops) {
+            const radius = discRadius(stop);
+            if (radius < 4)
+                continue;
+            const [x, y] = toCanvas([stop.pos[0] / 100 * width, stop.pos[1] / 100 * height]);
+            strokeTwice(ctx, () => {
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, 2 * Math.PI);
+            }, [3, 3]);
+        }
+    }
+
+    if (state.normalization && state.model === "spline") {
         const [cx, cy] = fromNormalized([0, 0]);
         for (const center of spline.centers) {
             const [x, y] = fromNormalized(center.position);
@@ -2335,6 +2668,24 @@ function hideSample() {
 function sampleHTML([px, py]) {
     const spline = viewSpline(currentSpline);
     const info = components();
+    if (spline.grid) {
+        const grid = spline.grid;
+        const muted = text => `<span class="muted">${escapeHTML(text)}</span>`;
+        const labelWidth = 17, columnWidth = 9;
+        const row = (label, values) => escapeHTML(label) + " ".repeat(Math.max(1, labelWidth - label.length))
+            + values.map((value, k) => signed(value, digitsFor(info[k].range)).padStart(columnWidth)).join("");
+        const tx = (px - grid.origin[0]) / grid.texel[0] - 0.5, ty = (py - grid.origin[1]) / grid.texel[1] - 0.5;
+        const total = gridColor(grid, [px, py]);
+        const color = unpremultipliedColor(total, spline.hueIndex);
+        return [
+            `(${px.toFixed(0)}, ${py.toFixed(0)})px ${muted("→ texel")} (${tx.toFixed(2)}, ${ty.toFixed(2)}) ${muted(`of ${grid.columns}×${grid.rows}`)}`,
+            "",
+            muted(" ".repeat(labelWidth) + info.map(({ label }) => label.padStart(columnWidth)).join("")),
+            row("= premultiplied", total),
+            row("÷ clamped α", color),
+            `<span class="swatch large" style="background: ${cssForDisplayColor(displayColor(color))}"></span> ${escapeHTML(state.space)}(${color.slice(0, 3).map((v, k) => signed(v, digitsFor(info[k].range)).trim()).join(" ")} / ${+color[3].toFixed(3)})`,
+        ].join("\n");
+    }
     const x = (px - spline.origin[0]) / spline.scale, y = (py - spline.origin[1]) / spline.scale;
     const lines = [];
     const muted = text => `<span class="muted">${escapeHTML(text)}</span>`;
@@ -2678,6 +3029,11 @@ function updateCoefficients() {
     if (!$("coefficientsDetails").open)
         return;
     const spline = currentSpline;
+    if (spline.grid) {
+        const grid = spline.grid;
+        $("splineNumbers").textContent = `${state.model} grid, ${grid.columns}×${grid.rows} texels of ${grid.texel.map(v => v.toFixed(1)).join("×")}px, ${state.edges} edges\n${grid.heldCount} texels held by the stops' discs\nsolved directly in ${grid.milliseconds.toFixed(0)} ms`;
+        return;
+    }
     const info = components();
     const labelWidth = 10, columnWidth = 10;
     // A swatch takes about two characters' room.
@@ -2742,9 +3098,20 @@ function updateControls() {
     $("height").value = state.height;
     $("space").value = state.space;
     $("hueNote").hidden = !(state.space in HUE_INDEX);
+    const gridModel = state.model !== "spline";
+    $("model").value = state.model;
+    $("gridControls").hidden = !gridModel;
+    $("edges").value = state.edges;
+    $("gridResolution").value = String(state.gridResolution);
+    if (document.activeElement !== $("pointRadius"))
+        $("pointRadius").value = state.pointRadius;
+    $("modelNote").textContent = MODEL_NOTES[state.model] + (gridModel ? " " + EDGE_NOTES[state.edges] : "");
+    $("compareToggle").checked = state.compare;
     $("weightModel").value = state.weightModel;
+    $("weightModel").closest(".row").hidden = gridModel;
+    $("weightModelNote").hidden = gridModel;
     $("weightModelNote").textContent = WEIGHT_MODEL_NOTES[state.weightModel];
-    $("stopWeightNote").textContent = state.weightModel === "none" ? "Not used yet" : "0 if none";
+    $("stopWeightNote").textContent = gridModel ? "Spread, 0 to 1" : state.weightModel === "none" ? "Not used yet" : "0 if none";
     for (const radio of document.querySelectorAll("input[name=renderer]"))
         radio.checked = radio.value === state.renderer;
     $("overlayToggle").checked = state.overlay;
@@ -2806,6 +3173,86 @@ $("weightModel").addEventListener("change", () => {
     state.weightModel = $("weightModel").value;
     changed();
 });
+for (const resolution of GRID_RESOLUTIONS)
+    $("gridResolution").add(new Option(String(resolution), String(resolution)));
+$("model").addEventListener("change", () => {
+    state.model = $("model").value;
+    changed();
+});
+$("edges").addEventListener("change", () => {
+    state.edges = $("edges").value;
+    changed();
+});
+$("gridResolution").addEventListener("change", () => {
+    state.gridResolution = Number($("gridResolution").value);
+    changed();
+});
+$("pointRadius").addEventListener("change", () => {
+    const value = parseFloat($("pointRadius").value);
+    state.pointRadius = Number.isFinite(value) ? clamp(value, 0.1, 20) : 1;
+    changed();
+});
+$("compareToggle").addEventListener("change", () => {
+    state.compare = $("compareToggle").checked;
+    changed();
+});
+
+// MARK: - Compare
+
+// The three models side by side, from the same stops, converted to display-p3 and clamped as the WebGPU renderer does.
+function drawCompare() {
+    const panel = $("compare");
+    if (!state.compare)
+        return;
+    for (const figure of panel.querySelectorAll("figure")) {
+        const canvas = figure.querySelector("canvas");
+        const model = canvas.dataset.model;
+        figure.classList.toggle("current", model === state.model);
+        canvas.style.aspectRatio = `${state.width} / ${state.height}`;
+        const cssWidth = canvas.clientWidth || 200;
+        // Fewer pixels while dragging, to keep up.
+        const scale = Math.min(1, (drag ? 120 : 260) / cssWidth) * (window.devicePixelRatio || 1);
+        const width = Math.max(1, Math.round(cssWidth * scale)), height = Math.max(1, Math.round(cssWidth * state.height / state.width * scale));
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d", { colorSpace: "display-p3" });
+        const spline = model === state.model ? currentSpline : fitSpline(model);
+        const image = ctx.createImageData(width, height, { colorSpace: "display-p3" });
+        for (let y = 0; y < height; ++y) {
+            for (let x = 0; x < width; ++x) {
+                const color = unpremultipliedColor(interpolatedColor(spline, [(x + 0.5) / width * state.width, (y + 0.5) / height * state.height]), spline.hueIndex);
+                const [r, g, b, alpha] = toOutput({ space: state.space, c: color.slice(0, 3), alpha: color[3] }, "display-p3");
+                const offset = (y * width + x) * 4;
+                image.data[offset] = r * 255;
+                image.data[offset + 1] = g * 255;
+                image.data[offset + 2] = b * 255;
+                image.data[offset + 3] = alpha * 255;
+            }
+        }
+        ctx.putImageData(image, 0, 0);
+        const ratio = width / state.width;
+        for (const [i, stop] of state.stops.entries()) {
+            const x = stop.pos[0] / 100 * state.width * ratio, y = stop.pos[1] / 100 * state.height * ratio;
+            if (model !== "spline") {
+                const radius = discRadius(stop) * ratio;
+                if (radius >= 3) {
+                    ctx.setLineDash([3, 3]);
+                    ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.arc(x, y, radius, 0, 2 * Math.PI);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+            }
+            ctx.beginPath();
+            ctx.arc(x, y, i === selected ? 4.5 : 3.5, 0, 2 * Math.PI);
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = i === selected ? "#0a84ff" : "#fff";
+            ctx.stroke();
+        }
+    }
+}
 for (const radio of document.querySelectorAll("input[name=renderer]")) {
     radio.addEventListener("change", () => {
         state.renderer = radio.value;
