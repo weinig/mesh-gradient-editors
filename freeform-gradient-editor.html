@@ -203,11 +203,24 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
 .legend span { white-space: nowrap; margin-right: 10px; }
 .legend b { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: 3px; margin-right: 4px; }
 input[type=range] { flex: 1; min-width: 80px; }
-#modelBar {
+#topBar {
     display: flex;
     justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
     margin-bottom: 12px;
 }
+#modelBar { display: flex; }
+#aboutButton {
+    font: inherit;
+    padding: 5px 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--fg);
+    cursor: pointer;
+}
+#aboutButton[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: #fff; }
 #modelBar button {
     font: inherit;
     padding: 5px 14px;
@@ -281,10 +294,13 @@ h3.subhead + .row { margin-top: 4px; }
 <body>
 <main>
     <div id="stageScroller">
-        <div id="modelBar" role="group" aria-label="Models">
-            <button data-model="spline">Thin-plate spline</button>
-            <button data-model="biharmonic">Biharmonic grid</button>
-            <button data-model="harmonic">Harmonic grid</button>
+        <div id="topBar">
+            <div id="modelBar" role="group" aria-label="Models">
+                <button data-model="spline">Thin-plate spline</button>
+                <button data-model="biharmonic">Biharmonic grid</button>
+                <button data-model="harmonic">Harmonic grid</button>
+            </div>
+            <button id="aboutButton" title="Show how each model works, its pros and cons, where it comes from, and what a spec would need, under each box.">About the models</button>
         </div>
         <div id="views">
             <figure class="view" data-model="spline">
@@ -535,7 +551,6 @@ h3.subhead + .row { margin-top: 4px; }
                 <label><input type="checkbox" id="crossSectionToggle"> Cross-section</label>
                 <label><input type="checkbox" id="sheetToggle"> 3D</label>
                 <label><input type="checkbox" id="numbersToggle"> Numbers</label>
-                <label><input type="checkbox" id="aboutToggle"> About each model</label>
             </div>
             <div id="crossSectionPanel">
                 <div class="row">
@@ -1374,7 +1389,8 @@ function presetState(index) {
         gamut: state?.gamut ?? "display-p3",
         gamutMapping: state?.gamutMapping ?? "map",
         model: state?.model ?? "spline",
-        models: state?.models ?? ["spline"],
+        // All three, side by side, since comparing them is the point.
+        models: state?.models ?? MODELS.slice(),
         edges: state?.edges ?? "mirrored",
         hold: state?.hold ?? "points",
         spreadMeaning: state?.spreadMeaning ?? "none",
@@ -4081,7 +4097,7 @@ $("view").addEventListener("change", () => {
     state.view = $("view").value;
     changed();
 });
-const VISUALIZATION_TOGGLES = [["otherCurvesToggle", "otherCurves"], ["clippingToggle", "clipping"], ["normalizationToggle", "normalization"], ["sampleToggle", "sample"], ["crossSectionToggle", "crossSection"], ["sheetToggle", "sheet"], ["numbersToggle", "numbers"], ["aboutToggle", "about"]];
+const VISUALIZATION_TOGGLES = [["otherCurvesToggle", "otherCurves"], ["clippingToggle", "clipping"], ["normalizationToggle", "normalization"], ["sampleToggle", "sample"], ["crossSectionToggle", "crossSection"], ["sheetToggle", "sheet"], ["numbersToggle", "numbers"]];
 for (const [id, key] of VISUALIZATION_TOGGLES) {
     $(id).addEventListener("change", () => {
         state[key] = $(id).checked;
@@ -4114,6 +4130,7 @@ function updateControls() {
     const gridModel = gridModelIsOn();
     for (const button of document.querySelectorAll("#modelBar button"))
         button.setAttribute("aria-pressed", String(state.models.includes(button.dataset.model)));
+    $("aboutButton").setAttribute("aria-pressed", String(state.about));
     $("edges").value = state.edges;
     $("gridResolution").value = String(state.gridResolution);
     if (document.activeElement !== $("defaultSpread"))
@@ -4123,8 +4140,6 @@ function updateControls() {
     $("hold").title = HOLD_NOTES[state.hold];
     $("defaultSpreadRow").hidden = state.hold !== "discs";
     $("spreadMeaningRow").hidden = state.hold !== "points";
-    // Sharing by spread is offered when the harmonic grid, the one model it changes, is on.
-    $("spreadMeaning").querySelector('option[value="share"]').disabled = !state.models.includes("harmonic");
     $("spreadMeaning").value = state.spreadMeaning;
     $("spreadMeaning").title = SPREAD_MEANING_NOTES[state.spreadMeaning];
     $("overlayToggle").checked = state.overlay;
@@ -4190,6 +4205,11 @@ $("space").addEventListener("change", () => {
 });
 for (const resolution of GRID_RESOLUTIONS)
     $("gridResolution").add(new Option(String(resolution), String(resolution)));
+$("aboutButton").addEventListener("click", () => {
+    state.about = !state.about;
+    changed();
+});
+
 // Any of the models can be on, but at least one is.
 for (const button of document.querySelectorAll("#modelBar button")) {
     button.addEventListener("click", () => {

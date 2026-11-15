@@ -1,10 +1,13 @@
 <body>
 <main>
     <div id="stageScroller">
-        <div id="modelBar" role="group" aria-label="Models">
-            <button data-model="spline">Thin-plate spline</button>
-            <button data-model="biharmonic">Biharmonic grid</button>
-            <button data-model="harmonic">Harmonic grid</button>
+        <div id="topBar">
+            <div id="modelBar" role="group" aria-label="Models">
+                <button data-model="spline">Thin-plate spline</button>
+                <button data-model="biharmonic">Biharmonic grid</button>
+                <button data-model="harmonic">Harmonic grid</button>
+            </div>
+            <button id="aboutButton" title="Show how each model works, its pros and cons, where it comes from, and what a spec would need, under each box.">About the models</button>
         </div>
         <div id="views">
             <figure class="view" data-model="spline">
@@ -255,7 +258,6 @@
                 <label><input type="checkbox" id="crossSectionToggle"> Cross-section</label>
                 <label><input type="checkbox" id="sheetToggle"> 3D</label>
                 <label><input type="checkbox" id="numbersToggle"> Numbers</label>
-                <label><input type="checkbox" id="aboutToggle"> About each model</label>
             </div>
             <div id="crossSectionPanel">
                 <div class="row">

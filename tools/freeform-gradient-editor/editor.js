@@ -377,7 +377,8 @@ function presetState(index) {
         gamut: state?.gamut ?? "display-p3",
         gamutMapping: state?.gamutMapping ?? "map",
         model: state?.model ?? "spline",
-        models: state?.models ?? ["spline"],
+        // All three, side by side, since comparing them is the point.
+        models: state?.models ?? MODELS.slice(),
         edges: state?.edges ?? "mirrored",
         hold: state?.hold ?? "points",
         spreadMeaning: state?.spreadMeaning ?? "none",
@@ -2932,7 +2933,7 @@ $("view").addEventListener("change", () => {
     state.view = $("view").value;
     changed();
 });
-const VISUALIZATION_TOGGLES = [["otherCurvesToggle", "otherCurves"], ["clippingToggle", "clipping"], ["normalizationToggle", "normalization"], ["sampleToggle", "sample"], ["crossSectionToggle", "crossSection"], ["sheetToggle", "sheet"], ["numbersToggle", "numbers"], ["aboutToggle", "about"]];
+const VISUALIZATION_TOGGLES = [["otherCurvesToggle", "otherCurves"], ["clippingToggle", "clipping"], ["normalizationToggle", "normalization"], ["sampleToggle", "sample"], ["crossSectionToggle", "crossSection"], ["sheetToggle", "sheet"], ["numbersToggle", "numbers"]];
 for (const [id, key] of VISUALIZATION_TOGGLES) {
     $(id).addEventListener("change", () => {
         state[key] = $(id).checked;
@@ -2965,6 +2966,7 @@ function updateControls() {
     const gridModel = gridModelIsOn();
     for (const button of document.querySelectorAll("#modelBar button"))
         button.setAttribute("aria-pressed", String(state.models.includes(button.dataset.model)));
+    $("aboutButton").setAttribute("aria-pressed", String(state.about));
     $("edges").value = state.edges;
     $("gridResolution").value = String(state.gridResolution);
     if (document.activeElement !== $("defaultSpread"))
@@ -2974,8 +2976,6 @@ function updateControls() {
     $("hold").title = HOLD_NOTES[state.hold];
     $("defaultSpreadRow").hidden = state.hold !== "discs";
     $("spreadMeaningRow").hidden = state.hold !== "points";
-    // Sharing by spread is offered when the harmonic grid, the one model it changes, is on.
-    $("spreadMeaning").querySelector('option[value="share"]').disabled = !state.models.includes("harmonic");
     $("spreadMeaning").value = state.spreadMeaning;
     $("spreadMeaning").title = SPREAD_MEANING_NOTES[state.spreadMeaning];
     $("overlayToggle").checked = state.overlay;
@@ -3041,6 +3041,11 @@ $("space").addEventListener("change", () => {
 });
 for (const resolution of GRID_RESOLUTIONS)
     $("gridResolution").add(new Option(String(resolution), String(resolution)));
+$("aboutButton").addEventListener("click", () => {
+    state.about = !state.about;
+    changed();
+});
+
 // Any of the models can be on, but at least one is.
 for (const button of document.querySelectorAll("#modelBar button")) {
     button.addEventListener("click", () => {

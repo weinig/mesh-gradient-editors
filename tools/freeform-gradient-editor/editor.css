@@ -60,11 +60,24 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
 .legend span { white-space: nowrap; margin-right: 10px; }
 .legend b { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: 3px; margin-right: 4px; }
 input[type=range] { flex: 1; min-width: 80px; }
-#modelBar {
+#topBar {
     display: flex;
     justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
     margin-bottom: 12px;
 }
+#modelBar { display: flex; }
+#aboutButton {
+    font: inherit;
+    padding: 5px 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--fg);
+    cursor: pointer;
+}
+#aboutButton[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: #fff; }
 #modelBar button {
     font: inherit;
     padding: 5px 14px;
