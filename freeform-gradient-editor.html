@@ -183,7 +183,7 @@ input.percent { width: 72px; }
     vertical-align: -1px;
 }
 .swatch.large { width: 14px; height: 14px; border-radius: 3px; vertical-align: -3px; }
-#plot, #sheet {
+.plot, .sheet {
     display: block;
     width: 100%;
     margin-top: 8px;
@@ -191,9 +191,9 @@ input.percent { width: 72px; }
     border-radius: 6px;
     touch-action: none;
 }
-#plot { height: 170px; }
-#sheet { height: 280px; cursor: grab; }
-#splineNumbers {
+.plot { height: 170px; }
+.sheet { height: 280px; cursor: grab; }
+.numbers {
     font: 11px/1.5 ui-monospace, Menlo, monospace;
     white-space: pre;
     overflow-x: auto;
@@ -201,96 +201,148 @@ input.percent { width: 72px; }
 }
 details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
 .legend span { white-space: nowrap; margin-right: 10px; }
-#compare {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-    padding: 0 16px 16px;
-}
-#compare[hidden] { display: none; }
-#compare figure { margin: 0; }
-#compare canvas {
-    width: 100%;
-    display: block;
-    outline: 1px solid var(--border);
-    background-color: #fff;
-    background-image: conic-gradient(#ddd 0 25%, #fff 0 50%, #ddd 0 75%, #fff 0);
-    background-size: 12px 12px;
-}
-#compare figure.current canvas { outline: 2px solid var(--accent); }
-#compare figcaption { font-size: 12px; margin-top: 6px; }
-#compare figcaption span { color: var(--muted); }
 .legend b { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: 3px; margin-right: 4px; }
 input[type=range] { flex: 1; min-width: 80px; }
+#modelBar {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 12px;
+}
+#modelBar button {
+    font: inherit;
+    padding: 5px 14px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--fg);
+    cursor: pointer;
+}
+#modelBar button + button { border-left: none; }
+#modelBar button:first-child { border-radius: 6px 0 0 6px; }
+#modelBar button:last-child { border-radius: 0 6px 6px 0; }
+#modelBar button[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: #fff; }
+#views {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+}
+.view { margin: 0; flex: 1 1 0; min-width: 0; }
+.view[hidden] { display: none; }
+.viewBox { overflow: hidden; margin: 0 auto; }
+.stageWrap { width: max-content; transform-origin: 0 0; }
+.stage { position: relative; outline: 1px solid var(--border); }
+.stage.checkerboard {
+    background-color: #fff;
+    background-image: conic-gradient(#ddd 0 25%, #fff 0 50%, #ddd 0 75%, #fff 0);
+    background-size: 16px 16px;
+}
+.stage.image { background-position: center; background-size: cover; }
+.stage .native, .stage .gpu { position: absolute; inset: 0; width: 100%; height: 100%; }
+.stage .overlay { position: absolute; touch-action: none; }
+.stage .diff { position: absolute; inset: 0; width: 100%; height: 100%; }
+.stage .diff[hidden] { display: none; }
+.stage .stageMessage {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    color: #333;
+    background: rgba(255, 255, 255, 0.85);
+    font-size: 14px;
+}
+.view figcaption { font-size: 12px; margin: 4px auto 0; }
+.view .modelSource { font-style: italic; }
+.view figcaption .modelStats, .view figcaption .modelSummary { display: block; margin-top: 2px; }
+.viewDetails { margin: 0 auto; max-width: 100%; }
+.viewDetails [hidden] { display: none; }
+#splineParts { margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--border); }
 aside[hidden], .row[hidden] { display: none; }
 @media (max-width: 720px) {
-    #visualizePanel { order: 1; }
+    #views { flex-direction: column; }
+    .view { flex: none; width: 100%; }
 }
 </style>
 </head>
 <body>
 <main>
-    <aside id="visualizePanel" hidden>
-        <section>
-            <h2>Visualize</h2>
-            <div class="row">
-                <label for="view">Show</label>
-                <select id="view">
-                    <option value="gradient">The gradient</option>
-                    <option value="plane">The linear part</option>
-                    <option value="term">The linear part and the selected stop's term</option>
-                    <option value="basis">U(r) around the selected stop</option>
-                </select>
-            </div>
-            <p id="viewNote" class="note"></p>
-            <div class="row">
-                <label><input type="checkbox" id="normalizationToggle"> Normalization</label>
-                <label><input type="checkbox" id="sampleToggle"> Sample</label>
-                <label><input type="checkbox" id="crossSectionToggle"> Cross-section</label>
-                <label><input type="checkbox" id="sheetToggle"> 3D</label>
-            </div>
-            <p id="normalizationNote" class="note"></p>
-            <p id="sampleNote" class="note">Hover over the box, or tap it on a phone, to see the color there added up term by term.</p>
-            <div id="crossSectionPanel">
-                <div class="row">
-                    <label for="row">Row</label>
-                    <input id="row" type="range" min="0" max="100" step="1">
-                    <span id="rowValue" class="note"></span>
-                </div>
-                <canvas id="plot"></canvas>
-                <p id="plotNote" class="note legend"></p>
-            </div>
-            <div id="sheetPanel">
-                <div class="row">
-                    <label for="sheetComponent">Height</label>
-                    <select id="sheetComponent"></select>
-                </div>
-                <div class="row">
-                    <label for="tilt">Tilt</label>
-                    <input id="tilt" type="range" min="10" max="85" value="40">
-                </div>
-                <canvas id="sheet"></canvas>
-                <p class="note">Each component is its own surface over the box: here, the height is one component and the color is the gradient's. Each stop is a peg as tall as its value, and the surface passes through the top of every peg while bending as little as it can. All shows every component's surface together, each tinted with its color in the cross-section, over its own pegs. Drag to turn it.</p>
-            </div>
-            <details id="coefficientsDetails">
-                <summary>Coefficients</summary>
-                <pre id="splineNumbers"></pre>
-            </details>
-        </section>
-    </aside>
     <div id="stageScroller">
-        <div id="stageWrap">
-            <div id="stage">
-                <div id="native"></div>
-                <canvas id="gpu"></canvas>
-                <div id="stageMessage"></div>
-                <canvas id="overlay"></canvas>
-            </div>
+        <div id="modelBar" role="group" aria-label="Models">
+            <button data-model="spline">Thin-plate spline</button>
+            <button data-model="biharmonic">Biharmonic grid</button>
+            <button data-model="harmonic">Harmonic grid</button>
         </div>
-        <div id="compare" hidden>
-            <figure><canvas data-model="spline"></canvas><figcaption>Thin-plate spline <span>WebKit</span></figcaption></figure>
-            <figure><canvas data-model="biharmonic"></canvas><figcaption>Biharmonic grid <span>MeshShader2</span></figcaption></figure>
-            <figure><canvas data-model="harmonic"></canvas><figcaption>Harmonic grid <span>MeshShader2</span></figcaption></figure>
+        <div id="views">
+            <figure class="view" data-model="spline">
+                <div class="viewBox">
+                    <div class="stageWrap">
+                        <div class="stage">
+                            <div class="native"></div>
+                            <canvas class="gpu"></canvas>
+                            <canvas class="diff" hidden></canvas>
+                            <div class="stageMessage"></div>
+                            <canvas class="overlay"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="viewDetails">
+                    <figcaption><b>Thin-plate spline</b><span class="modelSummary"></span><span class="note modelStats"></span></figcaption>
+                    <canvas class="plot"></canvas>
+                    <p class="note legend plotNote"></p>
+                    <canvas class="sheet"></canvas>
+                    <pre class="numbers"></pre>
+                    <p class="note modelNote"></p>
+                    <p class="note modelSource"></p>
+                    <p class="note modelSpec"></p>
+                </div>
+            </figure>
+            <figure class="view" data-model="biharmonic">
+                <div class="viewBox">
+                    <div class="stageWrap">
+                        <div class="stage">
+                            <div class="native"></div>
+                            <canvas class="gpu"></canvas>
+                            <canvas class="diff" hidden></canvas>
+                            <div class="stageMessage"></div>
+                            <canvas class="overlay"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="viewDetails">
+                    <figcaption><b>Biharmonic grid</b><span class="modelSummary"></span><span class="note modelStats"></span></figcaption>
+                    <canvas class="plot"></canvas>
+                    <p class="note legend plotNote"></p>
+                    <canvas class="sheet"></canvas>
+                    <pre class="numbers"></pre>
+                    <p class="note modelNote"></p>
+                    <p class="note modelSource"></p>
+                    <p class="note modelSpec"></p>
+                </div>
+            </figure>
+            <figure class="view" data-model="harmonic">
+                <div class="viewBox">
+                    <div class="stageWrap">
+                        <div class="stage">
+                            <div class="native"></div>
+                            <canvas class="gpu"></canvas>
+                            <canvas class="diff" hidden></canvas>
+                            <div class="stageMessage"></div>
+                            <canvas class="overlay"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="viewDetails">
+                    <figcaption><b>Harmonic grid</b><span class="modelSummary"></span><span class="note modelStats"></span></figcaption>
+                    <canvas class="plot"></canvas>
+                    <p class="note legend plotNote"></p>
+                    <canvas class="sheet"></canvas>
+                    <pre class="numbers"></pre>
+                    <p class="note modelNote"></p>
+                    <p class="note modelSource"></p>
+                    <p class="note modelSpec"></p>
+                </div>
+            </figure>
         </div>
     </div>
     <div id="sample"></div>
@@ -311,36 +363,31 @@ aside[hidden], .row[hidden] { display: none; }
                 <select id="space"></select>
             </div>
             <div class="row">
-                <label for="model">Model</label>
-                <select id="model">
-                    <option value="spline">Thin-plate spline</option>
-                    <option value="biharmonic">Biharmonic grid</option>
-                    <option value="harmonic">Harmonic grid</option>
+                <label for="edges">Edges</label>
+                <select id="edges">
+                    <option value="mirrored">Mirrored</option>
+                    <option value="open">Open</option>
+                    <option value="free">Free</option>
                 </select>
             </div>
-            <div id="gridControls">
-                <div class="row">
-                    <label for="edges">Edges</label>
-                    <select id="edges">
-                        <option value="mirrored">Mirrored</option>
-                        <option value="open">Open</option>
-                    </select>
-                </div>
-                <div class="row">
-                    <label for="gridResolution">Grid</label>
-                    <select id="gridResolution"></select>
-                    <span class="note">texels on the longer side</span>
-                </div>
-                <div class="row">
-                    <label for="pointRadius">Point radius</label>
-                    <input id="pointRadius" class="percent" type="number" min="0.1" max="20" step="0.5"> %
-                </div>
-            </div>
-            <p id="modelNote" class="note"></p>
             <div class="row">
-                <label><input type="checkbox" id="compareToggle"> Compare the three models side by side</label>
+                <label for="gridResolution">Grid</label>
+                <select id="gridResolution"></select>
+                <span class="note">texels on the longer side</span>
             </div>
-            <p id="hueNote" class="note">Hues are moved by whole turns to within half a turn of their circular mean, as WebKit does. The hue interpolation method isn't used, since it only describes interpolating between two hues.</p>
+            <div class="row">
+                <label for="pointRadius">Point radius</label>
+                <input id="pointRadius" class="percent" type="number" min="0.1" max="20" step="0.5"> %
+            </div>
+            <div class="row">
+                <label for="hold">Hold stops at</label>
+                <select id="hold">
+                    <option value="discs">Discs</option>
+                    <option value="points">Points</option>
+                </select>
+            </div>
+            <p class="note">Edges, Grid, Point radius and Hold only apply to the biharmonic and harmonic grids. <span id="edgeNote"></span> <span id="holdNote"></span></p>
+            <p id="hueNote" class="note">Hues are moved by whole turns to within half a turn of their circular mean. The hue interpolation method isn't used, since it only describes interpolating between two hues.</p>
             <div class="row" title="What is drawn behind the box, showing through wherever the gradient is transparent. It is not part of the CSS.">
                 <label for="backdrop">Backdrop</label>
                 <select id="backdrop">
@@ -362,32 +409,86 @@ aside[hidden], .row[hidden] { display: none; }
                 <label><input type="radio" name="renderer" value="webgpu"> WebGPU</label>
                 <label><input type="checkbox" id="overlayToggle" checked> Overlay</label>
             </div>
-            <div class="row">
-                <button id="visualizeToggle" class="small" aria-controls="visualizePanel">Show Visualize</button>
-                <span class="note">How each model arrives at its colors</span>
-            </div>
             <p id="nativeStatus" class="status"></p>
             <p id="gpuStatus" class="status"></p>
-            <p class="note">The colors are a thin-plate spline through the stops: the smoothest surface through their colors, one component at a time. It can overshoot the stops' colors between and beyond them. The WebGPU renderer is a port of WebKit's Metal renderer.</p>
+            <p class="note">Native draws the thin-plate spline's box with the browser's own freeform-gradient(). WebGPU draws every box, and anything other than the colors.</p>
+        </section>
+
+        <section>
+            <h2>Visualize</h2>
+            <p class="note">Drawn in and under each model's box, so the models can be compared. Under each name, Overshoot is how far its colors go past the stops', as a fraction of a component's range, and Clipped is how much of its box is outside the canvas's gamut.</p>
+            <div class="row">
+                <label for="view">Show</label>
+                <select id="view">
+                    <option value="gradient">The colors</option>
+                    <option value="influence">The selected stop's influence</option>
+                    <option value="difference">The difference from another model</option>
+                    <option value="grid">The grids' texels, and the ones the stops hold</option>
+                    <option value="plane">Thin-plate spline: the linear part</option>
+                    <option value="term">Thin-plate spline: the linear part and the selected stop's term</option>
+                    <option value="basis">Thin-plate spline: U(r) around the selected stop</option>
+                </select>
+            </div>
+            <div id="referenceRow" class="row">
+                <label for="reference">Compared with</label>
+                <select id="reference"></select>
+            </div>
+            <p id="viewNote" class="note"></p>
+            <div class="row">
+                <label><input type="checkbox" id="clippingToggle"> Clipping</label>
+                <label><input type="checkbox" id="normalizationToggle"> Normalization</label>
+            </div>
+            <p id="clippingNote" class="note">Hatched where a box's colors are outside the canvas's gamut, or its alpha outside 0 to 1, and are clipped.</p>
+            <p id="normalizationNote" class="note"></p>
+            <div class="row">
+                <label><input type="checkbox" id="crossSectionToggle"> Cross-section</label>
+                <label><input type="checkbox" id="sheetToggle"> 3D</label>
+                <label><input type="checkbox" id="sampleToggle"> Sample</label>
+                <label><input type="checkbox" id="numbersToggle"> Numbers</label>
+            </div>
+            <p id="sampleNote" class="note">Hover over any box, or tap it on a phone, to see the color there, added up term by term for the thin-plate spline.</p>
+            <div id="crossSectionPanel">
+                <div class="row">
+                    <label for="row">Row</label>
+                    <input id="row" type="range" min="0" max="100" step="1">
+                    <span id="rowValue" class="note"></span>
+                </div>
+                <div class="row">
+                    <label><input type="checkbox" id="otherCurvesToggle"> The other models' curves too, dashed</label>
+                </div>
+                <p id="crossSectionNote" class="note"></p>
+            </div>
+            <div id="sheetPanel">
+                <div class="row">
+                    <label for="sheetComponent">Height</label>
+                    <select id="sheetComponent"></select>
+                </div>
+                <div class="row">
+                    <label for="tilt">Tilt</label>
+                    <input id="tilt" type="range" min="10" max="85" value="40">
+                </div>
+                <p class="note">Each component is its own surface over the box: the height is one component, and the color is the gradient's. Each stop is a peg as tall as its value. The thin-plate spline bends as little as it can through the top of every peg, on an endless plane. The biharmonic grid bends as little as it can too, but inside the box and held flat over each stop's disc. The harmonic grid stretches like a membrane between the discs. All shows every component together. Drag any of them to turn them all.</p>
+            </div>
+            <p id="numbersNote" class="note">The thin-plate spline's fitted coefficients, and each grid's size and solve time.</p>
         </section>
 
         <section>
             <h2 id="stopTitle">Stop</h2>
             <div class="row">
                 <input id="stopPicker" type="color" title="Pick an sRGB color">
-                <input id="stopText" type="text" spellcheck="false" title="Any CSS color. WebKit treats missing (none) components as 0 for now.">
+                <input id="stopText" type="text" spellcheck="false" title="Any CSS color. Missing (none) components are treated as 0 for now.">
             </div>
             <div class="row">
                 <label>Position</label>
                 <input id="stopX" class="percent" type="number" step="1" title="Horizontal position, as a percentage of the box's width"> % ×
                 <input id="stopY" class="percent" type="number" step="1" title="Vertical position, as a percentage of the box's height"> %
             </div>
-            <div class="row" title="The optional / <number> after a stop's position. WebKit parses it, but doesn't use it yet: the draft doesn't define how it affects the colors.">
+            <div class="row" title="The optional / <number> after a stop's position. The draft doesn't define how it affects the colors, so it isn't used yet.">
                 <label for="stopWeight">Weight</label>
                 <input id="stopWeight" type="number" step="0.1" placeholder="none">
                 <span id="stopWeightNote" class="note">Not used yet</span>
             </div>
-            <div id="stopSpreadRow" class="row" title="Not in CSS: how far past its point radius a stop holds its color in the grid models, as a fraction of half the box's shorter side.">
+            <div id="stopSpreadRow" class="row" title="Not in CSS: how far past the point radius a stop holds its color in the grid models, as a fraction of half the box's shorter side. The thin-plate spline doesn't use it.">
                 <label for="stopSpread">Spread</label>
                 <input id="stopSpread" type="range" min="0" max="1" step="0.01">
                 <span id="stopSpreadValue" class="note"></span>
@@ -877,16 +978,40 @@ function cssText() {
 }
 
 // What the box shows. Only "gradient" is what WebKit draws; the others draw parts of the spline.
-const VIEWS = ["gradient", "plane", "term", "basis"];
+const VIEWS = ["gradient", "influence", "difference", "grid", "plane", "term", "basis"];
 
 const MODEL_NOTES = {
     spline: "A stiff sheet over thin pegs, on an endless plane: exact at the stops, and past them it carries on in a straight line.",
-    biharmonic: "The same stiff sheet, ∆²u = 0, held by flat-topped posts: each stop holds a disc of its color, its radius the point radius plus the stop's spread, from 0 to 1, times half the box's shorter side. Solved on a grid and filtered up, as MeshShader2 does.",
-    harmonic: "A stretched membrane, ∆u = 0, over the same posts: a tent with a crease at each stop, which never passes the stops' colors. Solved on a grid and filtered up, as MeshShader2 does.",
+    biharmonic: "A stiff sheet, ∆²u = 0, like the thin-plate spline's, but held by flat-topped posts and cut to the box: each stop holds a disc of its color, its radius the point radius plus the stop's spread, from 0 to 1, times half the box's shorter side. Solved on a grid and filtered up.",
+    harmonic: "A stretched membrane, ∆u = 0, over the same posts: a tent with a crease at each stop, which never passes the stops' colors. Solved on a grid and filtered up.",
+};
+// What a spec would need to define for each model, for engines to agree.
+const MODEL_SPECS = {
+    spline: "A spec would define the formula and its normalization, and what happens when stops coincide or are on a line. It doesn't depend on resolution, so engines can agree to rounding.",
+    biharmonic: "A spec would also define the boundary condition at the box's edges, each stop's disc size, and how accurate the solve must be, since each engine would solve on its own grid.",
+    harmonic: "A spec would define the same as for the biharmonic grid, and couldn't do without a disc size: a membrane can't be held up by points, so as the discs shrink, the colors tend to one flat average.",
+};
+
+// Where each model comes from.
+const MODEL_SOURCES = {
+    spline: "From Duchon's thin-plate splines (1976), brought to graphics by Bookstein, \u201cPrincipal Warps\u201d (1989): a closed form, summed over the whole plane.",
+    biharmonic: "From Finch, Snyder and Hoppe, \u201cFreeform Vector Graphics with Controlled Thin-Plate Splines\u201d (2011), which minimizes the same thin-plate energy on a pixel grid, as here. They hold each stop at a point rather than a disc, and let the grid grow past the view until it holds every stop, with a free edge.",
+    harmonic: "From Orzan et al., \u201cDiffusion Curves: A Vector Representation for Smooth-Shaded Images\u201d (2008), whose colors spread from curves by a Poisson equation: Laplace's, as here, everywhere but on the curves.",
 };
 const EDGE_NOTES = {
     mirrored: "Mirrored edges: the grid is the box, and the surface meets each side level, as against a mirror.",
     open: "Open edges: the grid reaches half the box's size past each side, so its walls are far from the stops. Its texels are larger for it.",
+    free: "Free edges, as Finch et al. do: the grid grows until it holds every stop, plus a quarter of the box on each side, and the biharmonic grid minimizes the thin-plate energy with nothing holding its edges, so it comes close to the thin-plate spline. For the harmonic grid, a free edge is the same as a mirrored one.",
+};
+const HOLD_NOTES = {
+    discs: "Discs: each stop holds a disc of its color, sized by Point radius and its spread, as MeshShader2 does.",
+    points: "Points: each stop holds only the texel it's in, as Finch et al. do. Change Grid to see which model needs discs: the biharmonic grid barely changes, while the harmonic grid flattens toward one color as the texels shrink.",
+};
+// What sets each model apart, in a line.
+const MODEL_SUMMARIES = {
+    spline: "Exact and smooth, but overshoots between the stops and keeps going past them.",
+    biharmonic: "As smooth as the spline, but stops at the box's edges, so it overshoots less. Needs a solver.",
+    harmonic: "Never overshoots, but makes a tent at each stop, and depends on the discs' size.",
 };
 
 // MARK: - URL fragment
@@ -909,10 +1034,14 @@ function encodeState() {
         dc: state.sheetComponent,
         md: state.model,
         ed: state.edges,
+        ho: state.hold,
+        rf: state.reference,
+        oc: state.otherCurves ? 1 : 0,
         gr: state.gridResolution,
         pr: state.pointRadius,
-        cm: state.compare ? 1 : 0,
-        vz: state.visualize ? 1 : 0,
+        ms: state.models,
+        nb: state.numbers ? 1 : 0,
+        cl: state.clipping ? 1 : 0,
         sp: state.stops.some(stop => stop.spread) ? state.stops.map(stop => stop.spread) : undefined,
         p: state.stops.map(stop => stop.weight === null ? [stop.color, ...stop.pos] : [stop.color, ...stop.pos, stop.weight]),
     };
@@ -932,8 +1061,6 @@ function decodeState(text) {
             return null;
         const spreads = Array.isArray(data.sp) ? data.sp : [];
         const stops = data.p.map((entry, i) => makeStop(String(entry[0] ?? "black"), number(entry[1]) ?? 50, number(entry[2]) ?? 50, number(entry[3]), clamp(number(spreads[i]) ?? 0, 0, 1)));
-        // The visualizations are off while their panel is hidden.
-        const visualize = data.vz === 1;
         return {
             width: clamp(number(data.w) ?? 600, 100, 2000),
             height: clamp(number(data.h) ?? 400, 100, 2000),
@@ -941,19 +1068,22 @@ function decodeState(text) {
             renderer: data.g === "webgpu" ? "webgpu" : "native",
             overlay: data.o !== 0,
             backdrop: BACKDROPS.includes(data.k) ? data.k : "checkerboard",
-            visualize,
-            view: visualize && VIEWS.includes(data.vw) ? data.vw : "gradient",
-            normalization: visualize && data.n === 1,
-            crossSection: visualize && data.x === 1,
+            numbers: data.nb === 1,
+            clipping: data.cl === 1,
+            view: VIEWS.includes(data.vw) ? data.vw : "gradient",
+            normalization: data.n === 1,
+            crossSection: data.x === 1,
             row: clamp(Math.round(number(data.r) ?? 50), 0, 100),
-            sample: visualize && data.m === 1,
-            sheet: visualize && data.d === 1,
+            sample: data.m === 1,
+            sheet: data.d === 1,
             sheetComponent: clamp(Math.round(number(data.dc) ?? 0), 0, 4),
-            model: MODELS.includes(data.md) ? data.md : "spline",
-            edges: data.ed === "open" ? "open" : "mirrored",
+            ...modelsFrom(data),
+            edges: ["open", "free"].includes(data.ed) ? data.ed : "mirrored",
+            hold: data.ho === "points" ? "points" : "discs",
+            reference: MODELS.includes(data.rf) ? data.rf : "spline",
+            otherCurves: data.oc === 1,
             gridResolution: GRID_RESOLUTIONS.includes(data.gr) ? data.gr : 64,
             pointRadius: clamp(number(data.pr) ?? 1, 0.1, 20),
-            compare: data.cm === 1,
             stops,
         };
     } catch {
@@ -1074,12 +1204,16 @@ function presetState(index) {
         sample: state?.sample ?? false,
         sheet: state?.sheet ?? false,
         sheetComponent: state?.sheetComponent ?? 0,
-        visualize: state?.visualize ?? false,
+        numbers: state?.numbers ?? false,
+        clipping: state?.clipping ?? false,
         model: state?.model ?? "spline",
+        models: state?.models ?? ["spline"],
         edges: state?.edges ?? "mirrored",
+        hold: state?.hold ?? "discs",
+        reference: state?.reference ?? "spline",
+        otherCurves: state?.otherCurves ?? false,
         gridResolution: state?.gridResolution ?? 64,
         pointRadius: state?.pointRadius ?? 1,
-        compare: state?.compare ?? false,
         ...preset,
     };
 }
@@ -1147,8 +1281,9 @@ function interpolationComponents(text) {
 
 // The spline through the stops, in the interpolation color space, premultiplied. Positions are in CSS pixels, moved by
 // -origin and divided by scale first. Equivalent to FreeformGradient::fitSpline() in FreeformGradient.cpp.
-function fitThinPlateSpline() {
-    const hueIndex = HUE_INDEX[state.space];
+function fitThinPlateSpline(influence = null) {
+    // With `influence`, a stop's index, the colors are 1 at that stop and 0 at the others, unconverted.
+    const hueIndex = influence === null ? HUE_INDEX[state.space] : undefined;
 
     // 1. Convert each stop's color to the interpolation color space. Where stops share a position, the last one is used.
     const points = [];
@@ -1157,7 +1292,9 @@ function fitThinPlateSpline() {
         const existing = points.findIndex(point => point.position[0] === position[0] && point.position[1] === position[1]);
         if (existing >= 0)
             points.splice(existing, 1);
-        points.push({ position, color: interpolationComponents(stop.color), stop: state.stops.indexOf(stop) });
+        const index = state.stops.indexOf(stop);
+        const color = influence === null ? interpolationComponents(stop.color) : Array(4).fill(index === influence ? 1 : 0);
+        points.push({ position, color, stop: index });
     }
 
     // 2. In a cylindrical color space, move each hue by whole turns to within half a turn of their circular mean.
@@ -1173,7 +1310,7 @@ function fitThinPlateSpline() {
     }
 
     // 3. Premultiply.
-    for (const point of points) {
+    for (const point of influence === null ? points : []) {
         for (let component = 0; component < 3; ++component) {
             if (component !== hueIndex)
                 point.color[component] *= point.color[3];
@@ -1262,8 +1399,8 @@ function fitThinPlateSpline() {
 
 // The spline, and for a grid model, the grid solved from the same stops. The stops' colors, hue fixup and
 // premultiplication are shared, so the models differ only in how the colors spread between the stops.
-function fitSpline(model = state.model) {
-    const spline = fitThinPlateSpline();
+function fitSpline(model = state.model, influence = null) {
+    const spline = fitThinPlateSpline(influence);
     if (model !== "spline")
         spline.grid = solveGrid(model, spline.points);
     return spline;
@@ -1279,27 +1416,50 @@ function fitSpline(model = state.model) {
 // directly, by banded Cholesky, with a texel held if its center is in a disc, and always the texel a stop is in.
 const MODELS = ["spline", "biharmonic", "harmonic"];
 const GRID_RESOLUTIONS = [32, 48, 64, 96, 128];
-const gridCache = new Map();
 
-function solveGrid(model, points) {
+// The models that are on, in MODELS order, and the one the Visualize panel shows, which is one of them. Links from
+// before there was a list of models have a model, and cm: 1 for all three.
+function modelsFrom(data) {
+    let models = Array.isArray(data.ms) ? MODELS.filter(model => data.ms.includes(model)) : [];
+    let model = MODELS.includes(data.md) ? data.md : null;
+    if (!models.length)
+        models = data.cm === 1 ? MODELS.slice() : [model ?? "spline"];
+    if (!models.includes(model))
+        model = models[0];
+    return { model, models };
+}
+
+const MODEL_NAMES = { spline: "Thin-plate spline", biharmonic: "Biharmonic grid", harmonic: "Harmonic grid" };
+const gridModelIsOn = () => state.models.some(model => model !== "spline");
+
+// The part of a grid solve that depends only on where the stops are, not on their colors: the grid, the texels each
+// stop holds, and the factored matrix. Colors only change the right-hand side, so new colors cost two triangular
+// solves, and so does each stop's share of the colors.
+const factorCache = new Map();
+
+function gridFactor(model, positions, spreads) {
     // Dragging solves at half the resolution, to keep up.
     const resolution = drag ? Math.max(24, state.gridResolution / 2) : state.gridResolution;
-    const spreads = points.map(point => state.stops[point.stop].spread);
-    // The spline's points are normalized, so the positions come from the stops.
-    const positions = points.map(point => [state.stops[point.stop].pos[0] / 100 * state.width, state.stops[point.stop].pos[1] / 100 * state.height]);
-    const key = JSON.stringify([model, resolution, state.edges, state.pointRadius, state.width, state.height, positions, points.map(point => point.color), spreads]);
-    const cached = gridCache.get(key);
+    const key = JSON.stringify([model, resolution, state.edges, state.hold, state.pointRadius, state.width, state.height, positions, spreads]);
+    const cached = factorCache.get(key);
     if (cached)
         return cached;
     const start = performance.now();
 
     // Mirrored edges hold the grid to the box. Open ones reach half the box's size past each side, so the edges are
-    // far from the stops.
-    const pad = state.edges === "open" ? 0.5 : 0;
-    const domain = { x: -pad * state.width, y: -pad * state.height, width: (1 + 2 * pad) * state.width, height: (1 + 2 * pad) * state.height };
+    // far from the stops. Free ones reach past every stop, and a quarter of the box past the furthest.
+    let domain;
+    if (state.edges === "free") {
+        const xs = [0, state.width, ...positions.map(p => p[0])], ys = [0, state.height, ...positions.map(p => p[1])];
+        const x = Math.min(...xs) - 0.25 * state.width, y = Math.min(...ys) - 0.25 * state.height;
+        domain = { x, y, width: Math.max(...xs) + 0.25 * state.width - x, height: Math.max(...ys) + 0.25 * state.height - y };
+    } else {
+        const pad = state.edges === "open" ? 0.5 : 0;
+        domain = { x: -pad * state.width, y: -pad * state.height, width: (1 + 2 * pad) * state.width, height: (1 + 2 * pad) * state.height };
+    }
     const longest = Math.max(domain.width, domain.height);
-    const columns = Math.max(2, Math.round(resolution * domain.width / longest));
-    const rows = Math.max(2, Math.round(resolution * domain.height / longest));
+    const columns = Math.max(3, Math.round(resolution * domain.width / longest));
+    const rows = Math.max(3, Math.round(resolution * domain.height / longest));
     const texel = [domain.width / columns, domain.height / rows];
     const count = columns * rows;
 
@@ -1312,6 +1472,10 @@ function solveGrid(model, points) {
     // The lower band: entry (i, j), for j from i - band to i.
     const matrix = new Float64Array(count * stride);
     const at = (i, j) => i * stride + j - i + band;
+    const add = (i, j, value) => {
+        if (j <= i)
+            matrix[at(i, j)] += value;
+    };
 
     // L, the Laplacian, with mirrored edges: a texel past an edge is the texel at it, so no color flows across.
     const neighbors = new Array(count);
@@ -1329,36 +1493,61 @@ function solveGrid(model, points) {
             neighbors[index(x, y)] = list;
         }
     }
-    const add = (i, j, value) => {
-        if (j <= i)
-            matrix[at(i, j)] += value;
-    };
-    for (let i = 0; i < count; ++i) {
-        if (model === "harmonic") {
-            // Minimizes the stretching, |∇u|²: the matrix is −L.
-            add(i, i, neighbors[i].length);
+    const stretching = weight => {
+        for (let i = 0; i < count; ++i) {
+            add(i, i, weight * neighbors[i].length);
             for (const j of neighbors[i])
-                add(i, j, -1);
-            continue;
+                add(i, j, -weight);
         }
+    };
+    if (model === "harmonic") {
+        // Minimizes the stretching, |∇u|²: the matrix is −L. Its natural edge is a mirrored one.
+        stretching(1);
+    } else if (state.edges === "free") {
+        // Minimizes the thin-plate energy, u_xx² + 2·u_xy² + u_yy², with only the differences that fit in the grid, so
+        // nothing holds its edges. Planes cost nothing, so with fewer than three stops the solution isn't unique: as
+        // Finch et al. do, a little stretching and a little size are added.
+        const term = (entries, weight) => {
+            for (const [i, a] of entries) {
+                for (const [j, b] of entries)
+                    add(i, j, weight * a * b);
+            }
+        };
+        for (let y = 0; y < rows; ++y) {
+            for (let x = 0; x < columns; ++x) {
+                if (x > 0 && x < columns - 1)
+                    term([[index(x - 1, y), 1], [index(x, y), -2], [index(x + 1, y), 1]], 1);
+                if (y > 0 && y < rows - 1)
+                    term([[index(x, y - 1), 1], [index(x, y), -2], [index(x, y + 1), 1]], 1);
+                if (x < columns - 1 && y < rows - 1)
+                    term([[index(x, y), 1], [index(x + 1, y), -1], [index(x, y + 1), -1], [index(x + 1, y + 1), 1]], 2);
+            }
+        }
+        stretching(1e-4);
+        for (let i = 0; i < count; ++i)
+            add(i, i, 1e-8);
+    } else {
         // Minimizes the bending, (∆u)²: the matrix is L·L.
-        const row = [[i, -neighbors[i].length], ...neighbors[i].map(k => [k, 1])];
-        for (const [k, value] of row) {
-            add(i, k, -value * neighbors[k].length);
-            for (const j of neighbors[k])
-                add(i, j, value);
+        for (let i = 0; i < count; ++i) {
+            const row = [[i, -neighbors[i].length], ...neighbors[i].map(k => [k, 1])];
+            for (const [k, value] of row) {
+                add(i, k, -value * neighbors[k].length);
+                for (const j of neighbors[k])
+                    add(i, j, value);
+            }
         }
     }
 
-    // The discs. A texel in more than one takes the later stop's color.
+    // The discs, or with points, only the texel each stop is in. A texel held by more than one stop takes the later.
     const held = new Int32Array(count).fill(-1);
     const shorter = Math.min(state.width, state.height);
-    points.forEach((point, k) => {
-        const radius = (state.pointRadius / 100 + spreads[k] * 0.5) * shorter;
-        const [px, py] = positions[k];
+    positions.forEach(([px, py], k) => {
+        const radius = state.hold === "points" ? 0 : (state.pointRadius / 100 + spreads[k] * 0.5) * shorter;
         const cx = Math.floor((px - domain.x) / texel[0]), cy = Math.floor((py - domain.y) / texel[1]);
         if (cx >= 0 && cx < columns && cy >= 0 && cy < rows)
             held[index(cx, cy)] = k;
+        if (!radius)
+            return;
         const x0 = Math.max(0, Math.floor((px - radius - domain.x) / texel[0])), x1 = Math.min(columns - 1, Math.ceil((px + radius - domain.x) / texel[0]));
         const y0 = Math.max(0, Math.floor((py - radius - domain.y) / texel[1])), y1 = Math.min(rows - 1, Math.ceil((py + radius - domain.y) / texel[1]));
         for (let y = y0; y <= y1; ++y) {
@@ -1372,74 +1561,163 @@ function solveGrid(model, points) {
     for (let i = 0; i < count; ++i)
         heldCount += held[i] >= 0;
 
-    const values = new Float32Array(count * 4);
-    if (heldCount) {
-        // Held texels move to the right-hand side, keeping the matrix symmetric.
-        const right = [0, 1, 2, 3].map(() => new Float64Array(count));
-        for (let i = 0; i < count; ++i) {
-            for (let j = Math.max(0, i - band); j < i; ++j) {
-                const value = matrix[at(i, j)];
-                if (!value)
-                    continue;
-                const iHeld = held[i] >= 0, jHeld = held[j] >= 0;
-                if (jHeld && !iHeld) {
-                    for (let c = 0; c < 4; ++c)
-                        right[c][i] -= value * points[held[j]].color[c];
-                }
-                if (iHeld && !jHeld) {
-                    for (let c = 0; c < 4; ++c)
-                        right[c][j] -= value * points[held[i]].color[c];
-                }
-                if (iHeld || jHeld)
-                    matrix[at(i, j)] = 0;
+    // Held texels move to the right-hand side, keeping the matrix symmetric. What moves is kept, to apply to colors.
+    const couplingTexel = [], couplingStop = [], couplingValue = [];
+    for (let i = 0; i < count; ++i) {
+        for (let j = Math.max(0, i - band); j < i; ++j) {
+            const value = matrix[at(i, j)];
+            if (!value)
+                continue;
+            const iHeld = held[i] >= 0, jHeld = held[j] >= 0;
+            if (jHeld && !iHeld) {
+                couplingTexel.push(i);
+                couplingStop.push(held[j]);
+                couplingValue.push(value);
             }
-        }
-        for (let i = 0; i < count; ++i) {
-            if (held[i] >= 0) {
-                matrix[at(i, i)] = 1;
-                for (let c = 0; c < 4; ++c)
-                    right[c][i] = points[held[i]].color[c];
+            if (iHeld && !jHeld) {
+                couplingTexel.push(j);
+                couplingStop.push(held[i]);
+                couplingValue.push(value);
             }
+            if (iHeld || jHeld)
+                matrix[at(i, j)] = 0;
         }
+    }
+    for (let i = 0; i < count; ++i) {
+        if (held[i] >= 0)
+            matrix[at(i, i)] = 1;
+    }
 
-        // Cholesky, in place: the band becomes L, with L·Lᵀ the matrix.
-        for (let i = 0; i < count; ++i) {
-            const low = Math.max(0, i - band), iRow = i * stride - i + band;
-            for (let j = low; j <= i; ++j) {
-                const jRow = j * stride - j + band;
-                let sum = matrix[iRow + j];
-                for (let k = low; k < j; ++k)
-                    sum -= matrix[iRow + k] * matrix[jRow + k];
-                matrix[iRow + j] = i === j ? Math.sqrt(Math.max(sum, 1e-300)) : sum / matrix[jRow + j];
-            }
-        }
-        for (let c = 0; c < 4; ++c) {
-            const forward = new Float64Array(count), solution = new Float64Array(count);
-            for (let i = 0; i < count; ++i) {
-                const low = Math.max(0, i - band), iRow = i * stride - i + band;
-                let sum = right[c][i];
-                for (let k = low; k < i; ++k)
-                    sum -= matrix[iRow + k] * forward[k];
-                forward[i] = sum / matrix[iRow + i];
-            }
-            for (let i = count - 1; i >= 0; --i) {
-                let sum = forward[i];
-                for (let k = i + 1; k <= Math.min(count - 1, i + band); ++k)
-                    sum -= matrix[at(k, i)] * solution[k];
-                solution[i] = sum / matrix[at(i, i)];
-            }
-            for (let y = 0; y < rows; ++y) {
-                for (let x = 0; x < columns; ++x)
-                    values[(y * columns + x) * 4 + c] = solution[index(x, y)];
-            }
+    // Cholesky, in place: the band becomes L, with L·Lᵀ the matrix.
+    for (let i = 0; i < count; ++i) {
+        const low = Math.max(0, i - band), iRow = i * stride - i + band;
+        for (let j = low; j <= i; ++j) {
+            const jRow = j * stride - j + band;
+            let sum = matrix[iRow + j];
+            for (let k = low; k < j; ++k)
+                sum -= matrix[iRow + k] * matrix[jRow + k];
+            matrix[iRow + j] = i === j ? Math.sqrt(Math.max(sum, 1e-300)) : sum / matrix[jRow + j];
         }
     }
 
-    const grid = { columns, rows, origin: [domain.x, domain.y], texel, values, heldCount, milliseconds: performance.now() - start };
+    const factor = {
+        key, columns, rows, origin: [domain.x, domain.y], texel, count, band, stride, index, matrix, held, heldCount,
+        couplingTexel: Int32Array.from(couplingTexel), couplingStop: Int32Array.from(couplingStop), couplingValue: Float64Array.from(couplingValue),
+        milliseconds: performance.now() - start,
+    };
+    factorCache.set(key, factor);
+    if (factorCache.size > 8)
+        factorCache.delete(factorCache.keys().next().value);
+    return factor;
+}
+
+// Solves for each of `channels` values per stop, given as values[stop][channel], all in one pass over the factor.
+// Returns a solution per channel, in the factor's texel order.
+function gridSolve(factor, values, channels) {
+    const { count, band, stride, matrix, held, couplingTexel, couplingStop, couplingValue } = factor;
+    // Channel c of texel i is at i * channels + c.
+    const x = new Float64Array(count * channels);
+    for (let n = 0; n < couplingTexel.length; ++n) {
+        const row = values[couplingStop[n]], o = couplingTexel[n] * channels, value = couplingValue[n];
+        for (let c = 0; c < channels; ++c)
+            x[o + c] -= value * row[c];
+    }
+    for (let i = 0; i < count; ++i) {
+        if (held[i] >= 0) {
+            const row = values[held[i]];
+            for (let c = 0; c < channels; ++c)
+                x[i * channels + c] = row[c];
+        }
+    }
+    // L·y = b, then Lᵀ·x = y, in place.
+    for (let i = 0; i < count; ++i) {
+        const low = Math.max(0, i - band), iRow = i * stride - i + band, o = i * channels;
+        for (let k = low; k < i; ++k) {
+            const value = matrix[iRow + k];
+            if (!value)
+                continue;
+            const ok = k * channels;
+            for (let c = 0; c < channels; ++c)
+                x[o + c] -= value * x[ok + c];
+        }
+        const diagonal = matrix[iRow + i];
+        for (let c = 0; c < channels; ++c)
+            x[o + c] /= diagonal;
+    }
+    for (let i = count - 1; i >= 0; --i) {
+        const o = i * channels, high = Math.min(count - 1, i + band);
+        for (let k = i + 1; k <= high; ++k) {
+            const value = matrix[k * stride - k + band + i];
+            if (!value)
+                continue;
+            const ok = k * channels;
+            for (let c = 0; c < channels; ++c)
+                x[o + c] -= value * x[ok + c];
+        }
+        const diagonal = matrix[i * stride + band];
+        for (let c = 0; c < channels; ++c)
+            x[o + c] /= diagonal;
+    }
+    return Array.from({ length: channels }, (_, c) => {
+        const solution = new Float64Array(count);
+        for (let i = 0; i < count; ++i)
+            solution[i] = x[i * channels + c];
+        return solution;
+    });
+}
+
+const gridCache = new Map();
+
+function solveGrid(model, points) {
+    const spreads = points.map(point => state.stops[point.stop].spread);
+    // The spline's points are normalized, so the positions come from the stops.
+    const positions = points.map(point => [state.stops[point.stop].pos[0] / 100 * state.width, state.stops[point.stop].pos[1] / 100 * state.height]);
+    const factor = gridFactor(model, positions, spreads);
+    const key = factor.key + JSON.stringify(points.map(point => point.color));
+    const cached = gridCache.get(key);
+    if (cached)
+        return cached;
+    const start = performance.now();
+    const { columns, rows, index } = factor;
+    const values = new Float32Array(columns * rows * 4);
+    if (factor.heldCount) {
+        const solutions = gridSolve(factor, points.map(point => point.color), 4);
+        for (let c = 0; c < 4; ++c) {
+            for (let y = 0; y < rows; ++y) {
+                for (let x = 0; x < columns; ++x)
+                    values[(y * columns + x) * 4 + c] = solutions[c][index(x, y)];
+            }
+        }
+    }
+    const grid = { columns, rows, origin: factor.origin, texel: factor.texel, values, heldCount: factor.heldCount, factor, milliseconds: performance.now() - start };
     gridCache.set(key, grid);
-    if (gridCache.size > 12)
+    if (gridCache.size > 24)
         gridCache.delete(gridCache.keys().next().value);
     return grid;
+}
+
+// Each stop's share of the color at a point, for the model in `fit`: the stops' influences there. They add up to 1.
+function stopShares(fit, [px, py]) {
+    const shares = new Array(state.stops.length).fill(0);
+    if (fit.grid) {
+        const { factor } = fit.grid;
+        if (!factor.heldCount)
+            return shares;
+        // One solve for each stop, with 1 at it and 0 at the others, kept with the factor.
+        factor.shares ??= gridSolve(factor, fit.points.map((_, k) => fit.points.map((_, j) => j === k ? 1 : 0)), fit.points.length);
+        const fx = clamp((px - factor.origin[0]) / factor.texel[0] - 0.5, 0, factor.columns - 1);
+        const fy = clamp((py - factor.origin[1]) / factor.texel[1] - 0.5, 0, factor.rows - 1);
+        const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(x0 + 1, factor.columns - 1), y1 = Math.min(y0 + 1, factor.rows - 1);
+        const tx = fx - x0, ty = fy - y0, at = factor.index;
+        fit.points.forEach((point, k) => {
+            const s = factor.shares[k];
+            shares[point.stop] = (s[at(x0, y0)] * (1 - tx) + s[at(x1, y0)] * tx) * (1 - ty) + (s[at(x0, y1)] * (1 - tx) + s[at(x1, y1)] * tx) * ty;
+        });
+        return shares;
+    }
+    fit.shareFits ??= fit.points.map(point => fitThinPlateSpline(point.stop));
+    fit.points.forEach((point, k) => shares[point.stop] = interpolatedColor(fit.shareFits[k], [px, py])[0]);
+    return shares;
 }
 
 // The grid's color at a position in CSS pixels, filtered bilinearly between texel centers, as MeshShader2 filters it
@@ -1455,6 +1733,8 @@ function gridColor(grid, [px, py]) {
 
 // The radius of a stop's disc, in CSS pixels.
 function discRadius(stop) {
+    if (state.hold === "points")
+        return 0;
     return (state.pointRadius / 100 + stop.spread * 0.5) * Math.min(state.width, state.height);
 }
 
@@ -1755,7 +2035,22 @@ struct RasterizerData {
     if (uniforms.view == 1u) {
         return radialBasisColor(position);
     }
+    if (uniforms.view == 2u) {
+        return influenceColor(interpolatedColor(position).x);
+    }
     return premultipliedColor(position);
+}
+
+// Not in WebKit: a stop's influence, white at 0, orange at 1, dark red past it, and blue below 0. Equivalent to
+// influenceDisplayColor() in the page.
+fn influenceColor(value: f32) -> vec4f {
+    if (value < 0.0) {
+        return vec4f(mix(vec3f(1.0), vec3f(0.16, 0.42, 0.95), saturate(-value * 4.0)), 1.0);
+    }
+    if (value <= 1.0) {
+        return vec4f(mix(vec3f(1.0), vec3f(0.95, 0.45, 0.1), value), 1.0);
+    }
+    return vec4f(mix(vec3f(0.95, 0.45, 0.1), vec3f(0.45, 0.05, 0.05), saturate((value - 1.0) * 4.0)), 1.0);
 }
 
 // Not in WebKit: U(r) around the one center, white at 0, blue below it and orange above it. U is smallest, -1 / (2e),
@@ -1771,27 +2066,21 @@ fn radialBasisColor(position: vec2f) -> vec4f {
 `;
 
 class WebGPUFreeformGradientRenderer {
-    static async create(canvas) {
+    static async create() {
         if (!navigator.gpu)
             throw new Error("WebGPU isn't available in this browser.");
         const adapter = await navigator.gpu.requestAdapter();
         if (!adapter)
             throw new Error("No WebGPU adapter.");
         const device = await adapter.requestDevice();
-        return new WebGPUFreeformGradientRenderer(device, canvas);
+        return new WebGPUFreeformGradientRenderer(device);
     }
 
-    constructor(device, canvas) {
+    constructor(device) {
         this.device = device;
-        this.context = canvas.getContext("webgpu");
         this.format = navigator.gpu.getPreferredCanvasFormat();
         this.outputSpace = "srgb";
-        try {
-            this.context.configure({ device, format: this.format, alphaMode: "premultiplied", colorSpace: "display-p3" });
-            this.outputSpace = "display-p3";
-        } catch {
-            this.context.configure({ device, format: this.format, alphaMode: "premultiplied" });
-        }
+        this.contexts = new Map();
         const module = device.createShaderModule({ code: SHADER });
         this.compilationInfo = module.getCompilationInfo?.();
         this.pipeline = device.createRenderPipeline({
@@ -1802,8 +2091,26 @@ class WebGPUFreeformGradientRenderer {
         });
     }
 
-    render(spline, scale, view = 0) {
+    // Each model's box has its own canvas, configured the first time it's drawn into.
+    contextFor(canvas) {
+        let context = this.contexts.get(canvas);
+        if (context)
+            return context;
+        context = canvas.getContext("webgpu");
+        try {
+            context.configure({ device: this.device, format: this.format, alphaMode: "premultiplied", colorSpace: "display-p3" });
+            this.outputSpace = "display-p3";
+        } catch {
+            context.configure({ device: this.device, format: this.format, alphaMode: "premultiplied" });
+            this.outputSpace = "srgb";
+        }
+        this.contexts.set(canvas, context);
+        return context;
+    }
+
+    render(canvas, spline, scale, view = 0) {
         const { device } = this;
+        const context = this.contextFor(canvas);
 
         // Matches Center in the shader: a vec2f, padded to 16 bytes, then a vec4f. A buffer can't be empty, so a
         // spline without centers still gets one, which the shader doesn't read.
@@ -1840,7 +2147,7 @@ class WebGPUFreeformGradientRenderer {
 
         const encoder = device.createCommandEncoder();
         const pass = encoder.beginRenderPass({
-            colorAttachments: [{ view: this.context.getCurrentTexture().createView(), loadOp: "clear", clearValue: { r: 0, g: 0, b: 0, a: 0 }, storeOp: "store" }],
+            colorAttachments: [{ view: context.getCurrentTexture().createView(), loadOp: "clear", clearValue: { r: 0, g: 0, b: 0, a: 0 }, storeOp: "store" }],
         });
         pass.setPipeline(this.pipeline);
         pass.setBindGroup(0, device.createBindGroup({
@@ -1859,11 +2166,33 @@ class WebGPUFreeformGradientRenderer {
 // MARK: - Page
 
 const $ = id => document.getElementById(id);
-const stage = $("stage");
-const nativeView = $("native");
-const gpuCanvas = $("gpu");
-const overlay = $("overlay");
-const overlayContext = overlay.getContext("2d");
+// A box for each model, side by side, all from the same stops.
+const views = [...document.querySelectorAll(".view")].map(figure => {
+    const overlay = figure.querySelector(".overlay");
+    return {
+        model: figure.dataset.model,
+        figure,
+        box: figure.querySelector(".viewBox"),
+        wrap: figure.querySelector(".stageWrap"),
+        stage: figure.querySelector(".stage"),
+        native: figure.querySelector(".native"),
+        gpu: figure.querySelector(".gpu"),
+        message: figure.querySelector(".stageMessage"),
+        diff: figure.querySelector(".diff"),
+        overlay,
+        overlayContext: overlay.getContext("2d"),
+        caption: figure.querySelector("figcaption"),
+        details: figure.querySelector(".viewDetails"),
+        plot: figure.querySelector(".plot"),
+        plotNote: figure.querySelector(".plotNote"),
+        sheet: figure.querySelector(".sheet"),
+        numbers: figure.querySelector(".numbers"),
+        sheetGrid: null,
+    };
+});
+// Each model's fit, from the last render, and with "influence" shown, each model's influence of the selected stop.
+let splines = { };
+let influences = { };
 
 const nativeSupported = typeof CSS !== "undefined" && CSS.supports("background-image", "freeform-gradient(red 0 0)");
 let gpuRenderer = null;
@@ -1896,71 +2225,188 @@ function changed({ dragging = !!drag } = { }) {
         scheduleHashWrite();
 }
 
+let renderTimings = { };
+
 function render() {
+    let last = performance.now();
+    const start = last;
+    renderTimings = { fit: 0, boxes: 0, stats: 0, overlay: 0, plot: 0, sheet: 0, numbers: 0, controls: 0 };
+    const time = name => {
+        const now = performance.now();
+        renderTimings[name] += now - last;
+        last = now;
+    };
     const { width, height } = state;
     const dpr = window.devicePixelRatio || 1;
-    stage.style.width = `${width}px`;
-    stage.style.height = `${height}px`;
     renderBackdrop();
     selected = clamp(selected, 0, state.stops.length - 1);
 
     const css = cssText();
     $("output").value = `background-image: ${css};`;
 
-    currentSpline = fitSpline();
-    const shownSpline = viewSpline(currentSpline);
-    // A grid model has only the gradient to show.
-    if (state.model !== "spline")
-        state.view = "gradient";
-    const useNative = state.renderer === "native" && state.view === "gradient" && state.model === "spline";
-    nativeView.style.display = useNative ? "" : "none";
-    gpuCanvas.style.display = useNative ? "none" : "";
-    const message = $("stageMessage");
-    message.style.display = "none";
-    if (useNative) {
-        nativeView.style.backgroundImage = "";
-        nativeView.style.backgroundImage = css;
-        if (!nativeSupported) {
-            message.textContent = "This browser doesn't support freeform-gradient(). Use a WebKit build with the CSSFreeformGradientsEnabled preference on, or switch to WebGPU.";
-            message.style.display = "flex";
-        } else if (!nativeView.style.backgroundImage) {
-            message.textContent = "The generated CSS didn't parse.";
-            message.style.display = "flex";
-        }
-    } else {
-        const pixelWidth = Math.round(width * dpr), pixelHeight = Math.round(height * dpr);
-        if (gpuCanvas.width !== pixelWidth || gpuCanvas.height !== pixelHeight) {
-            gpuCanvas.width = pixelWidth;
-            gpuCanvas.height = pixelHeight;
-        }
-        if (state.view === "basis" && !shownSpline.centers.length) {
-            message.textContent = "A later stop is at the same position as this one, so this one has no term.";
-            message.style.display = "flex";
-            gpuRenderer?.render({ ...shownSpline, polynomial: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] }, pixelWidth / width);
-        } else if (gpuRenderer)
-            gpuRenderer.render(shownSpline, pixelWidth / width, state.view === "basis" ? 1 : 0);
-        else {
-            message.textContent = gpuError ? `WebGPU: ${gpuError}` : "Starting WebGPU…";
-            message.style.display = "flex";
-        }
+    requestedView = state.view;
+    splines = Object.fromEntries(state.models.map(model => [model, fitSpline(model)]));
+    influences = state.view !== "influence" ? { } : Object.fromEntries(state.models.map(model => [model, fitSpline(model, selected)]));
+    currentSpline = splines[state.model];
+    time("fit");
+
+    for (const view of views) {
+        view.figure.hidden = !state.models.includes(view.model);
+        if (!view.figure.hidden)
+            renderView(view, css, dpr);
     }
+    time("boxes");
 
     $("nativeStatus").textContent = nativeSupported ? "Native: freeform-gradient() is supported." : "Native: freeform-gradient() isn't supported in this browser.";
     $("nativeStatus").className = nativeSupported ? "status" : "status error";
     $("gpuStatus").textContent = gpuRenderer ? `WebGPU: ready, drawing into a ${gpuRenderer.outputSpace} canvas.` : gpuError ? `WebGPU: ${gpuError}` : "WebGPU: starting…";
     $("gpuStatus").className = gpuError ? "status error" : "status";
 
-    // Shown before the margins are worked out, since the box is centered in the room above it.
-    $("compare").hidden = !state.compare;
     updateMargin(width, height);
-    drawOverlay(width, height, dpr);
+    for (const view of views) {
+        if (view.figure.hidden)
+            continue;
+        time("boxes");
+        updateStats(view);
+        time("stats");
+        view.plot.hidden = view.plotNote.hidden = !state.crossSection;
+        view.sheet.hidden = !state.sheet;
+        view.numbers.hidden = !state.numbers;
+        asView(view, () => {
+            drawOverlay(view, width, height, dpr);
+            time("overlay");
+            drawPlot();
+            time("plot");
+            drawSheet({ recompute: true });
+            time("sheet");
+            updateCoefficients();
+            time("numbers");
+        });
+    }
     updateControls();
-    drawPlot();
-    drawSheet({ recompute: true });
-    updateCoefficients();
-    drawCompare();
+    time("controls");
+    renderTimings.total = performance.now() - start;
     if (lastSamplePosition)
-        showSample(lastSamplePosition);
+        showSample(lastSamplePosition, lastSamplePosition.view);
+}
+
+function renderView(view, css, dpr) {
+    const { width, height } = state;
+    view.stage.style.width = `${width}px`;
+    view.stage.style.height = `${height}px`;
+    view.figure.querySelector(".modelNote").textContent = MODEL_NOTES[view.model];
+    view.figure.querySelector(".modelSource").textContent = MODEL_SOURCES[view.model];
+    view.figure.querySelector(".modelSpec").textContent = MODEL_SPECS[view.model];
+    view.figure.querySelector(".modelSummary").textContent = MODEL_SUMMARIES[view.model];
+    const fit = splines[view.model];
+    // The parts of the spline are shown in its box, when the Visualize panel shows it.
+    const viewName = state.view === "difference" || state.view === "grid" ? "gradient" : view.model === "spline" || state.view === "influence" ? state.view : "gradient";
+    const comparing = state.view === "difference" && view.model !== referenceModel();
+    view.diff.hidden = !comparing;
+    if (comparing)
+        drawDifference(view);
+    const shownSpline = viewName === "gradient" ? fit : viewName === "influence" ? influences[view.model] : viewSpline(fit);
+    const useNative = state.renderer === "native" && viewName === "gradient" && view.model === "spline";
+    view.native.style.display = useNative ? "" : "none";
+    view.gpu.style.display = useNative ? "none" : "";
+    const message = view.message;
+    message.style.display = "none";
+    if (useNative) {
+        view.native.style.backgroundImage = "";
+        view.native.style.backgroundImage = css;
+        if (!nativeSupported) {
+            message.textContent = "This browser doesn't support freeform-gradient(). Use a WebKit build with the CSSFreeformGradientsEnabled preference on, or switch to WebGPU.";
+            message.style.display = "flex";
+        } else if (!view.native.style.backgroundImage) {
+            message.textContent = "The generated CSS didn't parse.";
+            message.style.display = "flex";
+        }
+        return;
+    }
+    const pixelWidth = Math.round(width * dpr), pixelHeight = Math.round(height * dpr);
+    if (view.gpu.width !== pixelWidth || view.gpu.height !== pixelHeight) {
+        view.gpu.width = pixelWidth;
+        view.gpu.height = pixelHeight;
+    }
+    if (viewName === "basis" && !shownSpline.centers.length) {
+        message.textContent = "A later stop is at the same position as this one, so this one has no term.";
+        message.style.display = "flex";
+        gpuRenderer?.render(view.gpu, { ...shownSpline, polynomial: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] }, pixelWidth / width);
+    } else if (gpuRenderer)
+        gpuRenderer.render(view.gpu, shownSpline, pixelWidth / width, viewName === "basis" ? 1 : viewName === "influence" ? 2 : 0);
+    else {
+        message.textContent = gpuError ? `WebGPU: ${gpuError}` : "Starting WebGPU…";
+        message.style.display = "flex";
+    }
+}
+
+// How far a model's colors go past the stops', and how much of the box is clipped to the canvas's gamut, from a grid of
+// samples. Overshoot is in premultiplied components, as a fraction of each one's range; hue is left out.
+const STATS_COLUMNS = 64;
+function gamutStats(fit) {
+    const info = components();
+    const hueIndex = fit.hueIndex;
+    const colors = fit.points.map(point => point.color);
+    const low = [0, 1, 2, 3].map(k => Math.min(...colors.map(c => c[k])));
+    const high = [0, 1, 2, 3].map(k => Math.max(...colors.map(c => c[k])));
+    const outputSpace = gpuRenderer?.outputSpace ?? "srgb";
+    // Coarser while dragging, to keep up.
+    const columns = drag ? STATS_COLUMNS / 2 : STATS_COLUMNS, rows = Math.max(1, Math.round(columns * state.height / state.width));
+    const clipped = new Uint8Array(columns * rows);
+    let overshoot = 0, clippedCount = 0;
+    for (let j = 0; j < rows; ++j) {
+        for (let i = 0; i < columns; ++i) {
+            const raw = interpolatedColor(fit, [(i + 0.5) / columns * state.width, (j + 0.5) / rows * state.height]);
+            for (let k = 0; k < 4; ++k) {
+                if (k === hueIndex)
+                    continue;
+                const range = info[k].range[1] - info[k].range[0];
+                overshoot = Math.max(overshoot, (low[k] - raw[k]) / range, (raw[k] - high[k]) / range);
+            }
+            const color = unpremultipliedColor(raw, hueIndex);
+            const rgb = fromXYZ(outputSpace, toXYZ(state.space, color.slice(0, 3).map(v => Number.isNaN(v) ? 0 : v)));
+            const epsilon = 1 / 1024;
+            if (raw[3] < -epsilon || raw[3] > 1 + epsilon || rgb.some(v => v < -epsilon || v > 1 + epsilon)) {
+                clipped[j * columns + i] = 1;
+                ++clippedCount;
+            }
+        }
+    }
+    return { overshoot: Math.max(0, overshoot), clippedFraction: clippedCount / (columns * rows), clipped, columns, rows, outputSpace };
+}
+
+function updateStats(view) {
+    const stats = view.stats = gamutStats(splines[view.model]);
+    // Solves round, so less than a thousandth counts as none.
+    const percent = value => value < 0.001 ? "0%" : value < 0.005 ? "under 1%" : `${Math.round(value * 100)}%`;
+    const statsText = view.figure.querySelector(".modelStats");
+    let line = `Overshoot: ${percent(stats.overshoot)} · Clipped: ${percent(stats.clippedFraction)} of the box`;
+    if (state.view === "difference" && view.model !== referenceModel() && view.difference)
+        line += ` · From ${MODEL_NAMES[view.difference.reference].toLowerCase()}: ΔE OK ${view.difference.mean.toFixed(3)} on average, ${view.difference.largest.toFixed(3)} at most`;
+    statsText.textContent = line;
+    statsText.title = `How far the colors go past the stops' (in premultiplied components, as a fraction of each one's range), and how much of the box is outside ${stats.outputSpace} or 0 to 1 alpha.`;
+}
+
+// The boxes share one size and margin, scaled down together to fit side by side, or one above another on a narrow
+// screen.
+function updateMargin(width, height) {
+    const scroller = $("stageScroller");
+    const count = state.models.length;
+    const narrow = narrowScreen.matches;
+    const perRow = narrow ? 1 : count;
+    const gap = 16;
+    const cellWidth = Math.max(100, (scroller.clientWidth - gap * (perRow - 1)) / perRow);
+    margin = { x: narrow || count > 1 ? NARROW_MARGIN : MIN_MARGIN, y: narrow || count > 1 ? NARROW_MARGIN : MIN_MARGIN };
+    viewScale = Math.min(1, cellWidth / (width + 2 * margin.x));
+    const boxWidth = Math.floor((width + 2 * margin.x) * viewScale), boxHeight = Math.floor((height + 2 * margin.y) * viewScale);
+    for (const view of views) {
+        view.box.style.width = `${boxWidth}px`;
+        view.box.style.height = `${boxHeight}px`;
+        view.details.style.width = `${Math.max(boxWidth, 260)}px`;
+        view.wrap.style.padding = `${margin.y}px ${margin.x}px`;
+        view.wrap.style.transform = viewScale < 1 ? `scale(${viewScale})` : "";
+    }
+    scroller.style.height = "";
 }
 
 // MARK: - Overlay
@@ -1994,32 +2440,17 @@ function fromOverlay(x, y) {
     return [(x - margin.x) / state.width * 100, (y - margin.y) / state.height * 100];
 }
 
-function updateMargin(width, height) {
-    const scroller = $("stageScroller");
-    if (narrowScreen.matches) {
-        margin = { x: Math.max(NARROW_MARGIN, Math.floor((scroller.clientWidth - width) / 2)), y: NARROW_MARGIN };
-        viewScale = Math.min(1, scroller.clientWidth / (width + 2 * margin.x));
-        scroller.style.height = `${Math.ceil((height + 2 * margin.y) * viewScale)}px`;
-    } else {
-        margin = {
-            x: Math.max(MIN_MARGIN, Math.floor((scroller.clientWidth - width) / 2)),
-            y: Math.max(MIN_MARGIN, Math.floor((scroller.clientHeight - $("compare").offsetHeight - height) / 2)),
-        };
-        viewScale = 1;
-        scroller.style.height = "";
-    }
-    $("stageWrap").style.padding = `${margin.y}px ${margin.x}px`;
-    $("stageWrap").style.transform = viewScale < 1 ? `scale(${viewScale})` : "";
-}
 narrowScreen.addEventListener("change", () => scheduleRender());
 
-function drawOverlay(width, height, dpr) {
+function drawOverlay(view, width, height, dpr) {
+    const { overlay } = view;
     const cssWidth = width + 2 * margin.x, cssHeight = height + 2 * margin.y;
     overlay.style.left = `${-margin.x}px`;
     overlay.style.top = `${-margin.y}px`;
     overlay.style.width = `${cssWidth}px`;
     overlay.style.height = `${cssHeight}px`;
-    const visualizing = state.normalization || state.crossSection || state.view === "term" || state.view === "basis" || state.model !== "spline";
+    const visualizing = state.normalization || state.crossSection || state.view === "term" || state.view === "basis" || state.clipping || requestedView === "grid";
+    const discs = view.model !== "spline" && state.overlay;
     overlay.style.display = state.overlay || visualizing ? "" : "none";
     // With the stops hidden, they can't be dragged, and the box can still be sampled.
     overlay.style.pointerEvents = state.overlay ? "" : "none";
@@ -2027,13 +2458,31 @@ function drawOverlay(width, height, dpr) {
         overlay.width = Math.round(cssWidth * dpr);
         overlay.height = Math.round(cssHeight * dpr);
     }
-    const ctx = overlayContext;
+    const ctx = view.overlayContext;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssWidth, cssHeight);
+    if (state.clipping && view.stats && requestedView === "gradient")
+        drawClipping(ctx, view.stats, width, height);
+    if (requestedView === "grid" && splines[view.model]?.grid)
+        drawGridTexels(ctx, splines[view.model].grid);
     if (visualizing)
         drawVisualization(ctx, width, height);
     if (!state.overlay)
         return;
+
+    if (discs) {
+        // The discs the grid holds, where they're big enough to see.
+        for (const stop of state.stops) {
+            const radius = discRadius(stop);
+            if (radius < 4)
+                continue;
+            const [x, y] = toOverlay(stop.pos);
+            strokeTwice(ctx, () => {
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, 2 * Math.PI);
+            }, [3, 3]);
+        }
+    }
 
     // The box, so stops outside it are clearly outside.
     ctx.strokeStyle = "rgba(0, 0, 0, 0.35)";
@@ -2043,10 +2492,12 @@ function drawOverlay(width, height, dpr) {
     ctx.setLineDash([]);
 
     const accent = "#0a84ff";
+    // The boxes may be scaled down to fit side by side; the stops stay big enough to see and grab.
+    const markerScale = Math.min(2, 1 / viewScale);
     state.stops.forEach((stop, index) => {
         const isSelected = index === selected;
         const [x, y] = toOverlay(stop.pos);
-        const radius = isSelected ? 10 : 8;
+        const radius = (isSelected ? 10 : 8) * markerScale;
         // A checkerboard under the color, so a translucent stop shows as such.
         ctx.save();
         ctx.beginPath();
@@ -2066,15 +2517,41 @@ function drawOverlay(width, height, dpr) {
         ctx.restore();
         ctx.beginPath();
         ctx.arc(x, y, radius, 0, 2 * Math.PI);
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 3 * markerScale;
         ctx.strokeStyle = isSelected ? accent : "#ffffff";
         ctx.stroke();
         ctx.beginPath();
-        ctx.arc(x, y, radius + 2, 0, 2 * Math.PI);
-        ctx.lineWidth = 1;
+        ctx.arc(x, y, radius + 2 * markerScale, 0, 2 * Math.PI);
+        ctx.lineWidth = markerScale;
         ctx.strokeStyle = "rgba(0, 0, 0, 0.55)";
         ctx.stroke();
     });
+}
+
+// Diagonal hatching over the samples that are clipped.
+function drawClipping(ctx, stats, width, height) {
+    const cellWidth = width / stats.columns, cellHeight = height / stats.rows;
+    ctx.save();
+    ctx.beginPath();
+    for (let j = 0; j < stats.rows; ++j) {
+        for (let i = 0; i < stats.columns; ++i) {
+            if (stats.clipped[j * stats.columns + i])
+                ctx.rect(margin.x + i * cellWidth, margin.y + j * cellHeight, cellWidth + 0.5, cellHeight + 0.5);
+        }
+    }
+    ctx.clip();
+    const spacing = 8 / Math.max(viewScale, 0.25);
+    ctx.lineWidth = 2 / Math.max(viewScale, 0.25);
+    for (const [color, offset] of [["rgba(0, 0, 0, 0.6)", 0], ["rgba(255, 255, 255, 0.8)", spacing / 2]]) {
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        for (let d = -height + offset; d < width + height; d += spacing) {
+            ctx.moveTo(margin.x + d, margin.y);
+            ctx.lineTo(margin.x + d + height, margin.y + height);
+        }
+        ctx.stroke();
+    }
+    ctx.restore();
 }
 
 // The index of the stop at (x, y), or -1. `slop` scales the distance a stop can be from (x, y) and still be hit.
@@ -2095,20 +2572,21 @@ let drag = null;
 
 // The pointer's position on the overlay, in the stage's own coordinates.
 function overlayPosition(event) {
-    const rect = overlay.getBoundingClientRect();
+    const rect = event.currentTarget.getBoundingClientRect();
     return [(event.clientX - rect.left) / viewScale, (event.clientY - rect.top) / viewScale];
 }
 
 // Fingers cover more than a mouse pointer, and the stage may be drawn smaller than its own size.
 const hitSlop = event => (event.pointerType === "mouse" ? 1 : 2.5) / viewScale;
 
+for (const { overlay } of views) {
 overlay.addEventListener("pointerdown", event => {
     const [x, y] = overlayPosition(event);
     const hit = hitTest(x, y, hitSlop(event));
     if (hit < 0)
         return;
     event.preventDefault();
-    overlay.setPointerCapture(event.pointerId);
+    event.currentTarget.setPointerCapture(event.pointerId);
     selected = hit;
     drag = { pointerId: event.pointerId, start: fromOverlay(x, y), startPosition: state.stops[hit].pos.slice() };
     scheduleRender();
@@ -2117,10 +2595,10 @@ overlay.addEventListener("pointerdown", event => {
 overlay.addEventListener("pointermove", event => {
     const [x, y] = overlayPosition(event);
     if (!drag || drag.pointerId !== event.pointerId) {
-        overlay.style.cursor = hitTest(x, y, hitSlop(event)) >= 0 ? "grab" : "default";
+        event.currentTarget.style.cursor = hitTest(x, y, hitSlop(event)) >= 0 ? "grab" : "default";
         return;
     }
-    overlay.style.cursor = "grabbing";
+    event.currentTarget.style.cursor = "grabbing";
     const p = fromOverlay(x, y);
     const position = [drag.startPosition[0] + p[0] - drag.start[0], drag.startPosition[1] + p[1] - drag.start[1]];
     state.stops[selected].pos = round2Point(clampedToReach(position));
@@ -2130,13 +2608,14 @@ overlay.addEventListener("pointermove", event => {
 function endDrag(event) {
     if (drag && drag.pointerId === event.pointerId) {
         drag = null;
-        overlay.style.cursor = "grab";
+        event.currentTarget.style.cursor = "grab";
         writeHash();
     }
 }
 overlay.addEventListener("pointerup", endDrag);
 overlay.addEventListener("pointercancel", endDrag);
 overlay.addEventListener("lostpointercapture", endDrag);
+}
 
 // Adds a stop with the color already there, so the colors change as little as they can.
 function addStop(position) {
@@ -2146,11 +2625,13 @@ function addStop(position) {
     changed();
 }
 
-overlay.addEventListener("dblclick", event => {
-    const [x, y] = overlayPosition(event);
-    if (hitTest(x, y, hitSlop(event)) < 0)
-        addStop(fromOverlay(x, y));
-});
+for (const { overlay } of views) {
+    overlay.addEventListener("dblclick", event => {
+        const [x, y] = overlayPosition(event);
+        if (hitTest(x, y, hitSlop(event)) < 0)
+            addStop(fromOverlay(x, y));
+    });
+}
 
 function removeSelectedStop() {
     if (state.stops.length < 2)
@@ -2173,6 +2654,108 @@ document.addEventListener("keydown", event => {
 
 // The spline that the chosen view shows: all of it, its linear part, or its linear part and the selected stop's term.
 let currentSpline = null;
+let activeView = null;
+// The view chosen in the Show menu, before asView() narrows it to what one box can show.
+let requestedView = "gradient";
+
+// The model the difference view compares with: the one chosen, if it's on.
+const referenceModel = () => state.models.includes(state.reference) ? state.reference : state.models[0];
+
+// White where a model agrees with the one compared with, purple where it differs, from a grid of samples.
+function drawDifference(view) {
+    const reference = referenceModel();
+    const fit = splines[view.model], other = splines[reference];
+    const columns = drag ? 60 : 150, rows = Math.max(1, Math.round(columns * state.height / state.width));
+    const canvas = view.diff;
+    if (canvas.width !== columns || canvas.height !== rows) {
+        canvas.width = columns;
+        canvas.height = rows;
+    }
+    const ctx = canvas.getContext("2d");
+    const image = ctx.createImageData(columns, rows);
+    const oklab = (color, hueIndex) => {
+        const c = unpremultipliedColor(color, hueIndex);
+        return [...fromXYZ("oklab", toXYZ(state.space, c.slice(0, 3).map(v => Number.isNaN(v) ? 0 : v))), clamp(c[3], 0, 1)];
+    };
+    let total = 0, largest = 0;
+    for (let j = 0; j < rows; ++j) {
+        for (let i = 0; i < columns; ++i) {
+            const p = [(i + 0.5) / columns * state.width, (j + 0.5) / rows * state.height];
+            const a = oklab(interpolatedColor(fit, p), fit.hueIndex), b = oklab(interpolatedColor(other, p), other.hueIndex);
+            const difference = Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2], a[3] - b[3]);
+            total += difference;
+            largest = Math.max(largest, difference);
+            const t = Math.sqrt(clamp(difference / 0.15, 0, 1));
+            const o = (j * columns + i) * 4;
+            image.data[o] = 255 + (90 - 255) * t;
+            image.data[o + 1] = 255 + (25 - 255) * t;
+            image.data[o + 2] = 255 + (140 - 255) * t;
+            image.data[o + 3] = 255;
+        }
+    }
+    ctx.putImageData(image, 0, 0);
+    view.difference = { reference, mean: total / (columns * rows), largest };
+}
+
+// The grid a grid model is solved on, and the texels its stops hold, outlined in their colors.
+function drawGridTexels(ctx, grid) {
+    const { factor } = grid;
+    const x0 = margin.x + factor.origin[0], y0 = margin.y + factor.origin[1];
+    const [w, h] = factor.texel;
+    ctx.save();
+    ctx.lineWidth = 1 / Math.max(viewScale, 0.25);
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.18)";
+    ctx.beginPath();
+    for (let x = 0; x <= factor.columns; ++x) {
+        ctx.moveTo(x0 + x * w, y0);
+        ctx.lineTo(x0 + x * w, y0 + factor.rows * h);
+    }
+    for (let y = 0; y <= factor.rows; ++y) {
+        ctx.moveTo(x0, y0 + y * h);
+        ctx.lineTo(x0 + factor.columns * w, y0 + y * h);
+    }
+    ctx.stroke();
+    const points = splines[activeView.model].points;
+    for (let y = 0; y < factor.rows; ++y) {
+        for (let x = 0; x < factor.columns; ++x) {
+            const k = factor.held[factor.index(x, y)];
+            if (k < 0)
+                continue;
+            const stop = state.stops[points[k].stop];
+            ctx.fillStyle = parseColor(stop.color) ? stop.color : "#000";
+            ctx.fillRect(x0 + x * w, y0 + y * h, w, h);
+            ctx.strokeStyle = "#fff";
+            ctx.strokeRect(x0 + x * w + 0.5, y0 + y * h + 0.5, w - 1, h - 1);
+        }
+    }
+    ctx.restore();
+}
+
+// Runs `body` with the visualization code pointed at one model's box: its fit, its canvases, and the spline's parts
+// only for the spline.
+function asView(view, body) {
+    const saved = { model: state.model, view: state.view, spline: currentSpline, active: activeView };
+    state.model = view.model;
+    if (state.view === "difference" || state.view === "grid" || (view.model !== "spline" && state.view !== "influence"))
+        state.view = "gradient";
+    currentSpline = splines[view.model];
+    activeView = view;
+    try {
+        return body();
+    } finally {
+        state.model = saved.model;
+        state.view = saved.view;
+        currentSpline = saved.spline;
+        activeView = saved.active;
+    }
+}
+
+function drawSheets() {
+    for (const view of views) {
+        if (!view.figure.hidden)
+            asView(view, () => drawSheet());
+    }
+}
 
 function selectedCenter(spline) {
     return spline.centers.find(center => center.stop === selected) ?? null;
@@ -2180,6 +2763,8 @@ function selectedCenter(spline) {
 
 function viewSpline(spline) {
     switch (state.view) {
+    case "influence":
+        return influences[state.model] ?? spline;
     case "plane":
         return { ...spline, centers: [] };
     case "term":
@@ -2217,6 +2802,16 @@ const normalizedComponent = (value, range) => (value - range[0]) / (range[1] - r
 function radialBasisDisplayColor(u) {
     const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
     return u < 0 ? mix([1, 1, 1], [0.16, 0.42, 0.95], clamp(-u * 2 * Math.E, 0, 1)) : mix([1, 1, 1], [0.95, 0.45, 0.1], 1 - Math.exp(-u));
+}
+
+// A stop's influence, as influenceColor() in the shader colors it.
+function influenceDisplayColor(value) {
+    const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+    if (value < 0)
+        return mix([1, 1, 1], [0.16, 0.42, 0.95], clamp(-value * 4, 0, 1));
+    if (value <= 1)
+        return mix([1, 1, 1], [0.95, 0.45, 0.1], value);
+    return mix([0.95, 0.45, 0.1], [0.45, 0.05, 0.05], clamp((value - 1) * 4, 0, 1));
 }
 
 function radialBasisAt(spline, center, [px, py]) {
@@ -2286,20 +2881,6 @@ function drawVisualization(ctx, width, height) {
         drawLabel(ctx, "cross-section", margin.x + 6, y - 14, "left");
     }
 
-    if (state.model !== "spline") {
-        // The discs the grid holds, where they're big enough to see.
-        for (const stop of state.stops) {
-            const radius = discRadius(stop);
-            if (radius < 4)
-                continue;
-            const [x, y] = toCanvas([stop.pos[0] / 100 * width, stop.pos[1] / 100 * height]);
-            strokeTwice(ctx, () => {
-                ctx.beginPath();
-                ctx.arc(x, y, radius, 0, 2 * Math.PI);
-            }, [3, 3]);
-        }
-    }
-
     if (state.normalization && state.model === "spline") {
         const [cx, cy] = fromNormalized([0, 0]);
         for (const center of spline.centers) {
@@ -2354,7 +2935,10 @@ function drawVisualization(ctx, width, height) {
 }
 
 const VIEW_NOTES = {
-    gradient: "f(p) = a + b·x + c·y + Σ wᵢ·U(|p − pᵢ|), for each component. The weights wᵢ and a, b and c are solved for together, so that f is each stop's color at its position, and the terms add no tilt of their own: Σ wᵢ = Σ wᵢ·xᵢ = Σ wᵢ·yᵢ = 0.",
+    difference: "Each box but the one compared with is white where the two models agree and purple where they differ, darkest at a difference of 0.15 in Oklab (ΔE OK) or more. Differences under about 0.02 are hard to see.",
+    grid: "The grid each grid model is solved on, with the texels the stops hold outlined in their colors. Every other texel is solved for: in the harmonic grid, each is the average of its four neighbors; in the biharmonic grid, each one's Laplacian is the average of its neighbors'. The thin-plate spline has no grid.",
+    influence: "Every model is linear in the stops' colors, so each point's color is a weighted sum of them. This shows the selected stop's weight: orange where it adds its color, white where it adds none, blue where it takes it away, and dark red past 1. The thin-plate spline's goes negative and keeps growing outside the box. The biharmonic grid's has negative lobes too, and can pass 1, but ends at the box's edges. The harmonic grid's is never below 0 or above 1.",
+    gradient: "For the thin-plate spline, f(p) = a + b·x + c·y + Σ wᵢ·U(|p − pᵢ|), for each component. The weights wᵢ and a, b and c are solved for together, so that f is each stop's color at its position, and the terms add no tilt of their own: Σ wᵢ = Σ wᵢ·xᵢ = Σ wᵢ·yᵢ = 0.",
     plane: "Just the linear part, without the stops' terms. It bends nothing, so it is free; it is the tilt that the terms are added to, and on its own it reaches few of the stops' colors.",
     term: "The linear part, bent by only the selected stop's term, wᵢ·U(r). Where a weight is positive the term lowers that component near the stop and raises it far away; where it is negative, the opposite. It changes sign at r = 1, the dashed circle, since U(1) = 0.",
     basis: "U(r) = r²·log r, the shape a thin plate takes when pushed at one point. Every stop's term is this shape around the stop, scaled by its weights. It is 0 at the stop and at r = 1 (the dashed circle), below 0 between them (blue), and grows past r = 1 (orange). r is measured in normalized units.",
@@ -2362,25 +2946,33 @@ const VIEW_NOTES = {
 
 function updateVisualizationControls() {
     $("view").value = state.view;
+    const reference = $("reference");
+    if ([...reference.options].map(option => option.value).join() !== state.models.join())
+        reference.replaceChildren(...state.models.map(model => new Option(MODEL_NAMES[model], model)));
+    reference.value = referenceModel();
+    $("referenceRow").hidden = state.view !== "difference";
     let note = VIEW_NOTES[state.view];
     if (state.view !== "gradient" && state.renderer === "native")
         note += " Drawn with WebGPU.";
     $("viewNote").textContent = note;
-    $("normalizationToggle").checked = state.normalization;
-    $("sampleToggle").checked = state.sample;
-    $("crossSectionToggle").checked = state.crossSection;
-    $("sheetToggle").checked = state.sheet;
+    for (const [id, key] of VISUALIZATION_TOGGLES)
+        $(id).checked = state[key];
     $("sampleNote").hidden = !state.sample;
     $("crossSectionPanel").hidden = !state.crossSection;
     $("sheetPanel").hidden = !state.sheet;
+    $("numbersNote").hidden = !state.numbers;
+    $("clippingNote").hidden = !state.clipping;
+    $("crossSectionNote").textContent = state.view === "influence"
+        ? "The selected stop's influence along the row, in each box. Dots are the stops on the row."
+        : "Each component along the row, premultiplied, and scaled so the dashed lines are the ends of its range. Dots are the stops on the row.";
     $("row").value = state.row;
     $("rowValue").textContent = `${state.row}%`;
     $("tilt").value = Math.round(sheetTilt * 180 / Math.PI);
 
-    const spline = currentSpline;
+    const spline = splines.spline;
     const normalization = $("normalizationNote");
-    normalization.hidden = !state.normalization;
-    if (state.normalization) {
+    normalization.hidden = !state.normalization || !spline;
+    if (!normalization.hidden) {
         let text = `The spline is fitted with the stops' positions moved so their centroid is at (0, 0), and scaled so the farthest is at a distance of 1, here ${+spline.scale.toFixed(1)}px. This changes nothing but keeps the numbers in the solve similar in size.`;
         if (spline.terms.length === 2)
             text += " The stops are on a line, so the linear part is a + b·t, along it: a tilt across it would be undetermined.";
@@ -2395,8 +2987,6 @@ function updateVisualizationControls() {
         select.replaceChildren(...labels.map((label, k) => new Option(label, String(k))));
     }
     select.value = String(state.sheetComponent);
-    // The U(r) view has one surface.
-    select.closest(".row").hidden = state.view === "basis";
 }
 
 // MARK: Cross-section
@@ -2414,12 +3004,14 @@ function sizeCanvas(canvas) {
     return { ctx, width, height };
 }
 
+const CURVE_DASHES = { spline: [7, 3], biharmonic: [3, 2], harmonic: [1, 2.5] };
+
 const isDark = () => matchMedia("(prefers-color-scheme: dark)").matches;
 
 function drawPlot() {
     if (!state.crossSection)
         return;
-    const canvas = $("plot");
+    const canvas = activeView.plot;
     const { ctx, width, height } = sizeCanvas(canvas);
     const spline = viewSpline(currentSpline);
     const ink = isDark() ? "255, 255, 255" : "0, 0, 0";
@@ -2430,12 +3022,17 @@ function drawPlot() {
     const info = components();
 
     let curves, low, high;
-    if (state.view === "basis") {
+    if (state.view === "influence") {
+        curves = [{ color: `rgb(${ink})`, values: Array.from({ length: samples + 1 }, (_, i) => interpolatedColor(spline, [xAt(i), rowY])[0]) }];
+        low = -0.15;
+        high = 1.15;
+        activeView.plotNote.innerHTML = `<span><b style="background: currentColor"></b>Stop ${selected + 1}'s influence; dashed at 0 and 1</span>`;
+    } else if (state.view === "basis") {
         const center = selectedCenter(currentSpline);
         curves = center ? [{ color: `rgb(${ink})`, values: Array.from({ length: samples + 1 }, (_, i) => radialBasisAt(spline, center, [xAt(i), rowY])) }] : [];
         low = -0.25;
         high = 1;
-        $("plotNote").innerHTML = "<span><b style=\"background: currentColor\"></b>U(r) along the row. The dashed line is 0.</span>";
+        activeView.plotNote.innerHTML = "<span><b style=\"background: currentColor\"></b>U(r) along the row. The dashed line is 0.</span>";
     } else {
         curves = info.map(({ range }, k) => ({
             color: COMPONENT_COLORS[k],
@@ -2443,8 +3040,20 @@ function drawPlot() {
         }));
         low = -0.15;
         high = 1.15;
-        $("plotNote").innerHTML = info.map(({ label, range }, k) => `<span><b style="background: ${COMPONENT_COLORS[k]}"></b>${escapeHTML(label)} ${range[0]}…${range[1]}</span>`).join("")
-            + "<br>Each component along the row, as fitted: premultiplied, and scaled so the dashed lines are the ends of its range. Dots are stops on the row, and the curves pass through them.";
+        activeView.plotNote.innerHTML = info.map(({ label, range }, k) => `<span><b style="background: ${COMPONENT_COLORS[k]}"></b>${escapeHTML(label)} ${range[0]}…${range[1]}</span>`).join("");
+    }
+    // The other models' curves, dashed, from the same row.
+    const others = state.otherCurves && state.view === "gradient" ? state.models.filter(model => model !== state.model) : [];
+    for (const model of others) {
+        info.forEach(({ range }, k) => curves.push({
+            color: COMPONENT_COLORS[k],
+            dash: CURVE_DASHES[model],
+            values: Array.from({ length: samples + 1 }, (_, i) => normalizedComponent(interpolatedColor(splines[model], [xAt(i), rowY])[k], range)),
+        }));
+    }
+    if (others.length) {
+        const sample = model => `<svg width="22" height="6" style="vertical-align: middle"><line x1="0" y1="3" x2="22" y2="3" stroke="currentColor" stroke-width="1.5" stroke-dasharray="${CURVE_DASHES[model].join(" ")}"/></svg>`;
+        activeView.plotNote.innerHTML += "<br>" + others.map(model => `<span>${sample(model)} ${MODEL_NAMES[model]}</span>`).join("");
     }
     for (const curve of curves) {
         for (const value of curve.values) {
@@ -2488,7 +3097,7 @@ function drawPlot() {
         ctx.strokeStyle = `rgba(${ink}, 0.5)`;
         ctx.stroke();
         ctx.globalAlpha = 1;
-        if (distance < 0.5 && state.view !== "basis") {
+        if (distance < 0.5 && state.view !== "basis" && state.view !== "influence") {
             info.forEach(({ range }, k) => {
                 ctx.fillStyle = COMPONENT_COLORS[k];
                 ctx.beginPath();
@@ -2502,9 +3111,10 @@ function drawPlot() {
     ctx.beginPath();
     ctx.rect(0, top - 10, width, bottom - top + 16);
     ctx.clip();
-    for (const curve of curves) {
+    for (const curve of [...curves].reverse()) {
         ctx.strokeStyle = curve.color;
-        ctx.lineWidth = 1.75;
+        ctx.lineWidth = curve.dash ? 1.25 : 1.75;
+        ctx.setLineDash(curve.dash ?? []);
         ctx.beginPath();
         curve.values.forEach((value, i) => i ? ctx.lineTo(x(xAt(i)), y(value)) : ctx.moveTo(x(xAt(i)), y(value)));
         ctx.stroke();
@@ -2524,6 +3134,10 @@ function hideSample() {
 function sampleHTML([px, py]) {
     const spline = viewSpline(currentSpline);
     const info = components();
+    if (state.view === "influence") {
+        const share = interpolatedColor(spline, [px, py])[0];
+        return `(${px.toFixed(0)}, ${py.toFixed(0)})px\n${swatchHTML(selected)} stop ${selected + 1}'s share of the color here: ${share.toFixed(4)}`;
+    }
     if (spline.grid) {
         const grid = spline.grid;
         const muted = text => `<span class="muted">${escapeHTML(text)}</span>`;
@@ -2592,19 +3206,33 @@ function sampleHTML([px, py]) {
     return lines.join("\n");
 }
 
-function showSample(event) {
-    lastSamplePosition = { clientX: event.clientX, clientY: event.clientY, pointerType: event.pointerType };
-    if (!state.sample || !currentSpline)
+// Each stop's share of the color at a point, in the box's model.
+function sharesHTML(position) {
+    if (state.view === "influence")
+        return "";
+    const shares = stopShares(splines[state.model], position);
+    const muted = text => `<span class="muted">${escapeHTML(text)}</span>`;
+    const lines = shares.map((share, k) => `${swatchHTML(k)} ${String(k + 1).padStart(2)} ${signed(share, 3).padStart(8)}`);
+    const columns = [];
+    for (let i = 0; i < lines.length; i += 2)
+        columns.push(lines.slice(i, i + 2).join("    "));
+    return `\n\n${muted("Each stop's share of the color here:")}\n${columns.join("\n")}\n${muted(`adding up to ${shares.reduce((a, b) => a + b, 0).toFixed(3)}`)}`;
+}
+
+function showSample(event, view) {
+    lastSamplePosition = { clientX: event.clientX, clientY: event.clientY, pointerType: event.pointerType, view };
+    if (!state.sample || !splines[view.model])
         return hideSample();
-    // The stage may be scaled down to fit a narrow screen, so this goes by its drawn size.
-    const rect = stage.getBoundingClientRect();
+    // The stage may be scaled down to fit, so this goes by its drawn size.
+    const rect = view.stage.getBoundingClientRect();
     const u = (event.clientX - rect.left) / rect.width, v = (event.clientY - rect.top) / rect.height;
     if (u < 0 || u > 1 || v < 0 || v > 1) {
         $("sample").style.display = "none";
         return;
     }
     const sample = $("sample");
-    sample.innerHTML = sampleHTML([u * state.width, v * state.height]);
+    // The sample adds up the terms of the model in this box.
+    sample.innerHTML = asView(view, () => sampleHTML([u * state.width, v * state.height]) + sharesHTML([u * state.width, v * state.height]));
     sample.style.display = "block";
     // Beside a mouse pointer, and above a finger, which would cover it otherwise.
     const { width, height } = sample.getBoundingClientRect();
@@ -2623,24 +3251,25 @@ function showSample(event) {
 
 // A mouse samples as it hovers. A finger samples where it touches, unless it is dragging a stop, and the sample stays
 // once it lifts.
-stage.addEventListener("pointermove", event => {
-    if (event.pointerType === "mouse" || !drag)
-        showSample(event);
-});
-stage.addEventListener("pointerdown", event => {
-    if (event.pointerType !== "mouse" && !drag)
-        showSample(event);
-});
-stage.addEventListener("pointerleave", event => {
-    if (event.pointerType === "mouse")
-        hideSample();
-});
+for (const view of views) {
+    view.stage.addEventListener("pointermove", event => {
+        if (event.pointerType === "mouse" || !drag)
+            showSample(event, view);
+    });
+    view.stage.addEventListener("pointerdown", event => {
+        if (event.pointerType !== "mouse" && !drag)
+            showSample(event, view);
+    });
+    view.stage.addEventListener("pointerleave", event => {
+        if (event.pointerType === "mouse")
+            hideSample();
+    });
+}
 
 // MARK: 3D
 
 let sheetYaw = -0.6;
 let sheetTilt = 40 * Math.PI / 180;
-let sheetGrid = null;
 const SHEET_GRID = 24;
 
 // The index of the Height choice that shows every component's surface at once.
@@ -2650,7 +3279,8 @@ function computeSheet() {
     const spline = viewSpline(currentSpline);
     const center = selectedCenter(currentSpline);
     const info = components();
-    const all = state.sheetComponent === ALL_COMPONENTS && state.view !== "basis";
+    const single = state.view === "basis" || state.view === "influence";
+    const all = state.sheetComponent === ALL_COMPONENTS && !single;
     const shown = all ? [0, 1, 2, 3] : [Math.min(state.sheetComponent, 3)];
 
     // Samples on the grid's vertices, for the heights, and at the centers of its cells, for the colors.
@@ -2673,7 +3303,14 @@ function computeSheet() {
     });
 
     let sheets;
-    if (state.view === "basis") {
+    if (state.view === "influence") {
+        sheets = [{
+            vertices: vertexValues.map(column => column.map(color => color[0])),
+            faces: faceValues.map(column => column.map(color => cssForDisplayColor([...influenceDisplayColor(color[0]), 1]))),
+            section: sectionValues?.map(color => color[0]),
+            sectionColor: null,
+        }];
+    } else if (state.view === "basis") {
         // U(r) grows without bound, so it is scaled down to fit.
         const largest = Math.max(1, ...vertexValues.flat());
         sheets = [{
@@ -2695,7 +3332,10 @@ function computeSheet() {
     }
 
     const pegs = [];
-    if (state.view === "basis") {
+    if (state.view === "influence") {
+        for (const c of currentSpline.centers)
+            pegs.push({ stop: c.stop, height: c.stop === selected ? 1 : 0 });
+    } else if (state.view === "basis") {
         if (center)
             pegs.push({ stop: center.stop, height: 0 });
     } else {
@@ -2704,17 +3344,17 @@ function computeSheet() {
                 pegs.push({ stop: c.stop, height: normalizedComponent(c.color[k], info[k].range), ring: all ? COMPONENT_COLORS[k] : null });
         }
     }
-    const label = state.view === "basis" ? "U(r)" : all ? "" : info[shown[0]].label;
-    sheetGrid = { sheets, pegs, label, range: all ? [0, 1] : info[shown[0]].range, all };
+    const label = state.view === "basis" ? "U(r)" : state.view === "influence" ? "share" : all ? "" : info[shown[0]].label;
+    activeView.sheetGrid = { sheets, pegs, label, range: all ? [0, 1] : info[shown[0]].range, all };
 }
 
 function drawSheet({ recompute = false } = { }) {
     if (!state.sheet)
         return;
-    if (recompute || !sheetGrid)
+    if (recompute || !activeView.sheetGrid)
         computeSheet();
-    const { ctx, width, height } = sizeCanvas($("sheet"));
-    const { sheets, pegs, label, range, all } = sheetGrid;
+    const { ctx, width, height } = sizeCanvas(activeView.sheet);
+    const { sheets, pegs, label, range, all } = activeView.sheetGrid;
     const longest = Math.max(state.width, state.height);
     const extentX = state.width / longest, extentY = state.height / longest;
     const zScale = 0.45;
@@ -2853,9 +3493,9 @@ function drawSheet({ recompute = false } = { }) {
     items.sort((a, b) => b.depth - a.depth).forEach(item => item.draw());
 }
 
-{
+// Turning any of the 3D views turns them all.
+for (const { sheet } of views) {
     let rotating = null;
-    const sheet = $("sheet");
     sheet.addEventListener("pointerdown", event => {
         rotating = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
         sheet.setPointerCapture(event.pointerId);
@@ -2869,7 +3509,7 @@ function drawSheet({ recompute = false } = { }) {
         rotating.x = event.clientX;
         rotating.y = event.clientY;
         $("tilt").value = Math.round(sheetTilt * 180 / Math.PI);
-        drawSheet();
+        drawSheets();
     });
     const stop = () => {
         rotating = null;
@@ -2882,12 +3522,12 @@ function drawSheet({ recompute = false } = { }) {
 // MARK: Coefficients
 
 function updateCoefficients() {
-    if (!$("coefficientsDetails").open)
+    if (!state.numbers)
         return;
     const spline = currentSpline;
     if (spline.grid) {
         const grid = spline.grid;
-        $("splineNumbers").textContent = `${state.model} grid, ${grid.columns}×${grid.rows} texels of ${grid.texel.map(v => v.toFixed(1)).join("×")}px, ${state.edges} edges\n${grid.heldCount} texels held by the stops' discs\nsolved directly in ${grid.milliseconds.toFixed(0)} ms`;
+        activeView.numbers.textContent = `${state.model} grid, ${grid.columns}×${grid.rows} texels of ${grid.texel.map(v => v.toFixed(1)).join("×")}px, ${state.edges} edges\n${grid.heldCount} texels held by the stops' ${state.hold}\nfactored in ${grid.factor.milliseconds.toFixed(0)} ms, then solved for the colors in ${grid.milliseconds.toFixed(0)} ms`;
         return;
     }
     const info = components();
@@ -2915,17 +3555,21 @@ function updateCoefficients() {
     for (const [name, factor] of sums)
         lines.push(row(name, [0, 1, 2, 3].map(k => spline.centers.reduce((sum, c) => sum + c.weight[k] * factor(c), 0))));
     lines.push("The sums are 0, up to rounding.");
-    $("splineNumbers").innerHTML = lines.join("\n");
+    activeView.numbers.innerHTML = lines.join("\n");
 }
-$("coefficientsDetails").addEventListener("toggle", updateCoefficients);
 
 // MARK: Visualize controls
 
+$("reference").addEventListener("change", () => {
+    state.reference = $("reference").value;
+    changed();
+});
 $("view").addEventListener("change", () => {
     state.view = $("view").value;
     changed();
 });
-for (const [id, key] of [["normalizationToggle", "normalization"], ["sampleToggle", "sample"], ["crossSectionToggle", "crossSection"], ["sheetToggle", "sheet"]]) {
+const VISUALIZATION_TOGGLES = [["otherCurvesToggle", "otherCurves"], ["clippingToggle", "clipping"], ["normalizationToggle", "normalization"], ["sampleToggle", "sample"], ["crossSectionToggle", "crossSection"], ["sheetToggle", "sheet"], ["numbersToggle", "numbers"]];
+for (const [id, key] of VISUALIZATION_TOGGLES) {
     $(id).addEventListener("change", () => {
         state[key] = $(id).checked;
         if (key === "sample" && !state.sample)
@@ -2944,7 +3588,7 @@ $("sheetComponent").addEventListener("change", () => {
 });
 $("tilt").addEventListener("input", () => {
     sheetTilt = Number($("tilt").value) * Math.PI / 180;
-    drawSheet();
+    drawSheets();
 });
 
 // MARK: - Controls
@@ -2954,18 +3598,17 @@ function updateControls() {
     $("height").value = state.height;
     $("space").value = state.space;
     $("hueNote").hidden = !(state.space in HUE_INDEX);
-    const gridModel = state.model !== "spline";
-    $("model").value = state.model;
-    $("gridControls").hidden = !gridModel;
+    const gridModel = gridModelIsOn();
+    for (const button of document.querySelectorAll("#modelBar button"))
+        button.setAttribute("aria-pressed", String(state.models.includes(button.dataset.model)));
     $("edges").value = state.edges;
     $("gridResolution").value = String(state.gridResolution);
     if (document.activeElement !== $("pointRadius"))
         $("pointRadius").value = state.pointRadius;
-    $("modelNote").textContent = MODEL_NOTES[state.model] + (gridModel ? " " + EDGE_NOTES[state.edges] : "");
-    $("compareToggle").checked = state.compare;
-    $("visualizePanel").hidden = !state.visualize;
-    $("visualizeToggle").textContent = state.visualize ? "Hide Visualize" : "Show Visualize";
-    $("visualizeToggle").setAttribute("aria-expanded", String(state.visualize));
+    $("edgeNote").textContent = EDGE_NOTES[state.edges];
+    $("hold").value = state.hold;
+    $("holdNote").textContent = HOLD_NOTES[state.hold];
+    $("pointRadius").disabled = state.hold === "points";
     for (const radio of document.querySelectorAll("input[name=renderer]"))
         radio.checked = radio.value === state.renderer;
     $("overlayToggle").checked = state.overlay;
@@ -2984,9 +3627,8 @@ function updateControls() {
         $("stopY").value = stop.pos[1];
     if (document.activeElement !== $("stopWeight"))
         $("stopWeight").value = stop.weight ?? "";
-    $("stopSpreadRow").hidden = !gridModel;
     $("stopSpread").value = stop.spread;
-    $("stopSpreadValue").textContent = stop.spread.toFixed(2);
+    $("stopSpreadValue").textContent = gridModel ? stop.spread.toFixed(2) : `${stop.spread.toFixed(2)}, only used by the grid models`;
     $("removeStop").disabled = state.stops.length < 2;
 
     const list = $("stopList");
@@ -3026,25 +3668,25 @@ $("space").addEventListener("change", () => {
     state.space = $("space").value;
     changed();
 });
-// Hiding the panel turns the visualizations off, and showing it again turns them back on.
-let hiddenVisualizations = null;
-$("visualizeToggle").addEventListener("click", () => {
-    const keys = ["view", "normalization", "sample", "crossSection", "sheet"];
-    state.visualize = !state.visualize;
-    if (state.visualize) {
-        if (hiddenVisualizations)
-            Object.assign(state, hiddenVisualizations);
-    } else {
-        hiddenVisualizations = Object.fromEntries(keys.map(key => [key, state[key]]));
-        Object.assign(state, { view: "gradient", normalization: false, sample: false, crossSection: false, sheet: false });
-        hideSample();
-    }
-    changed();
-});
 for (const resolution of GRID_RESOLUTIONS)
     $("gridResolution").add(new Option(String(resolution), String(resolution)));
-$("model").addEventListener("change", () => {
-    state.model = $("model").value;
+// Any of the models can be on, but at least one is.
+for (const button of document.querySelectorAll("#modelBar button")) {
+    button.addEventListener("click", () => {
+        const model = button.dataset.model;
+        const on = state.models.includes(model);
+        if (on && state.models.length === 1)
+            return;
+        state.models = MODELS.filter(other => other === model ? !on : state.models.includes(other));
+        // New stops take their color from the thin-plate spline if it's on, or else the first model.
+        if (!state.models.includes(state.model))
+            state.model = state.models.includes("spline") ? "spline" : state.models[0];
+        changed();
+    });
+}
+
+$("hold").addEventListener("change", () => {
+    state.hold = $("hold").value;
     changed();
 });
 $("edges").addEventListener("change", () => {
@@ -3060,67 +3702,8 @@ $("pointRadius").addEventListener("change", () => {
     state.pointRadius = Number.isFinite(value) ? clamp(value, 0.1, 20) : 1;
     changed();
 });
-$("compareToggle").addEventListener("change", () => {
-    state.compare = $("compareToggle").checked;
-    changed();
-});
 
-// MARK: - Compare
 
-// The three models side by side, from the same stops, converted to display-p3 and clamped as the WebGPU renderer does.
-function drawCompare() {
-    const panel = $("compare");
-    if (!state.compare)
-        return;
-    for (const figure of panel.querySelectorAll("figure")) {
-        const canvas = figure.querySelector("canvas");
-        const model = canvas.dataset.model;
-        figure.classList.toggle("current", model === state.model);
-        canvas.style.aspectRatio = `${state.width} / ${state.height}`;
-        const cssWidth = canvas.clientWidth || 200;
-        // Fewer pixels while dragging, to keep up.
-        const scale = Math.min(1, (drag ? 120 : 260) / cssWidth) * (window.devicePixelRatio || 1);
-        const width = Math.max(1, Math.round(cssWidth * scale)), height = Math.max(1, Math.round(cssWidth * state.height / state.width * scale));
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d", { colorSpace: "display-p3" });
-        const spline = model === state.model ? currentSpline : fitSpline(model);
-        const image = ctx.createImageData(width, height, { colorSpace: "display-p3" });
-        for (let y = 0; y < height; ++y) {
-            for (let x = 0; x < width; ++x) {
-                const color = unpremultipliedColor(interpolatedColor(spline, [(x + 0.5) / width * state.width, (y + 0.5) / height * state.height]), spline.hueIndex);
-                const [r, g, b, alpha] = toOutput({ space: state.space, c: color.slice(0, 3), alpha: color[3] }, "display-p3");
-                const offset = (y * width + x) * 4;
-                image.data[offset] = r * 255;
-                image.data[offset + 1] = g * 255;
-                image.data[offset + 2] = b * 255;
-                image.data[offset + 3] = alpha * 255;
-            }
-        }
-        ctx.putImageData(image, 0, 0);
-        const ratio = width / state.width;
-        for (const [i, stop] of state.stops.entries()) {
-            const x = stop.pos[0] / 100 * state.width * ratio, y = stop.pos[1] / 100 * state.height * ratio;
-            if (model !== "spline") {
-                const radius = discRadius(stop) * ratio;
-                if (radius >= 3) {
-                    ctx.setLineDash([3, 3]);
-                    ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-                    ctx.lineWidth = 1;
-                    ctx.beginPath();
-                    ctx.arc(x, y, radius, 0, 2 * Math.PI);
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-                }
-            }
-            ctx.beginPath();
-            ctx.arc(x, y, i === selected ? 4.5 : 3.5, 0, 2 * Math.PI);
-            ctx.lineWidth = 1.5;
-            ctx.strokeStyle = i === selected ? "#0a84ff" : "#fff";
-            ctx.stroke();
-        }
-    }
-}
 for (const radio of document.querySelectorAll("input[name=renderer]")) {
     radio.addEventListener("change", () => {
         state.renderer = radio.value;
@@ -3225,11 +3808,13 @@ let backdropImage = null;
 
 function renderBackdrop() {
     const url = state.backdrop === "puppy" ? PUPPY_IMAGE : state.backdrop === "image" ? backdropImage?.url : null;
-    stage.classList.toggle("checkerboard", state.backdrop === "checkerboard");
-    stage.classList.toggle("image", !!url);
     const backgroundImage = url ? `url("${url}")` : "";
-    if (stage.style.backgroundImage !== backgroundImage)
-        stage.style.backgroundImage = backgroundImage;
+    for (const { stage } of views) {
+        stage.classList.toggle("checkerboard", state.backdrop === "checkerboard");
+        stage.classList.toggle("image", !!url);
+        if (stage.style.backgroundImage !== backgroundImage)
+            stage.style.backgroundImage = backgroundImage;
+    }
     $("backdrop").value = state.backdrop;
     const choosing = state.backdrop === "image";
     $("backdropImageName").hidden = !choosing;
@@ -3290,7 +3875,7 @@ state = decodeState(location.hash.slice(1)) ?? presetState(2);
 writeHash();
 render();
 
-WebGPUFreeformGradientRenderer.create(gpuCanvas).then(renderer => {
+WebGPUFreeformGradientRenderer.create().then(renderer => {
     gpuRenderer = renderer;
     renderer.device.lost.then(info => {
         gpuRenderer = null;

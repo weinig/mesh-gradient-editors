@@ -70,7 +70,7 @@ code { font: 13px ui-monospace, Menlo, monospace; }
 
     <a class="card" href="freeform-gradient-editor.html">
         <h2>freeform-gradient() Editor</h2>
-        <p>Place color stops anywhere, drag them around, and copy the CSS. Colors blend smoothly between the stops with a thin-plate spline. Draws with the browser's own <code>freeform-gradient()</code>, or with a WebGPU renderer ported from WebKit's. Optional overlays show how the spline works: its plane and terms, a cross-section, a 3D view of each component as a surface over the stops, and the fitted coefficients. Two grid models from MeshShader2, biharmonic and harmonic, solve the blend on a grid with mirrored or open edges and a spread for each stop, and all three models can be compared side by side.</p>
+        <p>Place color stops anywhere, drag them around, and copy the CSS. Compares three ways to blend colors between the stops, side by side: the thin-plate spline WebKit draws, and biharmonic and harmonic grids. For each, it shows overshoot and clipping, each stop's influence, the difference from another model, cross-sections and 3D surfaces, and what a spec would need to define.</p>
     </a>
 
     <p>The native renderer needs a WebKit build with the <code>CSSMeshGradientsEnabled</code> or <code>CSSFreeformGradientsEnabled</code> preference on. The WebGPU renderer needs a browser with WebGPU.</p>
