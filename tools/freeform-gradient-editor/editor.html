@@ -1,0 +1,257 @@
+<body>
+<main>
+    <div id="stageScroller">
+        <div id="modelBar" role="group" aria-label="Models">
+            <button data-model="spline">Thin-plate spline</button>
+            <button data-model="biharmonic">Biharmonic grid</button>
+            <button data-model="harmonic">Harmonic grid</button>
+        </div>
+        <div id="views">
+            <figure class="view" data-model="spline">
+                <div class="viewBox">
+                    <div class="stageWrap">
+                        <div class="stage">
+                            <div class="native"></div>
+                            <canvas class="gpu"></canvas>
+                            <canvas class="diff" hidden></canvas>
+                            <div class="stageMessage"></div>
+                            <canvas class="overlay"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="viewDetails">
+                    <figcaption><b>Thin-plate spline</b><span class="modelSummary"></span><span class="note modelStats"></span></figcaption>
+                    <canvas class="plot"></canvas>
+                    <p class="note legend plotNote"></p>
+                    <canvas class="sheet"></canvas>
+                    <pre class="numbers"></pre>
+                    <p class="note modelNote"></p>
+                    <p class="note modelSource"></p>
+                    <p class="note modelSpec"></p>
+                </div>
+            </figure>
+            <figure class="view" data-model="biharmonic">
+                <div class="viewBox">
+                    <div class="stageWrap">
+                        <div class="stage">
+                            <div class="native"></div>
+                            <canvas class="gpu"></canvas>
+                            <canvas class="diff" hidden></canvas>
+                            <div class="stageMessage"></div>
+                            <canvas class="overlay"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="viewDetails">
+                    <figcaption><b>Biharmonic grid</b><span class="modelSummary"></span><span class="note modelStats"></span></figcaption>
+                    <canvas class="plot"></canvas>
+                    <p class="note legend plotNote"></p>
+                    <canvas class="sheet"></canvas>
+                    <pre class="numbers"></pre>
+                    <p class="note modelNote"></p>
+                    <p class="note modelSource"></p>
+                    <p class="note modelSpec"></p>
+                </div>
+            </figure>
+            <figure class="view" data-model="harmonic">
+                <div class="viewBox">
+                    <div class="stageWrap">
+                        <div class="stage">
+                            <div class="native"></div>
+                            <canvas class="gpu"></canvas>
+                            <canvas class="diff" hidden></canvas>
+                            <div class="stageMessage"></div>
+                            <canvas class="overlay"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="viewDetails">
+                    <figcaption><b>Harmonic grid</b><span class="modelSummary"></span><span class="note modelStats"></span></figcaption>
+                    <canvas class="plot"></canvas>
+                    <p class="note legend plotNote"></p>
+                    <canvas class="sheet"></canvas>
+                    <pre class="numbers"></pre>
+                    <p class="note modelNote"></p>
+                    <p class="note modelSource"></p>
+                    <p class="note modelSpec"></p>
+                </div>
+            </figure>
+        </div>
+    </div>
+    <div id="sample"></div>
+    <aside>
+        <section>
+            <h1>freeform-gradient() Editor</h1>
+            <div class="row">
+                <label for="preset">Preset</label>
+                <select id="preset"></select>
+            </div>
+            <p id="presetNote" class="note" hidden></p>
+            <div class="row">
+                <label>Box</label>
+                <input id="width" type="number" min="100" max="2000" step="10" title="Width"> ×
+                <input id="height" type="number" min="100" max="2000" step="10" title="Height"> px
+            </div>
+            <div class="row">
+                <label for="space">Interpolate in</label>
+                <select id="space"></select>
+            </div>
+            <div class="row">
+                <label for="edges">Edges</label>
+                <select id="edges">
+                    <option value="mirrored">Mirrored</option>
+                    <option value="open">Open</option>
+                    <option value="free">Free</option>
+                </select>
+            </div>
+            <div class="row">
+                <label for="gridResolution">Grid</label>
+                <select id="gridResolution"></select>
+                <span class="note">texels on the longer side</span>
+            </div>
+            <div class="row">
+                <label for="pointRadius">Point radius</label>
+                <input id="pointRadius" class="percent" type="number" min="0.1" max="20" step="0.5"> %
+            </div>
+            <div class="row">
+                <label for="hold">Hold stops at</label>
+                <select id="hold">
+                    <option value="discs">Discs</option>
+                    <option value="points">Points</option>
+                </select>
+            </div>
+            <p class="note">Edges, Grid, Point radius and Hold only apply to the biharmonic and harmonic grids. <span id="edgeNote"></span> <span id="holdNote"></span></p>
+            <p id="hueNote" class="note">Hues are moved by whole turns to within half a turn of their circular mean. The hue interpolation method isn't used, since it only describes interpolating between two hues.</p>
+            <div class="row" title="What is drawn behind the box, showing through wherever the gradient is transparent. It is not part of the CSS.">
+                <label for="backdrop">Backdrop</label>
+                <select id="backdrop">
+                    <option value="checkerboard">Checkerboard</option>
+                    <option value="none">None</option>
+                    <option value="puppy">Puppy</option>
+                    <option value="image">Image</option>
+                </select>
+                <span id="backdropImageName" class="note"></span>
+                <button id="chooseBackdropImage" class="small" title="Choose an image, or drop one on the box">Choose…</button>
+                <input id="backdropFile" type="file" accept="image/*" hidden>
+            </div>
+        </section>
+
+        <section>
+            <h2>Rendering</h2>
+            <div class="row">
+                <label><input type="radio" name="renderer" value="native"> Native</label>
+                <label><input type="radio" name="renderer" value="webgpu"> WebGPU</label>
+                <label><input type="checkbox" id="overlayToggle" checked> Overlay</label>
+            </div>
+            <p id="nativeStatus" class="status"></p>
+            <p id="gpuStatus" class="status"></p>
+            <p class="note">Native draws the thin-plate spline's box with the browser's own freeform-gradient(). WebGPU draws every box, and anything other than the colors.</p>
+        </section>
+
+        <section>
+            <h2>Visualize</h2>
+            <p class="note">Drawn in and under each model's box, so the models can be compared. Under each name, Overshoot is how far its colors go past the stops', as a fraction of a component's range, and Clipped is how much of its box is outside the gamut chosen below, the same for everyone who opens the link.</p>
+            <div class="row">
+                <label for="view">Show</label>
+                <select id="view">
+                    <option value="gradient">The colors</option>
+                    <option value="influence">The selected stop's influence</option>
+                    <option value="difference">The difference from another model</option>
+                    <option value="grid">The grids' texels, and the ones the stops hold</option>
+                    <option value="plane">Thin-plate spline: the linear part</option>
+                    <option value="term">Thin-plate spline: the linear part and the selected stop's term</option>
+                    <option value="basis">Thin-plate spline: U(r) around the selected stop</option>
+                </select>
+            </div>
+            <div id="referenceRow" class="row">
+                <label for="reference">Compared with</label>
+                <select id="reference"></select>
+            </div>
+            <p id="viewNote" class="note"></p>
+            <div class="row">
+                <label><input type="checkbox" id="clippingToggle"> Clipping</label>
+                <label><input type="checkbox" id="normalizationToggle"> Normalization</label>
+            </div>
+            <div class="row">
+                <label for="gamut">Clipped against</label>
+                <select id="gamut">
+                    <option value="srgb">sRGB</option>
+                    <option value="display-p3">Display P3</option>
+                    <option value="rec2020">Rec. 2020</option>
+                </select>
+            </div>
+            <p id="clippingNote" class="note">Hatched where a box's colors are outside the gamut chosen above, or its alpha outside 0 to 1. What's drawn is clipped to the canvas's gamut, which depends on the display.</p>
+            <p id="normalizationNote" class="note"></p>
+            <div class="row">
+                <label><input type="checkbox" id="crossSectionToggle"> Cross-section</label>
+                <label><input type="checkbox" id="sheetToggle"> 3D</label>
+                <label><input type="checkbox" id="sampleToggle"> Sample</label>
+                <label><input type="checkbox" id="numbersToggle"> Numbers</label>
+            </div>
+            <p id="sampleNote" class="note">Hover over any box, or tap it on a phone, to see the color there, added up term by term for the thin-plate spline.</p>
+            <div id="crossSectionPanel">
+                <div class="row">
+                    <label for="row">Row</label>
+                    <input id="row" type="range" min="0" max="100" step="1">
+                    <span id="rowValue" class="note"></span>
+                </div>
+                <div class="row">
+                    <label><input type="checkbox" id="otherCurvesToggle"> The other models' curves too, dashed</label>
+                </div>
+                <p id="crossSectionNote" class="note"></p>
+            </div>
+            <div id="sheetPanel">
+                <div class="row">
+                    <label for="sheetComponent">Height</label>
+                    <select id="sheetComponent"></select>
+                </div>
+                <div class="row">
+                    <label for="tilt">Tilt</label>
+                    <input id="tilt" type="range" min="10" max="85" value="40">
+                </div>
+                <p class="note">Each component is its own surface over the box: the height is one component, and the color is the gradient's. Each stop is a peg as tall as its value. The thin-plate spline bends as little as it can through the top of every peg, on an endless plane. The biharmonic grid bends as little as it can too, but inside the box and held flat over each stop's disc. The harmonic grid stretches like a membrane between the discs. All shows every component together. Drag any of them to turn them all.</p>
+            </div>
+            <p id="numbersNote" class="note">The thin-plate spline's fitted coefficients, and each grid's size and solve time.</p>
+        </section>
+
+        <section>
+            <h2 id="stopTitle">Stop</h2>
+            <div class="row">
+                <input id="stopPicker" type="color" title="Pick an sRGB color">
+                <input id="stopText" type="text" spellcheck="false" title="Any CSS color. Missing (none) components are treated as 0 for now.">
+            </div>
+            <div class="row">
+                <label>Position</label>
+                <input id="stopX" class="percent" type="number" step="1" title="Horizontal position, as a percentage of the box's width"> % ×
+                <input id="stopY" class="percent" type="number" step="1" title="Vertical position, as a percentage of the box's height"> %
+            </div>
+            <div class="row" title="The optional / <number> after a stop's position. The draft doesn't define how it affects the colors, so it isn't used yet.">
+                <label for="stopWeight">Weight</label>
+                <input id="stopWeight" type="number" step="0.1" placeholder="none">
+                <span id="stopWeightNote" class="note">Not used yet</span>
+            </div>
+            <div id="stopSpreadRow" class="row" title="Not in CSS: how far past the point radius a stop holds its color in the grid models, as a fraction of half the box's shorter side. The thin-plate spline doesn't use it.">
+                <label for="stopSpread">Spread</label>
+                <input id="stopSpread" type="range" min="0" max="1" step="0.01">
+                <span id="stopSpreadValue" class="note"></span>
+            </div>
+            <div class="row">
+                <button id="addStop" class="small">Add stop</button>
+                <button id="removeStop" class="small">Remove stop</button>
+            </div>
+            <div id="stopList"></div>
+            <p class="note">Drag stops to move them, also outside the box. Double-click the box to add a stop with the color already there. Delete removes the selected stop.</p>
+        </section>
+
+        <section>
+            <h2>CSS</h2>
+            <textarea id="output" readonly spellcheck="false"></textarea>
+            <div class="row">
+                <button id="copyCSS">Copy CSS</button>
+                <button id="copyLink">Copy link</button>
+                <span id="copyStatus" class="note"></span>
+            </div>
+        </section>
+    </aside>
+</main>
+
