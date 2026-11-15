@@ -130,5 +130,6 @@ h3.subhead + .row { margin-top: 4px; }
 .view h4.modelHeading { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 12px 0 2px; }
 .view h4.modelHeading + .note { margin-top: 0; }
 .view .modelAbout { margin-top: 6px; }
+.view .modelAbout[hidden] { display: none; }
 .view .modelAbout ul { margin: 0; padding-left: 18px; }
 .view .modelAbout li { margin: 1px 0; }

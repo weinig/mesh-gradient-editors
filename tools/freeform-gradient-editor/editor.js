@@ -91,7 +91,7 @@ const EDGE_NOTES = {
 const SPREAD_MEANING_NOTES = {
     none: "Spread does nothing here. Each stop fixes its texel.",
     strength: "How firmly each stop holds. A spring pulls the stop's texel toward its color instead of fixing it. A spread of 1 fixes it outright. Less lets the surface pull away, so the color doesn't reach as far. This mostly matters for the harmonic grid. A stop without its own spread uses 0.5.",
-    share: "Its share of the color. Each stop's influence is weighted by its spread, then scaled so they all add up to 1. A stop with more spread claims more of the space around it, and the place where two stops meet moves toward the one with less. A stop without its own spread uses 0.5.",
+    share: "Its share of the color. Each stop's influence is weighted by its spread, then scaled so they all add up to 1. A stop with more spread claims more of the space around it, and the place where two stops meet moves toward the one with less. A stop without its own spread uses 0.5. This only changes the harmonic grid. The biharmonic grid's influences can go negative, and weighting those can tear the gradient apart.",
 };
 
 const HOLD_NOTES = {
@@ -873,7 +873,7 @@ function solveGrid(model, points) {
     const start = performance.now();
     const { columns, rows, index } = factor;
     const values = new Float32Array(columns * rows * 4);
-    if (factor.anchored && sharesBySpread()) {
+    if (factor.anchored && sharesBySpread(model)) {
         // Each stop's influence, weighted by its spread and renormalized, so stops with more spread claim more.
         const shares = influencesOf(factor, points);
         const weights = points.map(point => Math.max(spreadOf(state.stops[point.stop]), 0.001));
@@ -907,15 +907,17 @@ function solveGrid(model, points) {
             }
         }
     }
-    const grid = { columns, rows, origin: factor.origin, texel: factor.texel, values, heldCount: factor.heldCount, factor, milliseconds: performance.now() - start };
+    const grid = { model, columns, rows, origin: factor.origin, texel: factor.texel, values, heldCount: factor.heldCount, factor, milliseconds: performance.now() - start };
     gridCache.set(key, grid);
     if (gridCache.size > 24)
         gridCache.delete(gridCache.keys().next().value);
     return grid;
 }
 
-// With one texel each, spread can set each stop's share of the color instead of its size.
-const sharesBySpread = () => state.hold === "points" && state.spreadMeaning === "share";
+// With one texel each, spread can set each stop's share of the color instead of its size. Only for the harmonic grid:
+// weighting divides by the stops' weighted influences, and the biharmonic grid's can go negative, so that sum can
+// pass through 0 and tear the gradient apart.
+const sharesBySpread = model => model === "harmonic" && state.hold === "points" && state.spreadMeaning === "share";
 
 // Each stop's influence on every texel: one solve with 1 at the stop and 0 at the others, kept with the factor.
 function influencesOf(factor, points) {
@@ -939,7 +941,7 @@ function stopShares(fit, [px, py]) {
             const s = factor.shares[k];
             shares[point.stop] = (s[at(x0, y0)] * (1 - tx) + s[at(x1, y0)] * tx) * (1 - ty) + (s[at(x0, y1)] * (1 - tx) + s[at(x1, y1)] * tx) * ty;
         });
-        if (sharesBySpread()) {
+        if (sharesBySpread(fit.grid.model)) {
             const weighted = shares.map((share, k) => share * Math.max(spreadOf(state.stops[k]), 0.001));
             const total = weighted.reduce((a, b) => a + b, 0);
             if (Math.abs(total) >= 1e-6)
@@ -1505,7 +1507,7 @@ function renderView(view, dpr) {
         if (element.children.length !== list[view.model].length)
             element.replaceChildren(...list[view.model].map(text => Object.assign(document.createElement("li"), { textContent: text })));
     }
-    view.figure.querySelector(".modelAbout").open = state.about;
+    view.figure.querySelector(".modelAbout").hidden = !state.about;
     view.figure.querySelector(".modelSummary").textContent = MODEL_SUMMARIES[view.model];
     const fit = splines[view.model];
     // The parts of the spline are shown in its box, when the Visualize panel shows it.
@@ -2930,7 +2932,7 @@ $("view").addEventListener("change", () => {
     state.view = $("view").value;
     changed();
 });
-const VISUALIZATION_TOGGLES = [["otherCurvesToggle", "otherCurves"], ["clippingToggle", "clipping"], ["normalizationToggle", "normalization"], ["sampleToggle", "sample"], ["crossSectionToggle", "crossSection"], ["sheetToggle", "sheet"], ["numbersToggle", "numbers"]];
+const VISUALIZATION_TOGGLES = [["otherCurvesToggle", "otherCurves"], ["clippingToggle", "clipping"], ["normalizationToggle", "normalization"], ["sampleToggle", "sample"], ["crossSectionToggle", "crossSection"], ["sheetToggle", "sheet"], ["numbersToggle", "numbers"], ["aboutToggle", "about"]];
 for (const [id, key] of VISUALIZATION_TOGGLES) {
     $(id).addEventListener("change", () => {
         state[key] = $(id).checked;
@@ -3052,17 +3054,6 @@ for (const button of document.querySelectorAll("#modelBar button")) {
     });
 }
 
-// Opening or closing About in one column does the same in the others, so they stay lined up.
-for (const view of views) {
-    view.figure.querySelector(".modelAbout").addEventListener("toggle", event => {
-        if (event.target.open === state.about)
-            return;
-        state.about = event.target.open;
-        for (const other of views)
-            other.figure.querySelector(".modelAbout").open = state.about;
-        scheduleHashWrite();
-    });
-}
 $("spreadMeaning").addEventListener("change", () => {
     state.spreadMeaning = $("spreadMeaning").value;
     changed();

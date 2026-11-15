@@ -24,8 +24,7 @@
                     <p class="note legend plotNote"></p>
                     <canvas class="sheet"></canvas>
                     <pre class="numbers"></pre>
-                    <details class="modelAbout">
-                        <summary>About this model</summary>
+                    <div class="modelAbout" hidden>
                         <h4 class="modelHeading">How it works</h4>
                         <p class="note modelNote"></p>
                         <h4 class="modelHeading">Pros</h4>
@@ -36,7 +35,7 @@
                         <p class="note modelSource"></p>
                         <h4 class="modelHeading">What a spec would need</h4>
                         <p class="note modelSpec"></p>
-                    </details>
+                    </div>
                 </div>
             </figure>
             <figure class="view" data-model="biharmonic">
@@ -56,8 +55,7 @@
                     <p class="note legend plotNote"></p>
                     <canvas class="sheet"></canvas>
                     <pre class="numbers"></pre>
-                    <details class="modelAbout">
-                        <summary>About this model</summary>
+                    <div class="modelAbout" hidden>
                         <h4 class="modelHeading">How it works</h4>
                         <p class="note modelNote"></p>
                         <h4 class="modelHeading">Pros</h4>
@@ -68,7 +66,7 @@
                         <p class="note modelSource"></p>
                         <h4 class="modelHeading">What a spec would need</h4>
                         <p class="note modelSpec"></p>
-                    </details>
+                    </div>
                 </div>
             </figure>
             <figure class="view" data-model="harmonic">
@@ -88,8 +86,7 @@
                     <p class="note legend plotNote"></p>
                     <canvas class="sheet"></canvas>
                     <pre class="numbers"></pre>
-                    <details class="modelAbout">
-                        <summary>About this model</summary>
+                    <div class="modelAbout" hidden>
                         <h4 class="modelHeading">How it works</h4>
                         <p class="note modelNote"></p>
                         <h4 class="modelHeading">Pros</h4>
@@ -100,7 +97,7 @@
                         <p class="note modelSource"></p>
                         <h4 class="modelHeading">What a spec would need</h4>
                         <p class="note modelSpec"></p>
-                    </details>
+                    </div>
                 </div>
             </figure>
         </div>
@@ -254,6 +251,7 @@
                 <label><input type="checkbox" id="crossSectionToggle"> Cross-section</label>
                 <label><input type="checkbox" id="sheetToggle"> 3D</label>
                 <label><input type="checkbox" id="numbersToggle"> Numbers</label>
+                <label><input type="checkbox" id="aboutToggle"> About each model</label>
             </div>
             <div id="crossSectionPanel">
                 <div class="row">
