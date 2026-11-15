@@ -24,12 +24,19 @@
                     <p class="note legend plotNote"></p>
                     <canvas class="sheet"></canvas>
                     <pre class="numbers"></pre>
-                    <h4 class="modelHeading">How it works</h4>
-                    <p class="note modelNote"></p>
-                    <h4 class="modelHeading">Where it comes from</h4>
-                    <p class="note modelSource"></p>
-                    <h4 class="modelHeading">What a spec would need</h4>
-                    <p class="note modelSpec"></p>
+                    <details class="modelAbout">
+                        <summary>About this model</summary>
+                        <h4 class="modelHeading">How it works</h4>
+                        <p class="note modelNote"></p>
+                        <h4 class="modelHeading">Pros</h4>
+                        <ul class="note modelPros"></ul>
+                        <h4 class="modelHeading">Cons</h4>
+                        <ul class="note modelCons"></ul>
+                        <h4 class="modelHeading">Where it comes from</h4>
+                        <p class="note modelSource"></p>
+                        <h4 class="modelHeading">What a spec would need</h4>
+                        <p class="note modelSpec"></p>
+                    </details>
                 </div>
             </figure>
             <figure class="view" data-model="biharmonic">
@@ -49,12 +56,19 @@
                     <p class="note legend plotNote"></p>
                     <canvas class="sheet"></canvas>
                     <pre class="numbers"></pre>
-                    <h4 class="modelHeading">How it works</h4>
-                    <p class="note modelNote"></p>
-                    <h4 class="modelHeading">Where it comes from</h4>
-                    <p class="note modelSource"></p>
-                    <h4 class="modelHeading">What a spec would need</h4>
-                    <p class="note modelSpec"></p>
+                    <details class="modelAbout">
+                        <summary>About this model</summary>
+                        <h4 class="modelHeading">How it works</h4>
+                        <p class="note modelNote"></p>
+                        <h4 class="modelHeading">Pros</h4>
+                        <ul class="note modelPros"></ul>
+                        <h4 class="modelHeading">Cons</h4>
+                        <ul class="note modelCons"></ul>
+                        <h4 class="modelHeading">Where it comes from</h4>
+                        <p class="note modelSource"></p>
+                        <h4 class="modelHeading">What a spec would need</h4>
+                        <p class="note modelSpec"></p>
+                    </details>
                 </div>
             </figure>
             <figure class="view" data-model="harmonic">
@@ -74,12 +88,19 @@
                     <p class="note legend plotNote"></p>
                     <canvas class="sheet"></canvas>
                     <pre class="numbers"></pre>
-                    <h4 class="modelHeading">How it works</h4>
-                    <p class="note modelNote"></p>
-                    <h4 class="modelHeading">Where it comes from</h4>
-                    <p class="note modelSource"></p>
-                    <h4 class="modelHeading">What a spec would need</h4>
-                    <p class="note modelSpec"></p>
+                    <details class="modelAbout">
+                        <summary>About this model</summary>
+                        <h4 class="modelHeading">How it works</h4>
+                        <p class="note modelNote"></p>
+                        <h4 class="modelHeading">Pros</h4>
+                        <ul class="note modelPros"></ul>
+                        <h4 class="modelHeading">Cons</h4>
+                        <ul class="note modelCons"></ul>
+                        <h4 class="modelHeading">Where it comes from</h4>
+                        <p class="note modelSource"></p>
+                        <h4 class="modelHeading">What a spec would need</h4>
+                        <p class="note modelSpec"></p>
+                    </details>
                 </div>
             </figure>
         </div>
@@ -102,8 +123,8 @@
                 <label for="space">Interpolate in</label>
                 <select id="space"></select>
             </div>
-            <p id="hueNote" class="note">Hues are moved by whole turns to within half a turn of their circular mean. The hue interpolation method isn't used, since it only describes interpolating between two hues.</p>
-            <div class="row" title="What is drawn behind the box, showing through wherever the gradient is transparent. It is not part of the CSS.">
+            <p id="hueNote" class="note">Each hue is moved by whole turns to within half a turn of the average hue. The hue interpolation method isn't used, because it only says how to go between two hues.</p>
+            <div class="row" title="What shows through where the gradient is transparent. It isn't part of the CSS.">
                 <label for="backdrop">Backdrop</label>
                 <select id="backdrop">
                     <option value="checkerboard">Checkerboard</option>
@@ -127,23 +148,31 @@
             </div>
             <p id="gpuStatus" class="status"></p>
             <h3 class="subhead" title="These settings only change the biharmonic and harmonic grids. The thin-plate spline has no grid.">Biharmonic and harmonic grids</h3>
-            <div class="row" title="How much of the grid each stop covers. The grid models fix each stop's color across what it covers, and solve for every other texel. Hover over the menu for what the current choice does.">
+            <div class="row" title="How much of the grid each stop covers. The grid models fix each stop's color there and work out every other texel from those. Hover over the menu to see what the current choice does.">
                 <label for="hold">Stop size</label>
                 <select id="hold">
                     <option value="points">One texel</option>
                     <option value="discs">A disc</option>
                 </select>
             </div>
-            <div id="defaultSpreadRow" class="row" title="The spread of every stop without its own, from 0 to 1: its disc's radius as a fraction of half the box's shorter side. A stop's own spread is set in its settings below.">
+            <div id="spreadMeaningRow" class="row" title="What a stop's spread does when each stop is one texel. Hover over the menu to see what the current choice does.">
+                <label for="spreadMeaning">Spread sets</label>
+                <select id="spreadMeaning">
+                    <option value="none">Nothing</option>
+                    <option value="strength">How firmly it holds</option>
+                    <option value="share">Its share of the color</option>
+                </select>
+            </div>
+            <div id="defaultSpreadRow" class="row" title="The spread of every stop that doesn't have its own. It goes from 0 to 1 and sets the disc's radius as a fraction of half the box's shorter side. You can give a stop its own spread below.">
                 <label for="defaultSpread">Default spread</label>
                 <input id="defaultSpread" type="number" min="0" max="1" step="0.01">
             </div>
-            <div class="row" title="How many texels the grid has along its longer side. More is closer to the exact solution, and slower to solve; while dragging, the grid has half as many.">
+            <div class="row" title="How many texels the grid has along its longer side. More texels are closer to the exact answer but slower to solve. While you drag, the grid uses half as many.">
                 <label for="gridResolution">Grid</label>
                 <select id="gridResolution"></select>
                 <span class="note">texels on the longer side</span>
             </div>
-            <div class="row" title="What the grid does at its edges. Hover over the menu for what the current choice does.">
+            <div class="row" title="What the grid does at its edges. Hover over the menu to see what the current choice does.">
                 <label for="edges">Edges</label>
                 <select id="edges">
                     <option value="mirrored">Mirrored</option>
@@ -161,15 +190,15 @@
             </div>
             <div class="row">
                 <label>Position</label>
-                <input id="stopX" class="percent" type="number" step="1" title="Horizontal position, as a percentage of the box's width"> % ×
-                <input id="stopY" class="percent" type="number" step="1" title="Vertical position, as a percentage of the box's height"> %
+                <input id="stopX" class="percent" type="number" step="1" title="Horizontal position as a percentage of the box's width"> % ×
+                <input id="stopY" class="percent" type="number" step="1" title="Vertical position as a percentage of the box's height"> %
             </div>
             <div class="row" title="The optional / <number> after a stop's position. The draft doesn't define how it affects the colors, so it isn't used yet.">
                 <label for="stopWeight">Weight</label>
                 <input id="stopWeight" type="number" step="0.1" placeholder="none">
                 <span id="stopWeightNote" class="note">Not used yet</span>
             </div>
-            <div id="stopSpreadRow" class="row" title="Not in CSS: this stop's disc radius, as a fraction of half the box's shorter side, when Stop size is A disc. Without its own, a stop uses Default spread. The thin-plate spline doesn't use it.">
+            <div id="stopSpreadRow" class="row" title="This isn't part of CSS. When Stop size is A disc, it's this stop's disc radius as a fraction of half the box's shorter side. When Stop size is One texel, Spread sets decides what it does. A stop without its own spread uses the default. The thin-plate spline ignores it.">
                 <label for="stopSpread">Spread</label>
                 <input id="stopSpread" type="range" min="0" max="1" step="0.01">
                 <span id="stopSpreadValue" class="note"></span>
@@ -180,12 +209,12 @@
                 <button id="removeStop" class="small">Remove stop</button>
             </div>
             <div id="stopList"></div>
-            <p class="note">Drag stops to move them, also outside the box. Double-click the box to add a stop with the color already there. Delete removes the selected stop.</p>
+            <p class="note">Drag a stop to move it, even outside the box. Double-click the box to add a stop with the color already there. Press Delete to remove the selected stop.</p>
         </section>
 
         <section>
             <h2>Visualize</h2>
-            <p class="note">Ways to see how each model works and how they differ, drawn in, under and over each model's box.</p>
+            <p class="note">Ways to see how each model works and how the models differ.</p>
 
             <h3 class="subhead">In each box</h3>
             <div class="row">
@@ -214,7 +243,7 @@
             <div class="row">
                 <label><input type="checkbox" id="clippingToggle"> Hatch what's outside the gamut</label>
             </div>
-            <p id="clippingNote" class="note">Hatched where a box's colors are outside the gamut chosen under Gamut, below, or its alpha is outside 0 to 1.</p>
+            <p id="clippingNote" class="note">Hatching marks where a box's colors fall outside the gamut chosen under Gamut, or where its alpha falls outside 0 to 1.</p>
             <div id="normalizationRow" class="row">
                 <label><input type="checkbox" id="normalizationToggle"> The thin-plate spline's normalization</label>
             </div>
@@ -250,14 +279,14 @@
             </div>
             <div id="numbersPanel" hidden>
                 <table id="numbersTable"></table>
-                <p class="note">How far each model's colors go past the stops' colors, in Oklab: lighter than the lightest stop, darker than the darkest, or more colorful than the most colorful. A ring on each box marks where it goes furthest. Then how much of each box is outside the gamut chosen under Gamut. Under each box are the thin-plate spline's fitted coefficients, or the grid's size and solve time.</p>
+                <p class="note">The table shows how far each model's colors go past the stops' colors, measured in Oklab. That's lighter than the lightest stop, darker than the darkest, or more colorful than the most colorful. A ring on each box marks where it goes furthest. The table also shows how much of each box is outside the gamut chosen under Gamut. Under each box you'll find the thin-plate spline's fitted coefficients, or the grid's size and solve time.</p>
             </div>
 
             <h3 class="subhead">Over each box</h3>
             <div class="row">
                 <label><input type="checkbox" id="sampleToggle"> Sample the color under the pointer</label>
             </div>
-            <p id="sampleNote" class="note">Hover over any box, or tap it on a phone, to see the color there and each stop's share of it, and for the thin-plate spline, its terms.</p>
+            <p id="sampleNote" class="note">Hover over a box, or tap it on a phone, to see the color there and each stop's share of it. For the thin-plate spline you'll also see its terms.</p>
 
             <h3 class="subhead">Gamut</h3>
             <div class="row">
@@ -268,7 +297,7 @@
                     <option value="rec2020">Rec. 2020</option>
                 </select>
             </div>
-            <p class="note">For the hatching, the Numbers table and the difference view, so they're the same for everyone who opens the link, whatever their display.</p>
+            <p class="note">The hatching, the Numbers table and the difference view all measure against this gamut. That way they look the same for everyone who opens the link, whatever their display.</p>
         </section>
 
         <section>

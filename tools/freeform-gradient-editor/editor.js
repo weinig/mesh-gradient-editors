@@ -65,37 +65,56 @@ function cssText() {
 const VIEWS = ["gradient", "influence", "difference", "grid", "plane", "term", "basis"];
 
 const MODEL_NOTES = {
-    spline: "A stiff sheet over thin pegs, on an endless plane: exact at the stops, and past them it carries on in a straight line.",
-    biharmonic: "A stiff sheet, ∆²u = 0, like the thin-plate spline's, but cut to the box, and held at each stop: at the one texel it's in, or with Stop size set to A disc, across a flat-topped disc. Solved on a grid and filtered up.",
-    harmonic: "A stretched membrane, ∆u = 0, held at the stops in the same way: a tent with a crease at each stop, which never passes the stops' colors. Solved on a grid and filtered up.",
+    spline: "Picture a stiff sheet laid over thin pegs on an endless plane. It passes exactly through every stop, and beyond them it keeps going in a straight line.",
+    biharmonic: "The same kind of stiff sheet as the thin-plate spline (∆²u = 0), but cut to the size of the box. Each stop holds it at the texel the stop is in, or across a flat disc when Stop size is A disc. It's solved on a grid and then smoothed up to full size.",
+    harmonic: "A stretched rubber membrane (∆u = 0), held at the stops the same way. It forms a tent with a crease at each stop, and it never goes past the stops' colors. It's solved on a grid and then smoothed up to full size.",
 };
 // What a spec would need to define for each model, for engines to agree.
 const MODEL_SPECS = {
-    spline: "A spec would define the formula and its normalization, and what happens when stops coincide or are on a line. It doesn't depend on resolution, so engines can agree to rounding.",
-    biharmonic: "A spec would also define the boundary condition at the box's edges, each stop's disc size, and how accurate the solve must be, since each engine would solve on its own grid.",
-    harmonic: "A spec would define the same as for the biharmonic grid, and couldn't do without a disc size: a membrane can't be held up by points, so as the discs shrink, the colors tend to one flat average.",
+    spline: "A spec would define the formula, how positions are normalized, and what happens when stops share a position or sit on a line. Nothing depends on resolution, so engines can match each other apart from rounding.",
+    biharmonic: "On top of that, a spec would define what happens at the box's edges, how big each stop is, and how accurate the solve has to be. Each engine would solve on its own grid, so they'd only match to within that accuracy.",
+    harmonic: "A spec would need the same things as for the biharmonic grid, and it couldn't leave out the stop size. A membrane can't be held up by single points, so as stops shrink, the colors drift toward one flat average.",
 };
 
-// Where each model comes from.
+// Where each model comes from, with links to the papers.
 const MODEL_SOURCES = {
-    spline: "From Duchon's thin-plate splines (1976), brought to graphics by Bookstein, \u201cPrincipal Warps\u201d (1989): a closed form, summed over the whole plane.",
-    biharmonic: "From Finch, Snyder and Hoppe, \u201cFreeform Vector Graphics with Controlled Thin-Plate Splines\u201d (2011), which minimizes the same thin-plate energy on a pixel grid, as here. They hold each stop at a point rather than a disc, and let the grid grow past the view until it holds every stop, with a free edge.",
-    harmonic: "From Orzan et al., \u201cDiffusion Curves: A Vector Representation for Smooth-Shaded Images\u201d (2008), whose colors spread from curves by a Poisson equation: Laplace's, as here, everywhere but on the curves.",
+    spline: "Duchon's <a href=\"https://doi.org/10.1007/BFb0086566\" target=\"_blank\" rel=\"noopener\">thin-plate splines</a> (1977), brought to graphics by Bookstein in <a href=\"https://doi.org/10.1109/34.24792\" target=\"_blank\" rel=\"noopener\">“Principal Warps”</a> (1989). It's a closed-form formula over the whole plane.",
+    biharmonic: "Finch, Snyder and Hoppe, <a href=\"https://hhoppe.com/proj/freeform/\" target=\"_blank\" rel=\"noopener\">“Freeform Vector Graphics with Controlled Thin-Plate Splines”</a> (2011, <a href=\"https://doi.org/10.1145/2070781.2024200\" target=\"_blank\" rel=\"noopener\">DOI</a>). They minimize the same thin-plate energy on a pixel grid, as this does. They hold each stop at a single point. Their grid grows past the view until it holds every stop, and its edge is left free.",
+    harmonic: "Orzan et al., <a href=\"https://inria.hal.science/inria-00274768\" target=\"_blank\" rel=\"noopener\">“Diffusion Curves: A Vector Representation for Smooth-Shaded Images”</a> (2008, <a href=\"https://doi.org/10.1145/1399504.1360691\" target=\"_blank\" rel=\"noopener\">DOI</a>). There, colors spread out from curves by solving a Poisson equation. Away from the curves that's Laplace's equation, which is what this solves.",
 };
 const EDGE_NOTES = {
-    mirrored: "Mirrored edges: the grid is the box, and the surface meets each side level, as against a mirror.",
-    open: "Open edges: the grid reaches half the box's size past each side, so its walls are far from the stops. Its texels are larger for it.",
-    free: "Free edges, as Finch et al. do: the grid grows until it holds every stop, plus a quarter of the box on each side, and the biharmonic grid minimizes the thin-plate energy with nothing holding its edges, so it comes close to the thin-plate spline. For the harmonic grid, a free edge is the same as a mirrored one.",
+    mirrored: "The grid is exactly the box. The surface meets each side flat, as if a mirror stood there.",
+    open: "The grid reaches half the box's size past each side, so its edges are far from the stops. Its texels are bigger as a result.",
+    free: "This follows Finch et al. The grid grows until it holds every stop, plus a quarter of the box on each side, and nothing holds its edges. The biharmonic grid uses the full thin-plate energy, so it comes close to the thin-plate spline. For the harmonic grid this is the same as Mirrored.",
 };
+// What a stop's spread sets when each stop is one texel.
+const SPREAD_MEANING_NOTES = {
+    none: "Spread does nothing here. Each stop fixes its texel.",
+    strength: "How firmly each stop holds. A spring pulls the stop's texel toward its color instead of fixing it. A spread of 1 fixes it outright. Less lets the surface pull away, so the color doesn't reach as far. This mostly matters for the harmonic grid. A stop without its own spread uses 0.5.",
+    share: "Its share of the color. Each stop's influence is weighted by its spread, then scaled so they all add up to 1. A stop with more spread claims more of the space around it, and the place where two stops meet moves toward the one with less. A stop without its own spread uses 0.5.",
+};
+
 const HOLD_NOTES = {
-    discs: "A disc: every texel within a stop's disc takes its color. A disc's radius is the stop's spread, or Default spread, times half the box's shorter side.",
-    points: "One texel: each stop fixes just the texel it's in, as Finch et al. do. Change Grid to see which model needs discs: the biharmonic grid barely changes, while the harmonic grid flattens toward one color as the texels shrink.",
+    discs: "Every texel inside a stop's disc takes its color. The disc's radius is the stop's spread, or the default spread, times half the box's shorter side.",
+    points: "Each stop fixes only the texel it's in, as Finch et al. do. Change Grid to see which model needs a stop size. The biharmonic grid barely changes, and the harmonic grid fades toward one color as the texels get smaller.",
 };
+// What's good and bad about each model, in short phrases.
+const MODEL_PROS = {
+    spline: ["Exact, so every engine can match", "The smoothest possible blend", "Nothing to tune", "Cheap to draw, and WebKit already has it", "Stops can go anywhere, even outside the box"],
+    biharmonic: ["As smooth as the spline", "Overshoots much less", "Works with single-point stops", "Drawing cost doesn't grow with the number of stops", "Leaves room for curves and other controls later"],
+    harmonic: ["Never overshoots", "Each stop's influence stays between 0 and 1", "Simple, with fast solvers that suit the GPU"],
+};
+const MODEL_CONS = {
+    spline: ["Overshoots, often far", "Runs away in straight lines past the stops", "Every stop affects the whole box", "Needs special cases for one stop, stops on a line, and stops in the same place", "Cost grows with the number of stops"],
+    biharmonic: ["Needs a solver, so engines only match approximately", "What happens at the edges changes the result", "Still overshoots somewhat", "Solves again whenever stops move or the box changes size"],
+    harmonic: ["Makes a tent at each stop", "Needs a stop size that CSS doesn't have", "Depends on the grid, the solver and the edges", "Can look flat between stops"],
+};
+
 // What sets each model apart, in a line.
 const MODEL_SUMMARIES = {
-    spline: "Exact and smooth, but overshoots between the stops and keeps going past them.",
-    biharmonic: "As smooth as the spline, but stops at the box's edges, so it overshoots less. Needs a solver.",
-    harmonic: "Never overshoots, but makes a tent at each stop, and depends on the discs' size.",
+    spline: "Exact and smooth, but it overshoots between the stops and keeps going past them.",
+    biharmonic: "As smooth as the spline, but it stops at the box's edges, so it overshoots less. It needs a solver.",
+    harmonic: "Never overshoots, but it makes a tent at each stop and depends on the stops' size.",
 };
 
 // MARK: - URL fragment
@@ -118,12 +137,14 @@ function encodeState() {
         md: state.model,
         ed: state.edges,
         ho: state.hold,
+        sm: state.spreadMeaning,
         rf: state.reference,
         oc: state.otherCurves ? 1 : 0,
         gr: state.gridResolution,
         ds: state.defaultSpread,
         ms: state.models,
         nb: state.numbers ? 1 : 0,
+        ab: state.about ? 1 : 0,
         cl: state.clipping ? 1 : 0,
         gm: state.gamut,
         gmap: state.gamutMapping,
@@ -163,6 +184,7 @@ function decodeState(text) {
             overlay: data.o !== 0,
             backdrop: BACKDROPS.includes(data.k) ? data.k : "checkerboard",
             numbers: data.nb === 1,
+            about: data.ab === 1,
             clipping: data.cl === 1,
             gamut: ["srgb", "display-p3", "rec2020"].includes(data.gm) ? data.gm : "display-p3",
             gamutMapping: data.gmap === "clip" ? "clip" : "map",
@@ -177,6 +199,7 @@ function decodeState(text) {
             edges: ["open", "free"].includes(data.ed) ? data.ed : "mirrored",
             // Links from before the choice existed had discs.
             hold: data.ho === "points" ? "points" : "discs",
+            spreadMeaning: ["strength", "share"].includes(data.sm) ? data.sm : "none",
             reference: MODELS.includes(data.rf) ? data.rf : "spline",
             otherCurves: data.oc === 1,
             gridResolution: GRID_RESOLUTIONS.includes(data.gr) ? data.gr : 64,
@@ -215,7 +238,7 @@ function scheduleHashWrite() {
 const PRESETS = [
     {
         name: "Four corners",
-        note: "A stop in each corner. The thin-plate spline and the biharmonic grid nearly agree here, and the harmonic grid sags toward the stops' average between them. Compare this with the presets below.",
+        note: "A stop in each corner. The thin-plate spline and the biharmonic grid nearly agree here. The harmonic grid sags toward the average color between the corners. Compare this with the presets below.",
         state: {
             width: 600, height: 400, space: "srgb",
             stops: [makeStop("#ff375f", 0, 0), makeStop("#ffd60a", 100, 0), makeStop("#0a84ff", 0, 100), makeStop("#30d158", 100, 100)],
@@ -223,7 +246,7 @@ const PRESETS = [
     },
     {
         name: "Three stops",
-        note: "Three stops, so the thin-plate spline is a plane plus three terms. Turn on the influence view to see each stop's reach in each model.",
+        note: "With three stops, the thin-plate spline is a plane plus three terms. Turn on the influence view to see how far each stop reaches in each model.",
         state: {
             width: 600, height: 400, space: "oklab",
             stops: [makeStop("#ff3b30", 20, 30), makeStop("#007aff", 75, 25), makeStop("#34c759", 50, 80)],
@@ -231,7 +254,7 @@ const PRESETS = [
     },
     {
         name: "Scattered sunset",
-        note: "Six stops spread around the box, a typical gradient. The thin-plate spline overshoots and clips a little between them; the grids less.",
+        note: "Six stops spread around the box, like a typical gradient. The thin-plate spline overshoots a little between them and clips. The grids do less of both.",
         state: {
             width: 600, height: 400, space: "oklab",
             stops: [
@@ -242,7 +265,7 @@ const PRESETS = [
     },
     {
         name: "Overshoot",
-        note: "Black and white close together. The thin-plate spline overshoots far past both and clips most of the box; the biharmonic grid less, and the harmonic grid can't.",
+        note: "Black and white, close together. The thin-plate spline overshoots far past both and clips most of the box. The biharmonic grid does less of that, and the harmonic grid can't do it at all.",
         state: {
             width: 600, height: 400, space: "oklab",
             stops: [makeStop("black", 44, 50), makeStop("white", 56, 50), makeStop("#808080", 10, 20), makeStop("#808080", 90, 80)],
@@ -250,7 +273,7 @@ const PRESETS = [
     },
     {
         name: "Hues around a circle (oklch)",
-        note: "Six hues in a ring, interpolated in oklch. Hues are moved by whole turns to within half a turn of their circular mean, and where a model overshoots, the hue keeps turning.",
+        note: "Six hues in a ring, mixed in oklch. Each hue is moved by whole turns to within half a turn of the average hue. Where a model overshoots, the hue keeps turning.",
         state: {
             width: 400, height: 400, space: "oklch",
             stops: [0, 60, 120, 180, 240, 300].map((hue, i) => {
@@ -261,7 +284,7 @@ const PRESETS = [
     },
     {
         name: "Translucent",
-        note: "Stops with different alphas. The colors are premultiplied, so a nearly transparent stop adds little color, and alpha past 0 or 1 is clipped.",
+        note: "Stops with different alphas. Colors are premultiplied, so a nearly transparent stop adds little color. Alpha below 0 or above 1 is clipped.",
         state: {
             width: 600, height: 400, space: "oklab",
             stops: [makeStop("rgb(255 59 48 / 0.9)", 15, 20), makeStop("rgb(0 122 255 / 0.1)", 85, 25), makeStop("rgb(52 199 89 / 0.8)", 50, 85)],
@@ -269,7 +292,7 @@ const PRESETS = [
     },
     {
         name: "Missing components",
-        note: "Stops with missing (none) components, which are treated as 0 for now.",
+        note: "Stops with missing (none) components. For now these are treated as 0.",
         state: {
             width: 600, height: 400, space: "srgb",
             stops: [makeStop("rgb(none 255 0)", 15, 20), makeStop("rgb(255 0 none)", 85, 20), makeStop("rgb(0 none 255)", 50, 85)],
@@ -277,7 +300,7 @@ const PRESETS = [
     },
     {
         name: "Stops on a line",
-        note: "Stops on a line. The thin-plate spline's linear part only changes along it, so the colors are the same across it, out to the edges.",
+        note: "Stops on a line. The thin-plate spline's linear part only changes along that line, so the colors stay the same across it, all the way to the edges.",
         state: {
             width: 600, height: 400, space: "oklab",
             stops: [makeStop("#ff375f", 15, 30), makeStop("#ffd60a", 50, 50), makeStop("#0a84ff", 85, 70)],
@@ -285,7 +308,7 @@ const PRESETS = [
     },
     {
         name: "Stops in one corner",
-        note: "All the stops in one corner. Past them the thin-plate spline carries on in straight lines, far out of gamut by the far corner; the grids level off at the box's edges, and the harmonic grid tends to the stops' average.",
+        note: "All the stops are in one corner. Past them, the thin-plate spline keeps going in straight lines and is far out of gamut by the opposite corner. The grids level off at the box's edges, and the harmonic grid drifts toward the stops' average.",
         state: {
             width: 600, height: 400, space: "oklab",
             stops: [makeStop("#ff3b30", 8, 10), makeStop("#0a84ff", 30, 14), makeStop("#ffd60a", 12, 34), makeStop("#30d158", 32, 36)],
@@ -293,7 +316,7 @@ const PRESETS = [
     },
     {
         name: "Thin box",
-        note: "A wide, short box, so the grids' edges are close to every stop. Try each Edges choice: here they differ the most.",
+        note: "A wide, short box, so the grids' edges are close to every stop. Try each Edges choice, since this is where they differ most.",
         state: {
             width: 800, height: 120, space: "oklab",
             stops: [makeStop("#ff375f", 12, 50), makeStop("#0a84ff", 40, 20), makeStop("#ffd60a", 65, 80), makeStop("#30d158", 90, 40)],
@@ -301,7 +324,7 @@ const PRESETS = [
     },
     {
         name: "Stretched sunset",
-        note: "The sunset's stops in a wide, short box. Positions are percentages, so every model stretches with the box; the grids' discs are sized from its shorter side. Change Box to watch each model change shape.",
+        note: "The sunset's stops in a wide, short box. Positions are percentages, so every model stretches with the box. The grids' discs are sized from its shorter side. Change Box to watch each model change shape.",
         state: {
             width: 900, height: 220, space: "oklab",
             stops: [
@@ -312,7 +335,7 @@ const PRESETS = [
     },
     {
         name: "Stops just outside the box",
-        note: "The magenta and green stops are just outside the box, as CSS allows. The thin-plate spline uses them wherever they are. With Edges set to Mirrored, the grids end at the box, so a stop outside it fixes nothing unless its disc reaches in, and the grids ignore these two. Set Edges to Open or Free, and the grids reach past the box and take them in.",
+        note: "The magenta and green stops sit just outside the box, which CSS allows. The thin-plate spline uses them wherever they are. With Edges set to Mirrored, the grids stop at the box. A stop outside it fixes nothing unless its disc reaches in, so the grids ignore these two. Set Edges to Open or Free, and the grids reach past the box and include them.",
         state: {
             width: 600, height: 400, space: "oklab",
             stops: [makeStop("#ff3b30", 20, 30), makeStop("#0a84ff", 70, 25), makeStop("#ffd60a", 45, 78), makeStop("#e040fb", 104, 55), makeStop("#30d158", -6, 92)],
@@ -320,7 +343,7 @@ const PRESETS = [
     },
     {
         name: "Stops with spread",
-        note: "Three of the stops have a spread, which only matters when Stop size is A disc. Switch Stop size: with discs, each holds its color across its disc, and the harmonic grid's tents become plateaus; with one texel, the harmonic grid sinks toward the stops' average between them. Then, with one texel, change Grid: the harmonic grid flattens further as the texels shrink, and the biharmonic grid barely changes.",
+        note: "Three of the stops have a spread. With Stop size set to A disc, each one holds its color across its disc, and the harmonic grid's tents turn into plateaus. With One texel, the harmonic grid sinks toward the stops' average between them, and Spread sets can give the spread a meaning there too. Try changing Grid with One texel as well. The harmonic grid flattens further as the texels shrink, and the biharmonic grid barely changes.",
         state: {
             width: 600, height: 400, space: "oklab",
             stops: [makeStop("#ff3b30", 22, 30, null, 0.3), makeStop("#0a84ff", 75, 28, null, 0.2), makeStop("#ffd60a", 48, 78, null, 0.25), makeStop("#30d158", 88, 80)],
@@ -328,7 +351,7 @@ const PRESETS = [
     },
     {
         name: "One stop",
-        note: "A single stop: every model draws its color everywhere.",
+        note: "A single stop. Every model draws its color everywhere.",
         state: {
             width: 600, height: 400, space: "srgb",
             stops: [makeStop("#5e5ce6", 50, 50)],
@@ -349,6 +372,7 @@ function presetState(index) {
         sheet: state?.sheet ?? false,
         sheetComponent: state?.sheetComponent ?? 0,
         numbers: state?.numbers ?? false,
+        about: state?.about ?? false,
         clipping: state?.clipping ?? false,
         gamut: state?.gamut ?? "display-p3",
         gamutMapping: state?.gamutMapping ?? "map",
@@ -356,6 +380,7 @@ function presetState(index) {
         models: state?.models ?? ["spline"],
         edges: state?.edges ?? "mirrored",
         hold: state?.hold ?? "points",
+        spreadMeaning: state?.spreadMeaning ?? "none",
         reference: state?.reference ?? "spline",
         otherCurves: state?.otherCurves ?? false,
         gridResolution: state?.gridResolution ?? 64,
@@ -586,7 +611,7 @@ const factorCache = new Map();
 function gridFactor(model, positions, spreads) {
     // Dragging solves at half the resolution, to keep up.
     const resolution = drag ? Math.max(24, state.gridResolution / 2) : state.gridResolution;
-    const key = JSON.stringify([model, resolution, state.edges, state.hold, state.width, state.height, positions, spreads]);
+    const key = JSON.stringify([model, resolution, state.edges, state.hold, state.spreadMeaning, state.width, state.height, positions, spreads]);
     const cached = factorCache.get(key);
     if (cached)
         return cached;
@@ -687,13 +712,25 @@ function gridFactor(model, positions, spreads) {
     // The discs, or with points, only the texel each stop is in. A texel held by more than one stop takes the later.
     const held = new Int32Array(count).fill(-1);
     const shorter = Math.min(state.width, state.height);
+    // With one texel each, spread can set how firmly a stop holds its texel: by a spring, instead of fixing it. A spread
+    // of 1 fixes it. A spring's stiffness k = 2π·s / (1 − s) makes the stop pull on a membrane as a fixed texel would
+    // if it were exp(−(1 − s) / s) times as big, so a spread of 0.5 is about a third as big.
+    const firmness = state.hold === "points" && state.spreadMeaning === "strength";
+    const springTexel = [], springStop = [], springStiffness = [];
     positions.forEach(([px, py], k) => {
         const radius = state.hold === "points" ? 0 : spreads[k] * 0.5 * shorter;
         // A stop on the grid's right or bottom edge, as at 100%, holds the texel at that edge.
         const cx = Math.min(Math.floor((px - domain.x) / texel[0]), px <= domain.x + domain.width ? columns - 1 : columns);
         const cy = Math.min(Math.floor((py - domain.y) / texel[1]), py <= domain.y + domain.height ? rows - 1 : rows);
-        if (cx >= 0 && cx < columns && cy >= 0 && cy < rows)
-            held[index(cx, cy)] = k;
+        if (cx >= 0 && cx < columns && cy >= 0 && cy < rows) {
+            const spread = clamp(spreads[k], 0.001, 1);
+            if (firmness && spread < 0.999) {
+                springTexel.push(index(cx, cy));
+                springStop.push(k);
+                springStiffness.push(2 * Math.PI * spread / (1 - spread));
+            } else
+                held[index(cx, cy)] = k;
+        }
         if (!radius)
             return;
         const x0 = Math.max(0, Math.floor((px - radius - domain.x) / texel[0])), x1 = Math.min(columns - 1, Math.ceil((px + radius - domain.x) / texel[0]));
@@ -708,6 +745,7 @@ function gridFactor(model, positions, spreads) {
     let heldCount = 0;
     for (let i = 0; i < count; ++i)
         heldCount += held[i] >= 0;
+    springTexel.forEach((i, n) => add(i, i, springStiffness[n]));
 
     // Held texels move to the right-hand side, keeping the matrix symmetric. What moves is kept, to apply to colors.
     const couplingTexel = [], couplingStop = [], couplingValue = [];
@@ -750,6 +788,8 @@ function gridFactor(model, positions, spreads) {
 
     const factor = {
         key, columns, rows, origin: [domain.x, domain.y], texel, count, band, stride, index, matrix, held, heldCount,
+        springTexel: Int32Array.from(springTexel), springStop: Int32Array.from(springStop), springStiffness: Float64Array.from(springStiffness),
+        anchored: heldCount + springTexel.length,
         couplingTexel: Int32Array.from(couplingTexel), couplingStop: Int32Array.from(couplingStop), couplingValue: Float64Array.from(couplingValue),
         milliseconds: performance.now() - start,
     };
@@ -762,9 +802,14 @@ function gridFactor(model, positions, spreads) {
 // Solves for each of `channels` values per stop, given as values[stop][channel], all in one pass over the factor.
 // Returns a solution per channel, in the factor's texel order.
 function gridSolve(factor, values, channels) {
-    const { count, band, stride, matrix, held, couplingTexel, couplingStop, couplingValue } = factor;
+    const { count, band, stride, matrix, held, couplingTexel, couplingStop, couplingValue, springTexel, springStop, springStiffness } = factor;
     // Channel c of texel i is at i * channels + c.
     const x = new Float64Array(count * channels);
+    for (let n = 0; n < springTexel.length; ++n) {
+        const row = values[springStop[n]], o = springTexel[n] * channels, stiffness = springStiffness[n];
+        for (let c = 0; c < channels; ++c)
+            x[o + c] += stiffness * row[c];
+    }
     for (let n = 0; n < couplingTexel.length; ++n) {
         const row = values[couplingStop[n]], o = couplingTexel[n] * channels, value = couplingValue[n];
         for (let c = 0; c < channels; ++c)
@@ -828,7 +873,32 @@ function solveGrid(model, points) {
     const start = performance.now();
     const { columns, rows, index } = factor;
     const values = new Float32Array(columns * rows * 4);
-    if (factor.heldCount) {
+    if (factor.anchored && sharesBySpread()) {
+        // Each stop's influence, weighted by its spread and renormalized, so stops with more spread claim more.
+        const shares = influencesOf(factor, points);
+        const weights = points.map(point => Math.max(spreadOf(state.stops[point.stop]), 0.001));
+        for (let y = 0; y < rows; ++y) {
+            for (let x = 0; x < columns; ++x) {
+                const i = index(x, y);
+                let total = 0;
+                const color = [0, 0, 0, 0];
+                points.forEach((point, k) => {
+                    const share = weights[k] * shares[k][i];
+                    total += share;
+                    for (let c = 0; c < 4; ++c)
+                        color[c] += share * point.color[c];
+                });
+                // Where weighted influences cancel out, as they can where they go negative, the plain sum is used.
+                if (Math.abs(total) < 1e-6) {
+                    total = 1;
+                    color.fill(0);
+                    points.forEach((point, k) => point.color.forEach((v, c) => color[c] += shares[k][i] * v));
+                }
+                for (let c = 0; c < 4; ++c)
+                    values[(y * columns + x) * 4 + c] = color[c] / total;
+            }
+        }
+    } else if (factor.anchored) {
         const solutions = gridSolve(factor, points.map(point => point.color), 4);
         for (let c = 0; c < 4; ++c) {
             for (let y = 0; y < rows; ++y) {
@@ -844,15 +914,23 @@ function solveGrid(model, points) {
     return grid;
 }
 
+// With one texel each, spread can set each stop's share of the color instead of its size.
+const sharesBySpread = () => state.hold === "points" && state.spreadMeaning === "share";
+
+// Each stop's influence on every texel: one solve with 1 at the stop and 0 at the others, kept with the factor.
+function influencesOf(factor, points) {
+    factor.shares ??= gridSolve(factor, points.map((_, k) => points.map((_, j) => j === k ? 1 : 0)), points.length);
+    return factor.shares;
+}
+
 // Each stop's share of the color at a point, for the model in `fit`: the stops' influences there. They add up to 1.
 function stopShares(fit, [px, py]) {
     const shares = new Array(state.stops.length).fill(0);
     if (fit.grid) {
         const { factor } = fit.grid;
-        if (!factor.heldCount)
+        if (!factor.anchored)
             return shares;
-        // One solve for each stop, with 1 at it and 0 at the others, kept with the factor.
-        factor.shares ??= gridSolve(factor, fit.points.map((_, k) => fit.points.map((_, j) => j === k ? 1 : 0)), fit.points.length);
+        influencesOf(factor, fit.points);
         const fx = clamp((px - factor.origin[0]) / factor.texel[0] - 0.5, 0, factor.columns - 1);
         const fy = clamp((py - factor.origin[1]) / factor.texel[1] - 0.5, 0, factor.rows - 1);
         const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(x0 + 1, factor.columns - 1), y1 = Math.min(y0 + 1, factor.rows - 1);
@@ -861,6 +939,12 @@ function stopShares(fit, [px, py]) {
             const s = factor.shares[k];
             shares[point.stop] = (s[at(x0, y0)] * (1 - tx) + s[at(x1, y0)] * tx) * (1 - ty) + (s[at(x0, y1)] * (1 - tx) + s[at(x1, y1)] * tx) * ty;
         });
+        if (sharesBySpread()) {
+            const weighted = shares.map((share, k) => share * Math.max(spreadOf(state.stops[k]), 0.001));
+            const total = weighted.reduce((a, b) => a + b, 0);
+            if (Math.abs(total) >= 1e-6)
+                return weighted.map(share => share / total);
+        }
         return shares;
     }
     fit.shareFits ??= fit.points.map(point => fitThinPlateSpline(point.stop));
@@ -880,7 +964,8 @@ function gridColor(grid, [px, py]) {
 }
 
 // A stop's spread: its own, or the default. A disc's radius is its spread times half the box's shorter side.
-const spreadOf = stop => stop.spread ?? state.defaultSpread;
+// With one texel each, a stop without its own spread has 0.5, the middle of how firmly or how big a share.
+const spreadOf = stop => stop.spread ?? (state.hold === "points" ? 0.5 : state.defaultSpread);
 
 // The radius of a stop's disc, in CSS pixels.
 function discRadius(stop) {
@@ -1412,8 +1497,15 @@ function renderView(view, dpr) {
     view.stage.style.width = `${width}px`;
     view.stage.style.height = `${height}px`;
     view.figure.querySelector(".modelNote").textContent = MODEL_NOTES[view.model];
-    view.figure.querySelector(".modelSource").textContent = MODEL_SOURCES[view.model];
+    // The sources hold links to the papers, so they're HTML.
+    view.figure.querySelector(".modelSource").innerHTML = MODEL_SOURCES[view.model];
     view.figure.querySelector(".modelSpec").textContent = MODEL_SPECS[view.model];
+    for (const [selector, list] of [[".modelPros", MODEL_PROS], [".modelCons", MODEL_CONS]]) {
+        const element = view.figure.querySelector(selector);
+        if (element.children.length !== list[view.model].length)
+            element.replaceChildren(...list[view.model].map(text => Object.assign(document.createElement("li"), { textContent: text })));
+    }
+    view.figure.querySelector(".modelAbout").open = state.about;
     view.figure.querySelector(".modelSummary").textContent = MODEL_SUMMARIES[view.model];
     const fit = splines[view.model];
     // The parts of the spline are shown in its box, when the Visualize panel shows it.
@@ -1509,7 +1601,7 @@ function numbersTable() {
     const percent = value => value < 0.001 ? "none" : value < 0.005 ? "under 1%" : `${Math.round(value * 100)}%`;
     const rows = [
         ["Goes past the stops' colors (Oklab)", shown.map(view => past(view.stats))],
-        [`Outside ${gamut}, so ${state.gamutMapping === "map" ? "gamut mapped" : "clipped"}`, shown.map(view => `${percent(view.stats.clippedFraction)} of the box`)],
+        [`Outside ${gamut} (${state.gamutMapping === "map" ? "gamut mapped" : "clipped"})`, shown.map(view => `${percent(view.stats.clippedFraction)} of the box`)],
     ];
     if (state.view === "difference") {
         rows.push([`Differs from the ${MODEL_NAMES[referenceModel()].toLowerCase()} (ΔE OK, average / largest)`,
@@ -2154,13 +2246,13 @@ function drawVisualization(ctx, width, height) {
 }
 
 const VIEW_NOTES = {
-    difference: "Each box but the one compared with is white where the two models agree and purple where they differ, darkest at a difference of 0.15 in Oklab (ΔE OK) or more. Differences under about 0.02 are hard to see. Colors are compared as they're seen: clipped to the gamut chosen for clipping, and scaled by their alpha.",
-    grid: "The grid each grid model is solved on, with the texels the stops fix outlined in their colors. Every other texel is solved for: in the harmonic grid, each is the average of its four neighbors; in the biharmonic grid, each one's Laplacian is the average of its neighbors'. The thin-plate spline has no grid.",
-    influence: "Every model is linear in the stops' colors, so each point's color is a weighted sum of them. This shows the selected stop's weight: orange where it adds its color, white where it adds none, blue where it takes it away, and dark red past 1. The thin-plate spline's goes negative and keeps growing outside the box. The biharmonic grid's has negative lobes too, and can pass 1, but ends at the box's edges. The harmonic grid's is never below 0 or above 1.",
+    difference: "Each box except the one you compare with turns white where the two models agree and purple where they differ. It's darkest at a difference of 0.15 in Oklab (ΔE OK) or more. Differences under about 0.02 are hard to see. Colors are compared as they're seen, fitted to the chosen gamut and weighted by alpha.",
+    grid: "The grid each grid model is solved on, with the texels the stops fix outlined in their colors. Every other texel is worked out from those. In the harmonic grid, each one is the average of its four neighbors. In the biharmonic grid, each one's Laplacian is the average of its neighbors' Laplacians. The thin-plate spline has no grid.",
+    influence: "Every model mixes the stops' colors in fixed proportions, so each point's color is a weighted sum of them. This shows the selected stop's weight. It's orange where the stop adds its color, white where it adds none, blue where it takes color away, and dark red above 1. The thin-plate spline's weight goes negative and keeps growing outside the box. The biharmonic grid's has negative patches too and can go above 1, but it ends at the box's edges. The harmonic grid's stays between 0 and 1.",
     gradient: "The gradient each model draws from the same stops.",
-    plane: "The thin-plate spline is f(p) = a + b·x + c·y + Σ wᵢ·U(|p − pᵢ|), for each component, with the weights wᵢ and a, b and c solved for together so that f is each stop's color at its position. This is just its linear part, a + b·x + c·y: the tilt the stops' terms are added to. On its own it reaches few of the stops' colors.",
-    term: "The linear part, bent by only the selected stop's term, wᵢ·U(r). Where a weight is positive the term lowers that component near the stop and raises it far away; where it is negative, the opposite. It changes sign at r = 1, the dashed circle, since U(1) = 0.",
-    basis: "U(r) = r²·log r, the shape a thin plate takes when pushed at one point. Every stop's term is this shape around the stop, scaled by its weights. It is 0 at the stop and at r = 1 (the dashed circle), below 0 between them (blue), and grows past r = 1 (orange). r is measured in normalized units.",
+    plane: "The thin-plate spline is f(p) = a + b·x + c·y + Σ wᵢ·U(|p − pᵢ|) for each component. The weights wᵢ and a, b and c are solved together, so f matches each stop's color at its position. This view shows only the linear part, a + b·x + c·y. It's the tilt that the stops' terms are added to, and on its own it reaches few of the stops' colors.",
+    term: "The linear part plus only the selected stop's term, wᵢ·U(r). Where the weight is positive, the term lowers that component near the stop and raises it far away. Where it's negative, it does the opposite. It changes sign at r = 1, the dashed circle, because U(1) = 0.",
+    basis: "U(r) = r²·log r is the shape a thin plate takes when you push it at one point. Every stop's term is this shape, centered on the stop and scaled by its weights. It's 0 at the stop and at r = 1, the dashed circle. It dips below 0 in between (blue) and grows past r = 1 (orange). r is in normalized units.",
 };
 
 // Which models each Show view is for. The others' boxes show the gradient.
@@ -2204,14 +2296,14 @@ function updateVisualizationControls() {
     $("clippingToggle").closest("label").title = showingGradient ? "" : "Only over the gradient";
     $("clippingNote").hidden = !state.clipping;
     $("clippingNote").textContent = showingGradient
-        ? "Hatched where a box's colors are outside the gamut chosen under Gamut, below, or its alpha is outside 0 to 1."
+        ? "Hatching marks where a box's colors fall outside the gamut chosen under Gamut, or where its alpha falls outside 0 to 1."
         : "The hatching is only drawn over the gradient.";
     $("sheetComponent").closest(".row").hidden = state.view === "influence" || state.view === "basis";
     $("sheetNote").textContent = (state.view === "influence"
-        ? "The selected stop's influence as a surface over each box, with each stop a peg at 0, or at 1 for the selected one."
+        ? "The selected stop's influence as a surface over each box. Each stop is a peg at height 0, and the selected one is at 1."
         : state.view === "basis"
-        ? "U(r) as a surface over the thin-plate spline's box; the others show their components."
-        : "Each component as a surface over each box, colored with the gradient, with each stop a peg as tall as its value.") + " Drag any of them to turn them all.";
+        ? "U(r) as a surface over the thin-plate spline's box. The other boxes show their components."
+        : "Each component as a surface over each box, colored with the gradient. Each stop is a peg as tall as its value.") + " Drag any of them to turn them all.";
     $("gamut").value = state.gamut;
     $("gamutMapping").value = state.gamutMapping;
     const preset = matchingPreset();
@@ -2221,8 +2313,8 @@ function updateVisualizationControls() {
     $("crossSectionNote").textContent = state.view === "influence"
         ? "The selected stop's influence along the row. Dots are the stops on the row."
         : state.view === "basis"
-        ? "U(r) along the row, under the thin-plate spline's box; the others show their components."
-        : "Each component along the row, premultiplied, and scaled so the dashed lines are the ends of its range. Dots are the stops on the row.";
+        ? "U(r) along the row under the thin-plate spline's box. The other boxes show their components."
+        : "Each component along the row, premultiplied. The dashed lines mark the ends of each component's range. Dots are the stops on the row.";
     $("row").value = state.row;
     $("rowValue").textContent = `${state.row}%`;
     $("tilt").value = Math.round(sheetTilt * 180 / Math.PI);
@@ -2231,9 +2323,9 @@ function updateVisualizationControls() {
     const normalization = $("normalizationNote");
     normalization.hidden = !state.normalization || !spline;
     if (!normalization.hidden) {
-        let text = `The spline is fitted with the stops' positions moved so their centroid is at (0, 0), and scaled so the farthest is at a distance of 1, here ${+spline.scale.toFixed(1)}px. This changes nothing but keeps the numbers in the solve similar in size.`;
+        let text = `The spline is fitted after moving the stops so their center is at (0, 0), and scaling them so the farthest one is at a distance of 1, here ${+spline.scale.toFixed(1)}px. This doesn't change the result. It keeps the numbers in the solve a similar size.`;
         if (spline.terms.length === 2)
-            text += " The stops are on a line, so the linear part is a + b·t, along it: a tilt across it would be undetermined.";
+            text += " The stops are on a line, so the linear part is a + b·t along that line. A tilt across it couldn't be worked out.";
         else if (spline.terms.length === 1)
             text += " With only one stop, the linear part is a constant, a.";
         normalization.textContent = text;
@@ -2284,7 +2376,7 @@ function drawPlot() {
         curves = [{ color: `rgb(${ink})`, values: Array.from({ length: samples + 1 }, (_, i) => interpolatedColor(spline, [xAt(i), rowY])[0]) }];
         low = -0.15;
         high = 1.15;
-        activeView.plotNote.innerHTML = `<span><b style="background: currentColor"></b>Stop ${selected + 1}'s influence; dashed at 0 and 1</span>`;
+        activeView.plotNote.innerHTML = `<span><b style="background: currentColor"></b>Stop ${selected + 1}'s influence, with dashed lines at 0 and 1</span>`;
     } else if (state.view === "basis") {
         const center = selectedCenter(currentSpline);
         curves = center ? [{ color: `rgb(${ink})`, values: Array.from({ length: samples + 1 }, (_, i) => radialBasisAt(spline, center, [xAt(i), rowY])) }] : [];
@@ -2789,7 +2881,7 @@ function updateCoefficients() {
     const spline = currentSpline;
     if (spline.grid) {
         const grid = spline.grid;
-        activeView.numbers.textContent = `${state.model} grid, ${grid.columns}×${grid.rows} texels of ${grid.texel.map(v => v.toFixed(1)).join("×")}px, ${state.edges} edges\n${grid.heldCount} texels fixed by the stops${state.hold === "points" ? "" : "' discs"}\nfactored in ${grid.factor.milliseconds.toFixed(0)} ms, then solved for the colors in ${grid.milliseconds.toFixed(0)} ms`;
+        activeView.numbers.textContent = `${state.model} grid, ${grid.columns}×${grid.rows} texels of ${grid.texel.map(v => v.toFixed(1)).join("×")}px, ${state.edges} edges\n${grid.heldCount} texels fixed by the stops${state.hold === "points" ? "" : "' discs"}${grid.factor.springTexel.length ? `, ${grid.factor.springTexel.length} held by springs` : ""}\nfactored in ${grid.factor.milliseconds.toFixed(0)} ms, then solved for the colors in ${grid.milliseconds.toFixed(0)} ms`;
         return;
     }
     const info = components();
@@ -2879,6 +2971,9 @@ function updateControls() {
     $("hold").value = state.hold;
     $("hold").title = HOLD_NOTES[state.hold];
     $("defaultSpreadRow").hidden = state.hold !== "discs";
+    $("spreadMeaningRow").hidden = state.hold !== "points";
+    $("spreadMeaning").value = state.spreadMeaning;
+    $("spreadMeaning").title = SPREAD_MEANING_NOTES[state.spreadMeaning];
     $("overlayToggle").checked = state.overlay;
     updateVisualizationControls();
 
@@ -2896,9 +2991,10 @@ function updateControls() {
     if (document.activeElement !== $("stopWeight"))
         $("stopWeight").value = stop.weight ?? "";
     $("stopSpread").value = spreadOf(stop);
-    const spreadUsed = gridModel && state.hold === "discs";
+    const spreadUsed = gridModel && (state.hold === "discs" || state.spreadMeaning !== "none");
     $("stopSpread").disabled = !spreadUsed;
-    $("stopSpreadValue").textContent = spreadOf(stop).toFixed(2) + (stop.spread === null ? ", the default" : "") + (spreadUsed ? "" : ", only used when Stop size is A disc");
+    const spreadNotes = [...(stop.spread === null ? ["the default"] : []), ...(spreadUsed ? [] : ["not used now"])];
+    $("stopSpreadValue").textContent = spreadOf(stop).toFixed(2) + (spreadNotes.length ? ` (${spreadNotes.join(", ")})` : "");
     $("stopSpreadDefault").hidden = stop.spread === null;
     $("removeStop").disabled = state.stops.length < 2;
 
@@ -2956,6 +3052,21 @@ for (const button of document.querySelectorAll("#modelBar button")) {
     });
 }
 
+// Opening or closing About in one column does the same in the others, so they stay lined up.
+for (const view of views) {
+    view.figure.querySelector(".modelAbout").addEventListener("toggle", event => {
+        if (event.target.open === state.about)
+            return;
+        state.about = event.target.open;
+        for (const other of views)
+            other.figure.querySelector(".modelAbout").open = state.about;
+        scheduleHashWrite();
+    });
+}
+$("spreadMeaning").addEventListener("change", () => {
+    state.spreadMeaning = $("spreadMeaning").value;
+    changed();
+});
 $("hold").addEventListener("change", () => {
     state.hold = $("hold").value;
     changed();
