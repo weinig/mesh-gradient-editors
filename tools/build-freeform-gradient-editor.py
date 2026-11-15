@@ -286,6 +286,7 @@ aside[hidden], .row[hidden] { display: none; }
                 <label for="preset">Preset</label>
                 <select id="preset"></select>
             </div>
+            <p id="presetNote" class="note" hidden></p>
             <div class="row">
                 <label>Box</label>
                 <input id="width" type="number" min="100" max="2000" step="10" title="Width"> ×
@@ -349,7 +350,7 @@ aside[hidden], .row[hidden] { display: none; }
 
         <section>
             <h2>Visualize</h2>
-            <p class="note">Drawn in and under each model's box, so the models can be compared. Under each name, Overshoot is how far its colors go past the stops', as a fraction of a component's range, and Clipped is how much of its box is outside the canvas's gamut.</p>
+            <p class="note">Drawn in and under each model's box, so the models can be compared. Under each name, Overshoot is how far its colors go past the stops', as a fraction of a component's range, and Clipped is how much of its box is outside the gamut chosen below, the same for everyone who opens the link.</p>
             <div class="row">
                 <label for="view">Show</label>
                 <select id="view">
@@ -371,7 +372,15 @@ aside[hidden], .row[hidden] { display: none; }
                 <label><input type="checkbox" id="clippingToggle"> Clipping</label>
                 <label><input type="checkbox" id="normalizationToggle"> Normalization</label>
             </div>
-            <p id="clippingNote" class="note">Hatched where a box's colors are outside the canvas's gamut, or its alpha outside 0 to 1, and are clipped.</p>
+            <div class="row">
+                <label for="gamut">Clipped against</label>
+                <select id="gamut">
+                    <option value="srgb">sRGB</option>
+                    <option value="display-p3">Display P3</option>
+                    <option value="rec2020">Rec. 2020</option>
+                </select>
+            </div>
+            <p id="clippingNote" class="note">Hatched where a box's colors are outside the gamut chosen above, or its alpha outside 0 to 1. What's drawn is clipped to the canvas's gamut, which depends on the display.</p>
             <p id="normalizationNote" class="note"></p>
             <div class="row">
                 <label><input type="checkbox" id="crossSectionToggle"> Cross-section</label>
@@ -578,6 +587,7 @@ function encodeState() {
         ms: state.models,
         nb: state.numbers ? 1 : 0,
         cl: state.clipping ? 1 : 0,
+        gm: state.gamut,
         sp: state.stops.some(stop => stop.spread) ? state.stops.map(stop => stop.spread) : undefined,
         p: state.stops.map(stop => stop.weight === null ? [stop.color, ...stop.pos] : [stop.color, ...stop.pos, stop.weight]),
     };
@@ -606,6 +616,7 @@ function decodeState(text) {
             backdrop: BACKDROPS.includes(data.k) ? data.k : "checkerboard",
             numbers: data.nb === 1,
             clipping: data.cl === 1,
+            gamut: ["srgb", "display-p3", "rec2020"].includes(data.gm) ? data.gm : "display-p3",
             view: VIEWS.includes(data.vw) ? data.vw : "gradient",
             normalization: data.n === 1,
             crossSection: data.x === 1,
@@ -654,6 +665,7 @@ function scheduleHashWrite() {
 const PRESETS = [
     {
         name: "Four corners",
+        note: "A stop in each corner. The thin-plate spline and the biharmonic grid nearly agree here, and the harmonic grid sags toward the stops' average between them. Compare this with the presets below.",
         state: {
             width: 600, height: 400, space: "srgb",
             stops: [makeStop("#ff375f", 0, 0), makeStop("#ffd60a", 100, 0), makeStop("#0a84ff", 0, 100), makeStop("#30d158", 100, 100)],
@@ -661,6 +673,7 @@ const PRESETS = [
     },
     {
         name: "Three stops",
+        note: "Three stops, so the thin-plate spline is a plane plus three terms. Turn on the influence view to see each stop's reach in each model.",
         state: {
             width: 600, height: 400, space: "oklab",
             stops: [makeStop("#ff3b30", 20, 30), makeStop("#007aff", 75, 25), makeStop("#34c759", 50, 80)],
@@ -668,6 +681,7 @@ const PRESETS = [
     },
     {
         name: "Scattered sunset",
+        note: "Six stops spread around the box, a typical gradient. The thin-plate spline overshoots and clips a little between them; the grids less.",
         state: {
             width: 600, height: 400, space: "oklab",
             stops: [
@@ -677,16 +691,16 @@ const PRESETS = [
         },
     },
     {
-        // Close stops with very different colors make the spline overshoot, and the colors are clamped.
         name: "Overshoot",
+        note: "Black and white close together. The thin-plate spline overshoots far past both and clips most of the box; the biharmonic grid less, and the harmonic grid can't.",
         state: {
             width: 600, height: 400, space: "oklab",
             stops: [makeStop("black", 44, 50), makeStop("white", 56, 50), makeStop("#808080", 10, 20), makeStop("#808080", 90, 80)],
         },
     },
     {
-        // Hues are moved to within half a turn of their circular mean.
         name: "Hues around a circle (oklch)",
+        note: "Six hues in a ring, interpolated in oklch. Hues are moved by whole turns to within half a turn of their circular mean, and where a model overshoots, the hue keeps turning.",
         state: {
             width: 400, height: 400, space: "oklch",
             stops: [0, 60, 120, 180, 240, 300].map((hue, i) => {
@@ -697,29 +711,58 @@ const PRESETS = [
     },
     {
         name: "Translucent",
+        note: "Stops with different alphas. The colors are premultiplied, so a nearly transparent stop adds little color, and alpha past 0 or 1 is clipped.",
         state: {
             width: 600, height: 400, space: "oklab",
             stops: [makeStop("rgb(255 59 48 / 0.9)", 15, 20), makeStop("rgb(0 122 255 / 0.1)", 85, 25), makeStop("rgb(52 199 89 / 0.8)", 50, 85)],
         },
     },
     {
-        // WebKit treats missing components as 0 for now.
         name: "Missing components",
+        note: "Stops with missing (none) components, which are treated as 0 for now.",
         state: {
             width: 600, height: 400, space: "srgb",
             stops: [makeStop("rgb(none 255 0)", 15, 20), makeStop("rgb(255 0 none)", 85, 20), makeStop("rgb(0 none 255)", 50, 85)],
         },
     },
     {
-        // With stops on a line, the linear part only varies along it.
         name: "Stops on a line",
+        note: "Stops on a line. The thin-plate spline's linear part only changes along it, so the colors are the same across it, out to the edges.",
         state: {
             width: 600, height: 400, space: "oklab",
             stops: [makeStop("#ff375f", 15, 30), makeStop("#ffd60a", 50, 50), makeStop("#0a84ff", 85, 70)],
         },
     },
     {
+        name: "Stops in one corner",
+        note: "All the stops in one corner. Past them the thin-plate spline carries on in straight lines, far out of gamut by the far corner; the grids level off at the box's edges, and the harmonic grid tends to the stops' average.",
+        state: {
+            width: 600, height: 400, space: "oklab",
+            stops: [makeStop("#ff3b30", 8, 10), makeStop("#0a84ff", 30, 14), makeStop("#ffd60a", 12, 34), makeStop("#30d158", 32, 36)],
+        },
+    },
+    {
+        name: "Thin box",
+        note: "A wide, short box, so the grids' edges are close to every stop. Try each Edges choice: here they differ the most.",
+        state: {
+            width: 800, height: 120, space: "oklab",
+            stops: [makeStop("#ff375f", 12, 50), makeStop("#0a84ff", 40, 20), makeStop("#ffd60a", 65, 80), makeStop("#30d158", 90, 40)],
+        },
+    },
+    {
+        name: "Stretched sunset",
+        note: "The sunset's stops in a wide, short box. Positions are percentages, so every model stretches with the box; the grids' discs are sized from its shorter side. Change Box to watch each model change shape.",
+        state: {
+            width: 900, height: 220, space: "oklab",
+            stops: [
+                makeStop("#1a1446", 10, 8), makeStop("#5b2a86", 70, 12), makeStop("#e0457b", 30, 50),
+                makeStop("#ff8a3d", 80, 60), makeStop("#ffd166", 45, 92), makeStop("#2e1760", 95, 95),
+            ],
+        },
+    },
+    {
         name: "One stop",
+        note: "A single stop: every model draws its color everywhere.",
         state: {
             width: 600, height: 400, space: "srgb",
             stops: [makeStop("#5e5ce6", 50, 50)],
@@ -742,6 +785,7 @@ function presetState(index) {
         sheetComponent: state?.sheetComponent ?? 0,
         numbers: state?.numbers ?? false,
         clipping: state?.clipping ?? false,
+        gamut: state?.gamut ?? "display-p3",
         model: state?.model ?? "spline",
         models: state?.models ?? ["spline"],
         edges: state?.edges ?? "mirrored",
@@ -1079,7 +1123,9 @@ function gridFactor(model, positions, spreads) {
     const shorter = Math.min(state.width, state.height);
     positions.forEach(([px, py], k) => {
         const radius = state.hold === "points" ? 0 : (state.pointRadius / 100 + spreads[k] * 0.5) * shorter;
-        const cx = Math.floor((px - domain.x) / texel[0]), cy = Math.floor((py - domain.y) / texel[1]);
+        // A stop on the grid's right or bottom edge, as at 100%, holds the texel at that edge.
+        const cx = Math.min(Math.floor((px - domain.x) / texel[0]), px <= domain.x + domain.width ? columns - 1 : columns);
+        const cy = Math.min(Math.floor((py - domain.y) / texel[1]), py <= domain.y + domain.height ? rows - 1 : rows);
         if (cx >= 0 && cx < columns && cy >= 0 && cy < rows)
             held[index(cx, cy)] = k;
         if (!radius)
@@ -1617,7 +1663,7 @@ function defaultRenderer() {
 
 for (const space of SPACES)
     $("space").add(new Option(space, space));
-$("preset").add(new Option("Choose a preset…", ""));
+$("preset").add(new Option("Custom", ""));
 PRESETS.forEach((preset, index) => $("preset").add(new Option(preset.name, String(index))));
 
 let renderScheduled = false;
@@ -1762,7 +1808,7 @@ function gamutStats(fit) {
     const colors = fit.points.map(point => point.color);
     const low = [0, 1, 2, 3].map(k => Math.min(...colors.map(c => c[k])));
     const high = [0, 1, 2, 3].map(k => Math.max(...colors.map(c => c[k])));
-    const outputSpace = gpuRenderer?.outputSpace ?? "srgb";
+    const outputSpace = state.gamut;
     // Coarser while dragging, to keep up.
     const columns = drag ? STATS_COLUMNS / 2 : STATS_COLUMNS, rows = Math.max(1, Math.round(columns * state.height / state.width));
     const clipped = new Uint8Array(columns * rows);
@@ -2057,16 +2103,20 @@ function drawDifference(view) {
     }
     const ctx = canvas.getContext("2d");
     const image = ctx.createImageData(columns, rows);
+    // What's seen: each color clipped to the gamut the clipping is measured against, in Oklab, with its alpha.
     const oklab = (color, hueIndex) => {
         const c = unpremultipliedColor(color, hueIndex);
-        return [...fromXYZ("oklab", toXYZ(state.space, c.slice(0, 3).map(v => Number.isNaN(v) ? 0 : v))), clamp(c[3], 0, 1)];
+        const rgb = toOutput({ space: state.space, c: c.slice(0, 3), alpha: c[3] }, state.gamut);
+        return [...fromXYZ("oklab", toXYZ(state.gamut, rgb.slice(0, 3))), clamp(c[3], 0, 1)];
     };
     let total = 0, largest = 0;
     for (let j = 0; j < rows; ++j) {
         for (let i = 0; i < columns; ++i) {
             const p = [(i + 0.5) / columns * state.width, (j + 0.5) / rows * state.height];
             const a = oklab(interpolatedColor(fit, p), fit.hueIndex), b = oklab(interpolatedColor(other, p), other.hueIndex);
-            const difference = Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2], a[3] - b[3]);
+            // A color matters as much as it shows, so the colors' difference is scaled by their alpha.
+            const alpha = (a[3] + b[3]) / 2;
+            const difference = Math.hypot(alpha * (a[0] - b[0]), alpha * (a[1] - b[1]), alpha * (a[2] - b[2]), a[3] - b[3]);
             total += difference;
             largest = Math.max(largest, difference);
             const t = Math.sqrt(clamp(difference / 0.15, 0, 1));
@@ -2319,7 +2369,7 @@ function drawVisualization(ctx, width, height) {
 }
 
 const VIEW_NOTES = {
-    difference: "Each box but the one compared with is white where the two models agree and purple where they differ, darkest at a difference of 0.15 in Oklab (ΔE OK) or more. Differences under about 0.02 are hard to see.",
+    difference: "Each box but the one compared with is white where the two models agree and purple where they differ, darkest at a difference of 0.15 in Oklab (ΔE OK) or more. Differences under about 0.02 are hard to see. Colors are compared as they're seen: clipped to the gamut chosen for clipping, and scaled by their alpha.",
     grid: "The grid each grid model is solved on, with the texels the stops hold outlined in their colors. Every other texel is solved for: in the harmonic grid, each is the average of its four neighbors; in the biharmonic grid, each one's Laplacian is the average of its neighbors'. The thin-plate spline has no grid.",
     influence: "Every model is linear in the stops' colors, so each point's color is a weighted sum of them. This shows the selected stop's weight: orange where it adds its color, white where it adds none, blue where it takes it away, and dark red past 1. The thin-plate spline's goes negative and keeps growing outside the box. The biharmonic grid's has negative lobes too, and can pass 1, but ends at the box's edges. The harmonic grid's is never below 0 or above 1.",
     gradient: "For the thin-plate spline, f(p) = a + b·x + c·y + Σ wᵢ·U(|p − pᵢ|), for each component. The weights wᵢ and a, b and c are solved for together, so that f is each stop's color at its position, and the terms add no tilt of their own: Σ wᵢ = Σ wᵢ·xᵢ = Σ wᵢ·yᵢ = 0.",
@@ -2346,6 +2396,11 @@ function updateVisualizationControls() {
     $("sheetPanel").hidden = !state.sheet;
     $("numbersNote").hidden = !state.numbers;
     $("clippingNote").hidden = !state.clipping;
+    $("gamut").value = state.gamut;
+    const preset = matchingPreset();
+    $("preset").value = preset < 0 ? "" : String(preset);
+    $("presetNote").textContent = preset < 0 ? "" : PRESETS[preset].note ?? "";
+    $("presetNote").hidden = !$("presetNote").textContent;
     $("crossSectionNote").textContent = state.view === "influence"
         ? "The selected stop's influence along the row, in each box. Dots are the stops on the row."
         : "Each component along the row, premultiplied, and scaled so the dashed lines are the ends of its range. Dots are the stops on the row.";
@@ -2944,6 +2999,10 @@ function updateCoefficients() {
 
 // MARK: Visualize controls
 
+$("gamut").addEventListener("change", () => {
+    state.gamut = $("gamut").value;
+    changed();
+});
 $("reference").addEventListener("change", () => {
     state.reference = $("reference").value;
     changed();
@@ -3100,12 +3159,18 @@ $("overlayToggle").addEventListener("change", () => {
 });
 $("preset").addEventListener("change", () => {
     if ($("preset").value === "")
-        return;
+        return updateControls();
     state = presetState(Number($("preset").value));
     selected = 0;
-    $("preset").value = "";
     changed();
 });
+
+// The preset the gradient still matches, by its box, color space and stops, or -1 once anything there has changed.
+function matchingPreset() {
+    const describe = ({ width, height, space, stops }) => JSON.stringify([width, height, space, stops.map(stop => [stop.color, ...stop.pos, stop.weight ?? null, stop.spread ?? 0])]);
+    const current = describe(state);
+    return PRESETS.findIndex(preset => describe(preset.state) === current);
+}
 
 $("stopPicker").addEventListener("input", () => {
     state.stops[selected].color = $("stopPicker").value;
