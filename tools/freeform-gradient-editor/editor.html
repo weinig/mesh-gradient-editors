@@ -155,9 +155,13 @@
             <div id="spreadMeaningRow" class="row" title="What a stop's spread does when each stop is one texel. Hover over the menu to see what the current choice does.">
                 <label for="spreadMeaning">Spread sets</label>
                 <select id="spreadMeaning">
-                    <option value="none">Nothing</option>
-                    <option value="strength">How firmly it holds</option>
-                    <option value="share">Its share of the color</option>
+                    <optgroup label="Both grids">
+                        <option value="none">Nothing</option>
+                        <option value="strength">How firmly it holds</option>
+                    </optgroup>
+                    <optgroup label="Harmonic grid only">
+                        <option value="share">Its share of the color</option>
+                    </optgroup>
                 </select>
             </div>
             <div id="defaultSpreadRow" class="row" title="The spread of every stop that doesn't have its own. It goes from 0 to 1 and sets the disc's radius as a fraction of half the box's shorter side. You can give a stop its own spread below.">

@@ -2974,6 +2974,8 @@ function updateControls() {
     $("hold").title = HOLD_NOTES[state.hold];
     $("defaultSpreadRow").hidden = state.hold !== "discs";
     $("spreadMeaningRow").hidden = state.hold !== "points";
+    // Sharing by spread is offered when the harmonic grid, the one model it changes, is on.
+    $("spreadMeaning").querySelector('option[value="share"]').disabled = !state.models.includes("harmonic");
     $("spreadMeaning").value = state.spreadMeaning;
     $("spreadMeaning").title = SPREAD_MEANING_NOTES[state.spreadMeaning];
     $("overlayToggle").checked = state.overlay;
