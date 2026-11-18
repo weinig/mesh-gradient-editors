@@ -277,7 +277,7 @@ function gradientData(model, influence = false) {
     }
     const average = [0, 1, 2, 3].map(k => colors.length ? colors.reduce((sum, c) => sum + c[k], 0) / colors.length : 0);
     return {
-        space: influence ? spaceIndex("srgb-linear") : spaceIndex(state.space), resolution: (drag && drag.kind !== "section") || adjusting ? Math.min(state.resolution, 256) : state.resolution, model,
+        space: influence ? spaceIndex("srgb-linear") : spaceIndex(state.space), resolution: state.resolution, model,
         isEmpty: !points.length && !segments.length, average, points, segments, lines, hasTwoSidedLines: false,
         isOpaque: colors.every(c => c[3] >= 1),
     };
@@ -397,8 +397,6 @@ let selection = null;
 // The line being drawn, by index, which clicks in Lines add stops to the end of.
 let drawing = null;
 let drag = null;
-// Whether a slider is being moved.
-let adjusting = false;
 
 const subtract = (a, b) => [a[0] - b[0], a[1] - b[1]];
 
@@ -797,12 +795,7 @@ for (const id of ["opacity", "spread"]) {
     $(id).addEventListener("input", () => {
         if (selection === null)
             return;
-        adjusting = true;
         state.stops[selection][id] = Number($(id).value);
-        changed();
-    });
-    $(id).addEventListener("change", () => {
-        adjusting = false;
         changed();
     });
 }

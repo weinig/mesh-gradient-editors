@@ -343,8 +343,7 @@ function offsetPieces(flat, distance, closed) {
 }
 
 // The gradient as MeshShader2's renderer takes it: each piece of each curve a segment with its two sides' colors,
-// and each curve's own pieces, so it knows where open ends are. While something's being dragged, the grid is at most
-// 256 texels across, to keep up.
+// and each curve's own pieces, so it knows where open ends are.
 //
 // A curve's strength is how firmly its segments hold their colors, its cube, since the solve barely gives at all above
 // a weight of 0.3. FIXME: Only the harmonic model takes it. Held less than fully, a curve's jump makes the biharmonic
@@ -382,7 +381,7 @@ function gradientData(model, influence = false) {
     }
     const average = [0, 1, 2, 3].map(k => colors.length ? colors.reduce((sum, c) => sum + c[k], 0) / colors.length : 0);
     return {
-        space: influence ? spaceIndex("srgb-linear") : spaceIndex(state.space), resolution: (drag && drag.kind !== "section") || adjusting ? Math.min(state.resolution, 256) : state.resolution, model,
+        space: influence ? spaceIndex("srgb-linear") : spaceIndex(state.space), resolution: state.resolution, model,
         isEmpty: !segments.length, average, points: [], segments, strengths, lines,
         hasTwoSidedLines: segments.some((_, i) => i % 23 === 22 && segments[i] !== 0), isOpaque: colors.every(c => c[3] >= 1),
     };
@@ -670,8 +669,6 @@ let tool = "select";
 // The selected curve, by index, and its selected node, if any.
 let selection = null;
 let drag = null;
-// Whether a slider is being moved.
-let adjusting = false;
 // The curve the pen is adding nodes to.
 let penCurve = null;
 // The colors new curves take: left, or inside, first.
@@ -1202,12 +1199,7 @@ for (const id of ["strength", "blur"]) {
         const curve = selection && state.curves[selection.curve];
         if (!curve)
             return;
-        adjusting = true;
         curve[id] = Number($(id).value);
-        changed();
-    });
-    $(id).addEventListener("change", () => {
-        adjusting = false;
         changed();
     });
 }
