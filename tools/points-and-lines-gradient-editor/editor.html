@@ -1,0 +1,98 @@
+<body>
+<main>
+    <nav id="toolbar" aria-label="Draw">
+        <button data-mode="points" title="Points: click to add a stop" aria-label="Points"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="8" r="3" fill="currentColor"/><circle cx="17" cy="7" r="3" fill="currentColor"/><circle cx="11" cy="17" r="3" fill="currentColor"/></svg></button>
+        <button data-mode="lines" title="Lines: click to add stops along a line" aria-label="Lines"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17C8 5 15 21 20 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4" cy="17" r="2.6" fill="currentColor"/><circle cx="12" cy="13" r="2.6" fill="currentColor"/><circle cx="20" cy="8" r="2.6" fill="currentColor"/></svg></button>
+    </nav>
+    <div id="stageScroller">
+        <div id="topBar">
+            <div id="modelBar" role="group" aria-label="Models">
+                <button data-model="biharmonic">Biharmonic</button>
+                <button data-model="harmonic">Harmonic</button>
+            </div>
+        </div>
+        <div id="views">
+            <figure class="view" data-model="biharmonic">
+                <div class="stage">
+                    <canvas class="gpu"></canvas>
+                    <canvas class="overlay"></canvas>
+                </div>
+                <figcaption><b>Biharmonic</b><span class="note">A stiff sheet held at the stops: smooth everywhere, overshooting past the stops' colors where it bends, most of all near the edges.</span></figcaption>
+            </figure>
+            <figure class="view" data-model="harmonic">
+                <div class="stage">
+                    <canvas class="gpu"></canvas>
+                    <canvas class="overlay"></canvas>
+                </div>
+                <figcaption><b>Harmonic</b><span class="note">A stretched membrane held at the stops: never overshoots, but creased at each one.</span></figcaption>
+            </figure>
+        </div>
+    </div>
+    <aside>
+        <section>
+            <h1>Points and Lines Gradient Editor</h1>
+            <div class="row">
+                <label for="preset">Preset</label>
+                <select id="preset"></select>
+            </div>
+            <div class="row">
+                <label>Box</label>
+                <input id="width" type="number" min="100" max="2000" step="10" title="Width"> ×
+                <input id="height" type="number" min="100" max="2000" step="10" title="Height"> px
+            </div>
+            <div class="row">
+                <label for="space">Interpolate in</label>
+                <select id="space">
+                    <option value="0">srgb</option>
+                    <option value="1">srgb-linear</option>
+                    <option value="2">oklab</option>
+                </select>
+            </div>
+            <div class="row" title="How many texels the grid has along its longer side, at most. The grid is never finer than the box's pixels.">
+                <label for="resolution">Grid</label>
+                <select id="resolution">
+                    <option value="128">128</option>
+                    <option value="256">256</option>
+                    <option value="512">512</option>
+                    <option value="1024">1024</option>
+                </select>
+                <span class="note">texels on the longer side</span>
+            </div>
+            <div class="row">
+                <label><input type="checkbox" id="showStops" checked> Show the stops</label>
+            </div>
+            <p id="gpuStatus" class="status"></p>
+        </section>
+
+        <section id="selectedStop" hidden>
+            <h2 id="selectedName"></h2>
+            <div class="row">
+                <label for="stopColor">Color</label>
+                <input id="stopColor" type="color">
+            </div>
+            <div class="row">
+                <label for="opacity">Opacity</label>
+                <input id="opacity" type="range" min="0" max="100" step="1">
+                <output id="opacityValue"></output>
+            </div>
+            <div class="row" id="spreadRow" title="How far the stop's color holds before it starts to blend. Drag the dashed circle to change it.">
+                <label for="spread">Spread</label>
+                <input id="spread" type="range" min="0" max="100" step="1">
+                <output id="spreadValue"></output>
+            </div>
+            <p id="spreadNote" class="note">Stops on lines have no spread.</p>
+            <div class="row">
+                <button id="deleteStop" class="small">Delete stop</button>
+                <button id="finishLine" class="small">Finish line</button>
+            </div>
+        </section>
+
+        <section>
+            <h2>Stops</h2>
+            <p class="note">Each stop holds its color. In Lines, the color runs along each line from stop to stop, and the line curves through its stops once it has three.</p>
+            <p id="modeNote" class="note"></p>
+            <p id="countNote" class="note"></p>
+            <div class="row"><button id="clearStops" class="small">Remove all stops</button></div>
+        </section>
+    </aside>
+</main>
