@@ -2,8 +2,11 @@ These are MeshShader2's WebGPU freeform gradient renderer and its shader, from
 FreeformGradient/Sources/FreeformGradient/WebGPU/ at MeshShader2 commit cf95dc0, with four changes and a fix.
 
 First, a gradient may give `strengths`, one number from 0 to 1 for each segment, how firmly the segment holds its
-colors. The shader multiplies the segment's weight, and its share of a texel's held color, by it, in the padding after `endDistance`, and a segment less than
-fully held has no edge strips. Without `strengths`, every segment is held fully, as before.
+colors, in the padding after `endDistance`. The harmonic multiplies the segment's weight by it. The biharmonic,
+which a partial hold makes overshoot badly, solves without the segments less than fully held, then again with them
+held fully, each at its strength's mix from that solution's color to its own. A segment less than fully held has no
+edge strips. Where segments overlap, each one's share of the held color is weighted by its strength too. Without
+`strengths`, every segment is held fully, as before.
 
 Second, the display takes colors back to sRGB through the page's own conversions rather than its three: the page
 appends the mesh-gradient() editor's color code to the shader, and toSRGB() calls its hueComponent() and

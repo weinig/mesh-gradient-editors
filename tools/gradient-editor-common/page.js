@@ -546,6 +546,8 @@ function encodeRelaxation(renderer, encoder, steps) {
         { binding: 3, resource: renderer.view(finest.constraintColor) },
         { binding: 4, resource: renderer.view(finest.constraintWeight) },
         { binding: 5, resource: renderer.view(finest.rightHandSide) },
+        // Read only by the biharmonic's second hold; any texture the kernel doesn't write.
+        { binding: 6, resource: renderer.view(finest.correctionRightHandSide) },
     ]);
     renderer.fill(finest, renderer.gradient.average);
     renderer.smooth(0, finest.values, finest.rightHandSide, steps, 0);

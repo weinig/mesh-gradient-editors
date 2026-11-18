@@ -71,7 +71,7 @@ const PRESETS = [
     },
     {
         name: "Strength",
-        note: "Three lines with the same colors, held at 100%, 60% and 30%. A weaker hold lets the colors around a line bleed into it. Only the harmonic model takes strength for now. Show what the curves hold to see the weaker lines' texels held only in part.",
+        note: "Three lines with the same colors, held at 100%, 60% and 30%. A weaker hold lets the colors around a line bleed into it. The harmonic model holds a weaker line's texels only in part. The biharmonic model holds them fully, at a mix of the line's colors and the gradient's without it. Show what the curves hold to see the difference.",
         state: {
             width: 600, height: 400,
             curves: [0.25, 0.5, 0.75].map((x, i) => ({
@@ -345,9 +345,9 @@ function offsetPieces(flat, distance, closed) {
 // The gradient as MeshShader2's renderer takes it: each piece of each curve a segment with its two sides' colors,
 // and each curve's own pieces, so it knows where open ends are.
 //
-// A curve's strength is how firmly its segments hold their colors, its cube, since the solve barely gives at all above
-// a weight of 0.3. FIXME: Only the harmonic model takes it. Held less than fully, a curve's jump makes the biharmonic
-// solve overshoot far out of gamut, and not more so the weaker the hold, so it isn't just the model.
+// A curve's strength is how firmly its segments hold their colors. The harmonic model holds them in part, by the
+// strength's cube, since the solve barely gives at all above a weight of 0.3. Held in part, a jump would make the
+// biharmonic solve overshoot far out of gamut, so the renderer mixes its held colors instead, which is linear.
 //
 // A blurred curve is two one-sided copies of it
 // instead, each holding one side's color, moved apart by the blur, so the solve fills the band between them.
@@ -369,7 +369,7 @@ function gradientData(model, influence = false) {
     for (const [i, { curve, flat }] of drawn.entries()) {
         const left = prepared[2 * i], right = prepared[2 * i + 1];
         colors.push(left, right);
-        const strength = model === "harmonic" ? ((curve.strength ?? 100) / 100) ** 3 : 1;
+        const strength = ((curve.strength ?? 100) / 100) ** (model === "harmonic" ? 3 : 1);
         const blur = (curve.blur ?? 0) / Math.min(state.width, state.height);
         if (blur > 0) {
             const distance = blur / 2 + CURVE_RADIUS;
@@ -394,7 +394,7 @@ const MODEL_ABOUT = {
     biharmonic: {
         note: "A stiff sheet (∆²u = 0) held along the curves. Each side of a curve holds its color across a thin band, and between the curves the sheet bends as little as it can. It's solved on a grid, coarse to fine.",
         pros: ["Smooth everywhere, its slope too", "Shading rolls off away from a curve, like light on a surface", "A few curves go a long way"],
-        cons: ["Overshoots past a curve's colors, out of gamut beside sharp jumps", "A partly held curve overshoots badly, so Strength is for the harmonic model only for now", "Needs a solver, so engines would only match approximately", "Solves again whenever a curve moves or the box changes size"],
+        cons: ["Overshoots past a curve's colors, out of gamut beside sharp jumps", "Needs a solver, so engines would only match approximately", "Solves again whenever a curve moves or the box changes size"],
         source: "Finch, Snyder and Hoppe, <a href=\"https://hhoppe.com/proj/freeform/\" target=\"_blank\" rel=\"noopener\">“Freeform Vector Graphics with Controlled Thin-Plate Splines”</a> (2011, <a href=\"https://doi.org/10.1145/2070781.2024200\" target=\"_blank\" rel=\"noopener\">DOI</a>). They hold curves the same way, and add controls for tension and for where the slope may break.",
         spec: "A spec would define how wide a curve's bands are, what happens at the box's edges, what strength and blur do, and how accurate the solve has to be.",
     },
@@ -411,7 +411,7 @@ const MODEL_ABOUT = {
 
 const VIEW_NOTES = {
     gradient: "The gradient each model draws from the same curves.",
-    holds: "Every texel of the grid is worked out from the texels the curves hold, shown here in the colors they're held to, over the faded gradient. A curve holds a band 1% of the box's shorter side either side of it, each side its own color. Below 100% strength, its texels are held only in part, so the colors around them bleed in. A blurred curve is held as two one-sided copies, moved apart by the blur, and the solve fills the band between them. Set Grid to 128 to see the texels.",
+    holds: "Every texel of the grid is worked out from the texels the curves hold, shown here in the colors they're held to, over the faded gradient. A curve holds a band 1% of the box's shorter side either side of it, each side its own color. Below 100% strength, the harmonic model holds its texels only in part, so the colors around them bleed in, and the biharmonic model holds them fully, at a mix of the curve's colors and the gradient's without it. A blurred curve is held as two one-sided copies, moved apart by the blur, and the solve fills the band between them. Set Grid to 128 to see the texels.",
     gamut: "Hatching marks where the solved colors fall outside the chosen gamut, where they're clipped or gamut mapped to draw them. The harmonic model makes each texel the average of its neighbors, so it can't go past the colors it's held to. The biharmonic model keeps the slope smooth through each curve, so past a jump it keeps going, and overshoots. In oklab, a mix of two colors inside sRGB can also fall outside it, in either model.",
     isolines: "Lines of equal lightness, every 0.025 of Oklab L. The harmonic model is a membrane: its lines bunch up at the curves and kink where they end, since it's continuous there but not smooth. The biharmonic model is a stiff sheet: its lines bend smoothly around a curve's end, since its slope is continuous too.",
     influence: "Each model mixes the curves' colors in fixed proportions, so each point's color is a weighted sum of them. This shows the selected curve's weight, both its sides together: orange where it adds its color, white where it adds none, blue where it takes color away, and dark red above 1. The harmonic model's stays between 0 and 1. The biharmonic model's goes past them beside the curve, where it overshoots.",

@@ -483,19 +483,41 @@ export class WebGPUFreeformGradientRenderer {
     if (gradient.isEmpty) {
       this.fill(finest, [0, 0, 0, 0]);
     } else {
-      for (let index = 0; index < levels.length; index++) {
-        this.dispatch("constraints", levels[index], [
-          this.uniformEntry(index, index),
-          { binding: 1, resource: { buffer: this.pointBuffer } },
-          { binding: 2, resource: { buffer: this.segmentBuffer } },
-          { binding: 3, resource: this.view(levels[index].constraintColor) },
-          { binding: 4, resource: this.view(levels[index].constraintWeight) },
-          { binding: 5, resource: this.view(levels[index].rightHandSide) },
-        ]);
-      }
+      const holdLevels = (holds) => {
+        for (let index = 0; index < levels.length; index++) {
+          this.dispatch("constraints", levels[index], [
+            this.uniformEntry(index, index, 0, [0, 0], holds),
+            { binding: 1, resource: { buffer: this.pointBuffer } },
+            { binding: 2, resource: { buffer: this.segmentBuffer } },
+            { binding: 3, resource: this.view(levels[index].constraintColor) },
+            { binding: 4, resource: this.view(levels[index].constraintWeight) },
+            { binding: 5, resource: this.view(levels[index].rightHandSide) },
+            // Read only for holds 2; any texture the kernel doesn't write otherwise.
+            { binding: 6, resource: this.view(holds === 2 ? finest.values.texture : finest.correctionRightHandSide) },
+          ]);
+        }
+      };
       if (gradient.model === "biharmonic") {
+        // Held less than fully, a segment would make the biharmonic overshoot badly beside it. Instead, it's solved
+        // without the segments less than fully held, then again with them held fully, each at its strength's mix
+        // from that solution's color to its own. Since the solution is linear in the held colors, a lone segment's
+        // strength mixes from the gradient without it to the gradient with it.
+        // As packSources() clamps them: a strength that isn't a number holds fully.
+        const weak = Array.from({ length: this.segmentCount }, (_, i) => Number.isFinite(gradient.strengths?.[i]) && gradient.strengths[i] < 1);
+        if (weak.some(Boolean)) {
+          if (this.pointCount || !weak.every(Boolean)) {
+            holdLevels(1);
+            this.encodeBiharmonic();
+          } else {
+            this.fill(finest, gradient.average);
+          }
+          holdLevels(2);
+        } else {
+          holdLevels(0);
+        }
         this.encodeBiharmonic();
       } else {
+        holdLevels(0);
         this.encodeMultigrid();
       }
     }
@@ -987,8 +1009,8 @@ export class WebGPUFreeformGradientRenderer {
 
   // The uniforms of level `index` solving level `top`'s equation, in a slot of
   // their own, the same slot each time they are the same.
-  uniformEntry(index, top, iterations = 0, coarseSize = [0, 0]) {
-    return this.slotEntry(0, `level:${index}:${top}:${iterations}:${coarseSize[0]}x${coarseSize[1]}`, (u32, f32) => {
+  uniformEntry(index, top, iterations = 0, coarseSize = [0, 0], holds = 0) {
+    return this.slotEntry(0, `level:${index}:${top}:${iterations}:${coarseSize[0]}x${coarseSize[1]}:${holds}`, (u32, f32) => {
       const level = this.levels[index];
       u32[0] = level.width;
       u32[1] = level.height;
@@ -1001,6 +1023,7 @@ export class WebGPUFreeformGradientRenderer {
       f32[8] = harmonicOmega;
       f32[9] = this.scale(index, top);
       u32[10] = iterations;
+      u32[11] = holds;
       u32[12] = coarseSize[0];
       u32[13] = coarseSize[1];
     });

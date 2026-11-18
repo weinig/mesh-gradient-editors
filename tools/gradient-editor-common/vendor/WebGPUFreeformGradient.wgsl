@@ -51,7 +51,10 @@ struct Level {
     scale: f32,
     // Smoothing steps, for freeformSmoothSmall.
     iterations: u32,
-    padding0: u32,
+    // For freeformConstraints: 0 to hold each segment by its strength; 1 to
+    // leave out the segments less than fully held; 2 to hold those fully, at
+    // their strength's mix from constraintFree's color to their own.
+    holds: u32,
     // The level below, for freeformRestrict.
     coarseSize: vec2<u32>,
     padding1: vec2<u32>,
@@ -65,6 +68,9 @@ struct Level {
 @group(0) @binding(3) var constraintColorOut: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(4) var constraintWeightOut: texture_storage_2d<r32float, write>;
 @group(0) @binding(5) var rightHandSideOut: texture_storage_2d<rgba32float, write>;
+// For holds 2, the finest level solved without the segments less than fully
+// held.
+@group(0) @binding(6) var constraintFree: texture_2d<f32>;
 
 fn segmentCrossesBox(a: vec2<f32>, b: vec2<f32>, center: vec2<f32>, halfSize: vec2<f32>) -> bool {
     let d = b - a;
@@ -117,6 +123,9 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
     }
     for (var i = 0u; i < level.segmentCount; i++) {
         let segment = segments[i];
+        if (level.holds == 1u && segment.strength < 1.0) {
+            continue;
+        }
         let a = segment.start * level.boxScale;
         let b = segment.end * level.boxScale;
         let along = b - a;
@@ -145,12 +154,19 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
         if (segment.isTwoSided != 0u) {
             coverage *= saturate(1.0 - max(0.0, past) / (openEndFade * texel));
         }
-        let color = mix(mix(segment.startRight, segment.endRight, t), mix(segment.startLeft, segment.endLeft, t), left);
+        var color = mix(mix(segment.startRight, segment.endRight, t), mix(segment.startLeft, segment.endLeft, t), left);
+        var strength = segment.strength;
+        if (level.holds == 2u && strength < 1.0) {
+            let free = bilinearRead(constraintFree, (vec2<f32>(gid) + 0.5) / vec2<f32>(level.size)
+                                    * vec2<f32>(textureDimensions(constraintFree)) - 0.5);
+            color = mix(free, color, strength);
+            strength = 1.0;
+        }
         // A segment's color counts as much as it holds, so a weak one doesn't
         // dilute a strong hold where they cross.
-        colorSum += coverage * segment.strength * color;
-        coverageSum += coverage * segment.strength;
-        weight = max(weight, coverage * segment.strength);
+        colorSum += coverage * strength * color;
+        coverageSum += coverage * strength;
+        weight = max(weight, coverage * strength);
     }
 
     var color = vec4<f32>(0.0);
