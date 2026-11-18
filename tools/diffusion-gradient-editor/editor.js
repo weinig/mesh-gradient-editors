@@ -381,7 +381,7 @@ function gradientData(model, influence = false) {
     }
     const average = [0, 1, 2, 3].map(k => colors.length ? colors.reduce((sum, c) => sum + c[k], 0) / colors.length : 0);
     return {
-        space: influence ? spaceIndex("srgb-linear") : spaceIndex(state.space), resolution: state.resolution, model,
+        space: influence ? spaceIndex("srgb-linear") : spaceIndex(state.space), resolution: solveResolution(), model,
         isEmpty: !segments.length, average, points: [], segments, strengths, lines,
         hasTwoSidedLines: segments.some((_, i) => i % 23 === 22 && segments[i] !== 0), isOpaque: colors.every(c => c[3] >= 1),
     };
@@ -1199,7 +1199,12 @@ for (const id of ["strength", "blur"]) {
         const curve = selection && state.curves[selection.curve];
         if (!curve)
             return;
+        adjusting = true;
         curve[id] = Number($(id).value);
+        changed();
+    });
+    $(id).addEventListener("change", () => {
+        adjusting = false;
         changed();
     });
 }

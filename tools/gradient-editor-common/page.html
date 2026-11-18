@@ -80,6 +80,14 @@
                 </select>
                 <span class="note">texels on the longer side</span>
             </div>
+            <div class="row" title="The grid while you drag or move a slider. A smaller one solves faster, but a stop or curve held by a few texels comes out a little different on it, so the gradient shifts as the drag starts and settles back when it ends.">
+                <label for="editing">While editing</label>
+                <select id="editing">
+                    <option value="full">The same grid</option>
+                    <option value="half">Half the grid</option>
+                    <option value="quarter">A quarter of the grid</option>
+                </select>
+            </div>
             <div class="row" title="Mirrored: the grid is exactly the box, and the surface meets each side flat, as if a mirror stood there. Open: the grid reaches half the box's size past each side, so its edges are far from the stops, and its texels are bigger as a result.">
                 <label for="edges">Edges</label>
                 <select id="edges">

@@ -61,6 +61,7 @@ function updateCommonControls() {
     $("space").value = state.space;
     $("gamutMapping").value = state.gamutMapping;
     $("edges").value = state.edges;
+    $("editing").value = state.editing;
     renderBackdrop();
     $("resolution").value = String(state.resolution);
     for (const button of document.querySelectorAll("#modelBar button"))
@@ -121,6 +122,10 @@ for (const id of ["width", "height"]) {
 }
 $("space").addEventListener("change", () => {
     state.space = $("space").value;
+    changed();
+});
+$("editing").addEventListener("change", () => {
+    state.editing = $("editing").value;
     changed();
 });
 $("edges").addEventListener("change", () => {

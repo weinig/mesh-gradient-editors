@@ -388,6 +388,14 @@ aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transf
                 </select>
                 <span class="note">texels on the longer side</span>
             </div>
+            <div class="row" title="The grid while you drag or move a slider. A smaller one solves faster, but a stop or curve held by a few texels comes out a little different on it, so the gradient shifts as the drag starts and settles back when it ends.">
+                <label for="editing">While editing</label>
+                <select id="editing">
+                    <option value="full">The same grid</option>
+                    <option value="half">Half the grid</option>
+                    <option value="quarter">A quarter of the grid</option>
+                </select>
+            </div>
             <div class="row" title="Mirrored: the grid is exactly the box, and the surface meets each side flat, as if a mirror stood there. Open: the grid reaches half the box's size past each side, so its edges are far from the stops, and its texels are bigger as a result.">
                 <label for="edges">Edges</label>
                 <select id="edges">
@@ -2778,7 +2786,7 @@ function gradientData(model, influence = false) {
     }
     const average = [0, 1, 2, 3].map(k => colors.length ? colors.reduce((sum, c) => sum + c[k], 0) / colors.length : 0);
     return {
-        space: influence ? spaceIndex("srgb-linear") : spaceIndex(state.space), resolution: state.resolution, model,
+        space: influence ? spaceIndex("srgb-linear") : spaceIndex(state.space), resolution: solveResolution(), model,
         isEmpty: !segments.length, average, points: [], segments, strengths, lines,
         hasTwoSidedLines: segments.some((_, i) => i % 23 === 22 && segments[i] !== 0), isOpaque: colors.every(c => c[3] >= 1),
     };
@@ -2836,6 +2844,19 @@ function swatchColor(text, opacity = 1) {
     const srgb = fromXYZ("srgb", toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
     const alpha = (Number.isNaN(color.alpha) ? 0 : color.alpha) * opacity;
     return `rgb(${srgb.map(v => Math.round(clamp(v, 0, 1) * 255)).join(" ")} / ${clamp(alpha, 0, 1)})`;
+}
+
+// MARK: - Editing
+
+// How much smaller the grid is while something's dragged or a slider moved.
+const EDITING = { full: 1, half: 2, quarter: 4 };
+// Whether a slider is being moved.
+let adjusting = false;
+
+// The grid's longest side: the chosen one, or less while editing, if the page asks for that.
+function solveResolution() {
+    const editing = (drag && drag.kind !== "section") || adjusting;
+    return editing ? Math.max(32, state.resolution / EDITING[state.editing]) : state.resolution;
 }
 
 // MARK: - Edges
@@ -3858,6 +3879,7 @@ function commonState() {
         numbers: state?.numbers ?? false,
         about: state?.about ?? false,
         edges: state?.edges ?? "mirrored",
+        editing: state?.editing ?? "full",
         gamut: state?.gamut ?? "srgb",
         sample: state?.sample ?? false,
         otherCurves: state?.otherCurves ?? false,
@@ -4717,7 +4739,12 @@ for (const id of ["strength", "blur"]) {
         const curve = selection && state.curves[selection.curve];
         if (!curve)
             return;
+        adjusting = true;
         curve[id] = Number($(id).value);
+        changed();
+    });
+    $(id).addEventListener("change", () => {
+        adjusting = false;
         changed();
     });
 }
@@ -4806,6 +4833,7 @@ function updateCommonControls() {
     $("space").value = state.space;
     $("gamutMapping").value = state.gamutMapping;
     $("edges").value = state.edges;
+    $("editing").value = state.editing;
     renderBackdrop();
     $("resolution").value = String(state.resolution);
     for (const button of document.querySelectorAll("#modelBar button"))
@@ -4866,6 +4894,10 @@ for (const id of ["width", "height"]) {
 }
 $("space").addEventListener("change", () => {
     state.space = $("space").value;
+    changed();
+});
+$("editing").addEventListener("change", () => {
+    state.editing = $("editing").value;
     changed();
 });
 $("edges").addEventListener("change", () => {
@@ -5163,6 +5195,8 @@ function decodeState(text) {
             data.gamut = "srgb";
         if (!EDGES.includes(data.edges))
             data.edges = "mirrored";
+        if (!Object.hasOwn(EDITING, data.editing))
+            data.editing = "full";
         delete data.v;
         return soundState({ ...presetState(DEFAULT_PRESET), ...data });
     } catch {

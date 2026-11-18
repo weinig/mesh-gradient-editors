@@ -54,6 +54,8 @@ function decodeState(text) {
             data.gamut = "srgb";
         if (!EDGES.includes(data.edges))
             data.edges = "mirrored";
+        if (!Object.hasOwn(EDITING, data.editing))
+            data.editing = "full";
         delete data.v;
         return soundState({ ...presetState(DEFAULT_PRESET), ...data });
     } catch {

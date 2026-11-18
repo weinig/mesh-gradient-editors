@@ -52,6 +52,19 @@ function swatchColor(text, opacity = 1) {
     return `rgb(${srgb.map(v => Math.round(clamp(v, 0, 1) * 255)).join(" ")} / ${clamp(alpha, 0, 1)})`;
 }
 
+// MARK: - Editing
+
+// How much smaller the grid is while something's dragged or a slider moved.
+const EDITING = { full: 1, half: 2, quarter: 4 };
+// Whether a slider is being moved.
+let adjusting = false;
+
+// The grid's longest side: the chosen one, or less while editing, if the page asks for that.
+function solveResolution() {
+    const editing = (drag && drag.kind !== "section") || adjusting;
+    return editing ? Math.max(32, state.resolution / EDITING[state.editing]) : state.resolution;
+}
+
 // MARK: - Edges
 
 // With mirrored edges the grid is the box. With open edges it reaches half the box's size past each side, so its edges
@@ -1072,6 +1085,7 @@ function commonState() {
         numbers: state?.numbers ?? false,
         about: state?.about ?? false,
         edges: state?.edges ?? "mirrored",
+        editing: state?.editing ?? "full",
         gamut: state?.gamut ?? "srgb",
         sample: state?.sample ?? false,
         otherCurves: state?.otherCurves ?? false,
