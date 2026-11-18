@@ -92,6 +92,9 @@
                 <input id="blur" type="range" min="0" max="100" step="1">
                 <output id="blurValue"></output>
             </div>
+            <div id="toPathRow" class="row" title="Turn the shape into a path of nodes, to shape it freely. It can't be turned back.">
+                <button id="toPath" class="small">Convert to a path</button>
+            </div>
         </section>
 
         <section>
@@ -101,6 +104,17 @@
             <div id="curveList"></div>
             <p id="emptyNote" class="note">No curves. Draw some with the tools on the left.</p>
             <div class="row"><button id="clearCurves" class="small">Remove all curves</button></div>
+        </section>
+
+        <section>
+            <h2>CSS</h2>
+            <p class="note">CSS has no diffusion gradient, so this syntax is made up, to show how one might look. Each curve is a CSS shape: <code>circle()</code> or <code>ellipse()</code>, or <code>shape()</code> for lines, arcs, turned ellipses and paths. Its colors follow, left and right of the way it's drawn, or inside and outside, then its strength and blur unless they're 100% and 0. The biharmonic model is the default; <code>harmonic</code> picks the other one.</p>
+            <textarea id="output" readonly spellcheck="false"></textarea>
+            <div class="row">
+                <button id="copyCSS">Copy CSS</button>
+                <button id="copyLink">Copy link</button>
+                <span id="copyStatus" class="note"></span>
+            </div>
         </section>
 
         <section>

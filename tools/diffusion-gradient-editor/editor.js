@@ -12,10 +12,19 @@ const SHADER = __SHADER__;
 
 // MARK: - State
 
-// A curve is a chain of Bézier nodes, open or closed, with a color on each side. Positions are fractions of the box,
-// 0 to 1 across and down; a node's `in` and `out` handles are offsets from it, in the same units, and zero for none.
-// An open curve's colors are `left` and `right`, as seen going from its first node to its last with y down. A closed
-// curve's are `inside` and `outside`.
+// A curve is a shape with a color on each side, kept in the form it was drawn in: `kind` is "ellipse", "line", "arc"
+// or "path", and only rendering, hit testing and the overlay flatten it to Bézier nodes, with curveNodes(). Positions
+// are fractions of the box, 0 to 1 across and down. An open curve's colors are `left` and `right`, as seen going from
+// its start to its end with y down. A closed curve's are `inside` and `outside`.
+//
+// - An ellipse has a `center`, `radii` as fractions of the box's width and height, and an `angle` it's turned by, in
+//   degrees, in the box's pixels. It's always closed.
+// - A line goes `from` one point `to` another.
+// - An arc is part of a circle in the box's pixels, `from` one point `to` another. Its `bend` is how far its middle is
+//   from the straight line between them, as a fraction of half that line, to the left of the way from one to the
+//   other: 1 is half a circle.
+// - A path is a chain of Bézier `nodes`, open or closed. A node's `in` and `out` handles are offsets from it, in the
+//   same units, and zero for none.
 let state = null;
 
 // A node is smooth when its handles are opposite, so moving one turns the other, and a corner otherwise.
@@ -24,19 +33,10 @@ const node = (x, y, inX = 0, inY = 0, outX = -inX, outY = -inY) => ({
     kind: (inX || inY) && Math.abs(inX * outY - inY * outX) < 1e-9 && inX * outX + inY * outY < 0 ? "smooth" : "corner",
 });
 
-// An ellipse as four nodes, going clockwise on screen. Its center and radii are fractions of the box, so it's an
-// ellipse in the box's own proportions; `angle` turns it, in degrees.
-function ellipse(cx, cy, rx, ry, angle = 0) {
-    const k = 0.5523;
-    const turn = angle * Math.PI / 180, cos = Math.cos(turn), sin = Math.sin(turn);
-    const rotate = ([x, y]) => [x * cos - y * sin, x * sin + y * cos];
-    return [0, 1, 2, 3].map(i => {
-        const phi = i * Math.PI / 2;
-        const [px, py] = rotate([rx * Math.cos(phi), ry * Math.sin(phi)]);
-        const [tx, ty] = rotate([-rx * Math.sin(phi) * k, ry * Math.cos(phi) * k]);
-        return node(cx + px, cy + py, -tx, -ty, tx, ty);
-    });
-}
+const ellipse = (cx, cy, rx, ry, angle = 0) => ({ kind: "ellipse", closed: true, center: [cx, cy], radii: [rx, ry], angle });
+const line = (from, to) => ({ kind: "line", closed: false, from, to });
+const arc = (from, to, bend = 1) => ({ kind: "arc", closed: false, from, to, bend });
+const isPath = curve => !curve.kind || curve.kind === "path";
 
 const PRESETS = [
     {
@@ -44,7 +44,7 @@ const PRESETS = [
         note: "One open curve, orange above and blue below. Past its ends the two sides meet, and the jump fades out. Show the lines of equal lightness to see how differently the two models round its ends.",
         state: {
             width: 600, height: 400,
-            curves: [{ closed: false, nodes: [node(0.15, 0.5), node(0.85, 0.5)], left: "#ff6b3d", right: "#3d7bff" }],
+            curves: [{ ...line([0.15, 0.5], [0.85, 0.5]), left: "#ff6b3d", right: "#3d7bff" }],
         },
     },
     {
@@ -52,7 +52,7 @@ const PRESETS = [
         note: "One closed curve, red inside and blue outside. Show where it leaves sRGB: the biharmonic model overshoots on both sides of the jump.",
         state: {
             width: 600, height: 400,
-            curves: [{ closed: true, nodes: ellipse(0.5, 0.5, 0.2, 0.3), inside: "#d93a2b", outside: "#1e88ff" }],
+            curves: [{ ...ellipse(0.5, 0.5, 0.2, 0.3), inside: "#d93a2b", outside: "#1e88ff" }],
         },
     },
     {
@@ -61,10 +61,10 @@ const PRESETS = [
         state: {
             width: 500, height: 500,
             curves: [
-                { closed: true, nodes: ellipse(0.45, 0.4, 0.12, 0.12), inside: "#d33b2c", outside: "#1e88ff" },
-                { closed: true, nodes: ellipse(0.36, 0.45, 0.08, 0.36, 18), inside: "#d7f20a", outside: "#ebebeb" },
-                { closed: false, nodes: [node(0.28, 0.78, 0, 0, 0.08, 0.16), node(0.52, 0.86, -0.08, 0.02, 0.06, -0.02), node(0.52, 0.62, 0, 0.1, 0.06, -0.08), node(0.66, 0.56)], left: "#ebebeb", right: "#ebebeb" },
-                { closed: false, nodes: [node(0.64, 0.38, 0, 0, 0.14, 0.02), node(0.74, 0.62, 0.04, -0.12)], left: "#ebebeb", right: "#ebebeb" },
+                { ...ellipse(0.45, 0.4, 0.12, 0.12), inside: "#d33b2c", outside: "#1e88ff" },
+                { ...ellipse(0.36, 0.45, 0.08, 0.36, 18), inside: "#d7f20a", outside: "#ebebeb" },
+                { kind: "path", closed: false, nodes: [node(0.28, 0.78, 0, 0, 0.08, 0.16), node(0.52, 0.86, -0.08, 0.02, 0.06, -0.02), node(0.52, 0.62, 0, 0.1, 0.06, -0.08), node(0.66, 0.56)], left: "#ebebeb", right: "#ebebeb" },
+                { kind: "path", closed: false, nodes: [node(0.64, 0.38, 0, 0, 0.14, 0.02), node(0.74, 0.62, 0.04, -0.12)], left: "#ebebeb", right: "#ebebeb" },
             ],
         },
     },
@@ -74,8 +74,8 @@ const PRESETS = [
         state: {
             width: 600, height: 400,
             curves: [
-                { closed: false, nodes: [node(0.15, 0.45), node(0.85, 0.45)], left: "#ffffff", right: "#000000" },
-                { closed: false, nodes: [node(0.15, 0.55), node(0.85, 0.55)], left: "#000000", right: "#ffffff" },
+                { ...line([0.15, 0.45], [0.85, 0.45]), left: "#ffffff", right: "#000000" },
+                { ...line([0.15, 0.55], [0.85, 0.55]), left: "#000000", right: "#ffffff" },
             ],
         },
     },
@@ -85,7 +85,7 @@ const PRESETS = [
         state: {
             width: 600, height: 400,
             curves: [0.25, 0.5, 0.75].map((x, i) => ({
-                closed: false, nodes: [node(x, 0.2), node(x, 0.8)], left: "#7a2cff", right: "#ffc400", strength: [100, 60, 30][i],
+                ...line([x, 0.2], [x, 0.8]), left: "#7a2cff", right: "#ffc400", strength: [100, 60, 30][i],
             })),
         },
     },
@@ -95,7 +95,7 @@ const PRESETS = [
         state: {
             width: 600, height: 300,
             curves: [0.2, 0.5, 0.8].map((x, i) => ({
-                closed: true, nodes: ellipse(x, 0.5, 0.1, 0.2), inside: "#ff3d7f", outside: "#1b1f3b", blur: [0, 20, 60][i],
+                ...ellipse(x, 0.5, 0.1, 0.2), inside: "#ff3d7f", outside: "#1b1f3b", blur: [0, 20, 60][i],
             })),
         },
     },
@@ -105,7 +105,7 @@ const PRESETS = [
         state: {
             width: 500, height: 500,
             curves: [[0.08, "#fff1a8"], [0.22, "#ff9a1f"], [0.36, "#c4204f"], [0.48, "#2b1055"]].map(([radius, color]) => ({
-                closed: true, nodes: ellipse(0.5, 0.5, radius, radius), inside: color, outside: color,
+                ...ellipse(0.5, 0.5, radius, radius), inside: color, outside: color,
             })),
         },
     },
@@ -115,8 +115,8 @@ const PRESETS = [
         state: {
             width: 600, height: 400,
             curves: [
-                { closed: true, nodes: [node(0.2, 0.62, 0.1, 0.04, 0.06, -0.14), node(0.48, 0.34, -0.14, 0.03), node(0.8, 0.38, -0.1, -0.04, -0.06, 0.14), node(0.52, 0.66, 0.14, -0.03)], inside: "#82cf6c", outside: "#f4f1e6" },
-                { closed: false, nodes: [node(0.24, 0.6, 0, 0, 0.2, -0.04), node(0.76, 0.4, -0.2, 0.04)], left: "#2f7a32", right: "#2f7a32" },
+                { kind: "path", closed: true, nodes: [node(0.2, 0.62, 0.1, 0.04, 0.06, -0.14), node(0.48, 0.34, -0.14, 0.03), node(0.8, 0.38, -0.1, -0.04, -0.06, 0.14), node(0.52, 0.66, 0.14, -0.03)], inside: "#82cf6c", outside: "#f4f1e6" },
+                { kind: "path", closed: false, nodes: [node(0.24, 0.6, 0, 0, 0.2, -0.04), node(0.76, 0.4, -0.2, 0.04)], left: "#2f7a32", right: "#2f7a32" },
             ],
         },
     },
@@ -126,10 +126,10 @@ const PRESETS = [
         state: {
             width: 600, height: 400,
             curves: [
-                { closed: false, nodes: [node(0, 0.06), node(1, 0.06)], left: "#1c2a6b", right: "#3a4fb0" },
-                { closed: true, nodes: ellipse(0.64, 0.44, 0.07, 0.105), inside: "#fff5c2", outside: "#ffb15e", blur: 36 },
-                { closed: false, nodes: [node(0, 0.62, 0, 0, 0.14, -0.06), node(0.38, 0.54, -0.12, 0, 0.14, 0), node(0.72, 0.6, -0.1, 0, 0.12, 0), node(1, 0.52, -0.1, 0.02)], left: "#ff9757", right: "#3f6b3c" },
-                { closed: false, nodes: [node(0, 0.84, 0, 0, 0.2, -0.08), node(0.52, 0.76, -0.18, 0, 0.18, 0), node(1, 0.9, -0.18, -0.04)], left: "#4a7d42", right: "#1f3b22" },
+                { ...line([0, 0.06], [1, 0.06]), left: "#1c2a6b", right: "#3a4fb0" },
+                { ...ellipse(0.64, 0.44, 0.07, 0.105), inside: "#fff5c2", outside: "#ffb15e", blur: 36 },
+                { kind: "path", closed: false, nodes: [node(0, 0.62, 0, 0, 0.14, -0.06), node(0.38, 0.54, -0.12, 0, 0.14, 0), node(0.72, 0.6, -0.1, 0, 0.12, 0), node(1, 0.52, -0.1, 0.02)], left: "#ff9757", right: "#3f6b3c" },
+                { kind: "path", closed: false, nodes: [node(0, 0.84, 0, 0, 0.2, -0.08), node(0.52, 0.76, -0.18, 0, 0.18, 0), node(1, 0.9, -0.18, -0.04)], left: "#4a7d42", right: "#1f3b22" },
             ],
         },
     },
@@ -160,9 +160,88 @@ const boxScale = () => {
     return [state.width / shorter, state.height / shorter];
 };
 
+// A curve as Bézier nodes: a path's own, or a shape's.
+function curveNodes(curve) {
+    switch (curve.kind) {
+    case "ellipse":
+        return ellipseNodes(curve);
+    case "line":
+        return [curve.from, curve.to].map(p => ({ p, in: [0, 0], out: [0, 0], kind: "corner" }));
+    case "arc":
+        return arcNodes(curve);
+    default:
+        return curve.nodes;
+    }
+}
+
+// A point on an ellipse at `phi` radians around from its first radius, `scale` times as far out, as a fraction of the
+// box.
+function ellipsePoint({ center, radii, angle }, phi, scale = 1) {
+    const [sx, sy] = boxScale();
+    const turn = angle * Math.PI / 180, cos = Math.cos(turn), sin = Math.sin(turn);
+    const x = radii[0] * sx * Math.cos(phi) * scale, y = radii[1] * sy * Math.sin(phi) * scale;
+    return [center[0] + (x * cos - y * sin) / sx, center[1] + (x * sin + y * cos) / sy];
+}
+
+// An ellipse as four smooth nodes, going clockwise on screen.
+function ellipseNodes(curve) {
+    const [sx, sy] = boxScale();
+    const turn = curve.angle * Math.PI / 180, cos = Math.cos(turn), sin = Math.sin(turn);
+    const k = 0.5523;
+    return [0, 1, 2, 3].map(i => {
+        const phi = i * Math.PI / 2;
+        const x = -curve.radii[0] * sx * Math.sin(phi) * k, y = curve.radii[1] * sy * Math.cos(phi) * k;
+        const tangent = [(x * cos - y * sin) / sx, (x * sin + y * cos) / sy];
+        return { p: ellipsePoint(curve, phi), in: [-tangent[0], -tangent[1]], out: tangent, kind: "smooth" };
+    });
+}
+
+// An arc's circle, in units of the box's shorter side: its ends `a` and `b`, the middle of the chord between them and
+// half its length, the way to the chord's left, the arc's middle, and, unless it's straight, the circle's center and
+// radius, where the arc starts around it, and how far it goes, in radians, positive clockwise on screen.
+function arcGeometry({ from, to, bend }) {
+    const [sx, sy] = boxScale();
+    const a = [from[0] * sx, from[1] * sy], b = [to[0] * sx, to[1] * sy];
+    const half = Math.hypot(b[0] - a[0], b[1] - a[1]) / 2;
+    const along = half ? [(b[0] - a[0]) / (2 * half), (b[1] - a[1]) / (2 * half)] : [1, 0];
+    const leftward = [along[1], -along[0]];
+    const middle = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const sagitta = bend * half;
+    const apex = [middle[0] + leftward[0] * sagitta, middle[1] + leftward[1] * sagitta];
+    const geometry = { a, b, half, leftward, middle, apex, straight: Math.abs(sagitta) < 1e-6 || half < 1e-6, scale: [sx, sy] };
+    if (geometry.straight)
+        return geometry;
+    const radius = (half * half + sagitta * sagitta) / (2 * Math.abs(sagitta));
+    const center = [apex[0] - leftward[0] * Math.sign(sagitta) * radius, apex[1] - leftward[1] * Math.sign(sagitta) * radius];
+    const halfSweep = Math.atan2(half, radius - Math.abs(sagitta));
+    // Clockwise on screen when the middle is clockwise of the start, around the center.
+    const clockwise = (a[0] - center[0]) * (apex[1] - center[1]) - (a[1] - center[1]) * (apex[0] - center[0]) > 0;
+    return { ...geometry, center, radius, start: Math.atan2(a[1] - center[1], a[0] - center[0]), sweep: 2 * halfSweep * (clockwise ? 1 : -1) };
+}
+
+// An arc as Bézier nodes, a stretch for each quarter turn or less.
+function arcNodes(curve) {
+    const g = arcGeometry(curve);
+    const corner = p => ({ p, in: [0, 0], out: [0, 0], kind: "corner" });
+    if (g.straight)
+        return [corner(curve.from), corner(curve.to)];
+    const [sx, sy] = g.scale;
+    const count = Math.max(1, Math.ceil(Math.abs(g.sweep) / (Math.PI / 2) - 1e-9));
+    const step = g.sweep / count;
+    const k = 4 / 3 * Math.tan(step / 4) * g.radius;
+    const nodes = [];
+    for (let i = 0; i <= count; ++i) {
+        const theta = g.start + step * i;
+        const tangent = [-Math.sin(theta) * k / sx, Math.cos(theta) * k / sy];
+        const p = i === 0 ? curve.from : i === count ? curve.to : [(g.center[0] + g.radius * Math.cos(theta)) / sx, (g.center[1] + g.radius * Math.sin(theta)) / sy];
+        nodes.push({ p, in: i ? [-tangent[0], -tangent[1]] : [0, 0], out: i < count ? tangent : [0, 0], kind: i && i < count ? "smooth" : "corner" });
+    }
+    return nodes;
+}
+
 // Each stretch of a curve, as its four Bézier points.
 function stretches(curve) {
-    const { nodes } = curve;
+    const nodes = curveNodes(curve);
     const count = curve.closed && nodes.length > 2 ? nodes.length : nodes.length - 1;
     const result = [];
     for (let i = 0; i < count; ++i) {
@@ -1159,7 +1238,7 @@ function curvePath(ctx, curve, toPixels) {
             ctx.moveTo(...toPixels(p0));
         ctx.bezierCurveTo(...toPixels(p1), ...toPixels(p2), ...toPixels(p3));
     });
-    if (curve.closed && curve.nodes.length > 2)
+    if (curve.closed && curveNodes(curve).length > 2)
         ctx.closePath();
 }
 
@@ -1198,6 +1277,10 @@ function drawOverlay(view, dpr) {
         }
         if (!selected)
             return;
+        if (!isPath(curve)) {
+            drawShapeHandles(ctx, curve, size);
+            return;
+        }
         curve.nodes.forEach((node, n) => {
             const at = toPixels(node.p);
             for (const which of ["in", "out"]) {
@@ -1231,6 +1314,137 @@ function drawOverlay(view, dpr) {
     });
 }
 
+// A shape's handles, in CSS pixels of a box `size` across and down: a line's or an arc's ends, an arc's middle, and an
+// ellipse's center, the ends of its two radii, and a knob past the first that turns it.
+function shapeHandles(curve, size) {
+    const toPixels = ([x, y]) => [x * size[0], y * size[1]];
+    switch (curve.kind) {
+    case "line":
+        return [{ name: "from", at: toPixels(curve.from) }, { name: "to", at: toPixels(curve.to) }];
+    case "arc": {
+        const g = arcGeometry(curve);
+        return [{ name: "from", at: toPixels(curve.from) }, { name: "to", at: toPixels(curve.to) },
+                { name: "bend", at: toPixels([g.apex[0] / g.scale[0], g.apex[1] / g.scale[1]]), round: true }];
+    }
+    case "ellipse": {
+        const center = toPixels(curve.center), end = toPixels(ellipsePoint(curve, 0));
+        const length = Math.hypot(end[0] - center[0], end[1] - center[1]);
+        const turn = curve.angle * Math.PI / 180;
+        const knob = [end[0] + Math.cos(turn) * 22, end[1] + Math.sin(turn) * 22];
+        return [{ name: "center", at: center }, { name: "rx", at: end, round: true }, { name: "ry", at: toPixels(ellipsePoint(curve, Math.PI / 2)), round: true },
+                { name: "angle", at: length ? knob : [center[0] + 22, center[1]], knob: true }];
+    }
+    }
+    return [];
+}
+
+function drawShapeHandles(ctx, curve, size) {
+    const handles = shapeHandles(curve, size);
+    ctx.strokeStyle = ACCENT;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    const from = curve.kind === "ellipse" ? handles[0].at : null;
+    const spokes = curve.kind === "ellipse" ? handles.slice(1)
+        : curve.kind === "arc" ? [handles[2]] : [];
+    for (const { at } of spokes) {
+        const origin = from ?? toChordMiddle(curve, size);
+        ctx.beginPath();
+        ctx.moveTo(...origin);
+        ctx.lineTo(...at);
+        ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    for (const { at, round, knob } of handles) {
+        ctx.beginPath();
+        if (knob)
+            ctx.arc(...at, 4, 0, 2 * Math.PI);
+        else if (round)
+            ctx.arc(...at, 5, 0, 2 * Math.PI);
+        else
+            ctx.rect(at[0] - 4.5, at[1] - 4.5, 9, 9);
+        ctx.fillStyle = knob ? ACCENT : "#fff";
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = ACCENT;
+        ctx.stroke();
+    }
+}
+
+const toChordMiddle = (curve, size) => [(curve.from[0] + curve.to[0]) / 2 * size[0], (curve.from[1] + curve.to[1]) / 2 * size[1]];
+
+// Moves a shape's handle to `at`, a fraction of the box; `origin` is the shape when the drag started, and `delta` how
+// far it's moved since.
+function moveShapeHandle(curve, name, at, origin, delta, event) {
+    const [sx, sy] = boxScale();
+    switch (name) {
+    case "from":
+    case "to":
+        curve[name] = at;
+        break;
+    case "bend": {
+        const g = arcGeometry(curve);
+        const along = (at[0] * sx - g.middle[0]) * g.leftward[0] + (at[1] * sy - g.middle[1]) * g.leftward[1];
+        curve.bend = g.half ? clamp(along / g.half, -4, 4) : 1;
+        break;
+    }
+    case "center":
+        curve.center = add(origin.center, delta);
+        break;
+    case "rx":
+    case "ry": {
+        // The pointer's offset along the ellipse's own axes.
+        const turn = curve.angle * Math.PI / 180, cos = Math.cos(turn), sin = Math.sin(turn);
+        const x = (at[0] - curve.center[0]) * sx, y = (at[1] - curve.center[1]) * sy;
+        const along = [x * cos + y * sin, -x * sin + y * cos];
+        if (name === "rx")
+            curve.radii = [Math.abs(along[0]) / sx, curve.radii[1]];
+        else
+            curve.radii = [curve.radii[0], Math.abs(along[1]) / sy];
+        if (event.shiftKey) {
+            // A circle, the size of the radius being dragged.
+            const radius = name === "rx" ? curve.radii[0] * sx : curve.radii[1] * sy;
+            curve.radii = [radius / sx, radius / sy];
+        }
+        break;
+    }
+    case "angle": {
+        let angle = Math.atan2((at[1] - curve.center[1]) * sy, (at[0] - curve.center[0]) * sx) * 180 / Math.PI;
+        if (event.shiftKey)
+            angle = Math.round(angle / 15) * 15;
+        curve.angle = Math.round(angle * 10) / 10;
+        break;
+    }
+    }
+}
+
+// Moves a whole curve by `delta` from where it was, `origin`.
+function moveCurve(curve, origin, delta) {
+    switch (curve.kind) {
+    case "ellipse":
+        curve.center = add(origin.center, delta);
+        break;
+    case "line":
+    case "arc":
+        curve.from = add(origin.from, delta);
+        curve.to = add(origin.to, delta);
+        break;
+    default:
+        curve.nodes.forEach((node, i) => node.p = add(origin.nodes[i].p, delta));
+    }
+}
+
+// A shape as a path of Bézier nodes, keeping its colors, strength and blur.
+function convertToPath(curve) {
+    const nodes = structuredClone(curveNodes(curve));
+    for (const key of ["center", "radii", "angle", "from", "to", "bend"])
+        delete curve[key];
+    curve.kind = "path";
+    curve.nodes = nodes;
+}
+
+const KIND_NAMES = { ellipse: "Ellipse", line: "Line", arc: "Arc" };
+const curveName = (curve, index) => `${KIND_NAMES[curve.kind] ?? (curve.closed ? "Closed path" : "Path")} ${index + 1}`;
+
 // MARK: - Editing
 
 let tool = "select";
@@ -1259,7 +1473,12 @@ function hitTest(view, point) {
                 return { kind: "section", end };
         }
     }
-    if (selection) {
+    if (selection && !isPath(state.curves[selection.curve])) {
+        for (const handle of shapeHandles(state.curves[selection.curve], size).reverse()) {
+            if (near(handle.at, 8))
+                return { kind: "shape", curve: selection.curve, handle: handle.name };
+        }
+    } else if (selection) {
         const curve = state.curves[selection.curve];
         for (let n = 0; n < curve.nodes.length; ++n) {
             const node = curve.nodes[n];
@@ -1292,28 +1511,11 @@ function hitTest(view, point) {
 }
 
 // A new curve with the new-curve colors, selected.
-function addCurve(closed, nodes) {
-    const curve = closed ? { closed, nodes, inside: newColors[0], outside: newColors[1] } : { closed, nodes, left: newColors[0], right: newColors[1] };
+function addCurve(shape) {
+    const curve = shape.closed ? { ...shape, inside: newColors[0], outside: newColors[1] } : { ...shape, left: newColors[0], right: newColors[1] };
     state.curves.push(curve);
     selection = { curve: state.curves.length - 1, node: null };
     return selection.curve;
-}
-
-// An arc from `start` to `end`, half a circle bulging to the left of the way from one to the other.
-function arcNodes(start, end) {
-    const [sx, sy] = boxScale();
-    const a = [start[0] * sx, start[1] * sy], b = [end[0] * sx, end[1] * sy];
-    const chord = subtract(b, a), length = Math.hypot(...chord) || 1e-6;
-    const radius = length / 2, k = 0.5523 * radius;
-    const along = [chord[0] / length, chord[1] / length], leftward = [along[1], -along[0]];
-    const apex = [(a[0] + b[0]) / 2 + leftward[0] * radius, (a[1] + b[1]) / 2 + leftward[1] * radius];
-    const toFraction = ([x, y]) => [x / sx, y / sy];
-    const scaled = (v, s) => toFraction([v[0] * s, v[1] * s]);
-    return [
-        { p: start, in: [0, 0], out: scaled(leftward, k), kind: "corner" },
-        { p: toFraction(apex), in: scaled(along, -k), out: scaled(along, k), kind: "smooth" },
-        { p: end, in: scaled(leftward, k), out: [0, 0], kind: "corner" },
-    ];
 }
 
 // A freehand stroke as smooth nodes: the points that matter, by Ramer–Douglas–Peucker, with Catmull-Rom handles.
@@ -1425,6 +1627,8 @@ for (const view of views) {
                 selection = null;
             } else if (hit.kind === "section") {
                 drag = { kind: "section", end: hit.end };
+            } else if (hit.kind === "shape") {
+                drag = { kind: "shape", curve: hit.curve, handle: hit.handle, start: at, origin: structuredClone(state.curves[hit.curve]) };
             } else if (hit.kind === "handle") {
                 selection = { curve: hit.curve, node: hit.node };
                 drag = { kind: "handle", ...hit };
@@ -1436,7 +1640,7 @@ for (const view of views) {
                 drag = { kind: "swatch", ...hit, start: point(event), moved: false };
             } else {
                 selection = { curve: hit.curve, node: null };
-                drag = { kind: "curve", curve: hit.curve, start: at, origin: state.curves[hit.curve].nodes.map(node => node.p.slice()) };
+                drag = { kind: "curve", curve: hit.curve, start: at, origin: structuredClone(state.curves[hit.curve]) };
             }
         } else if (tool === "pen") {
             const curve = penCurve === null ? null : state.curves[penCurve];
@@ -1451,17 +1655,17 @@ for (const view of views) {
                 if (curve) {
                     curve.nodes.push(node);
                 } else {
-                    penCurve = addCurve(false, [node]);
+                    penCurve = addCurve({ kind: "path", closed: false, nodes: [node] });
                 }
                 selection = { curve: penCurve, node: state.curves[penCurve].nodes.length - 1 };
                 drag = { kind: "pen", curve: penCurve, node: selection.node, start: at };
             }
         } else {
-            const nodes = tool === "line" ? [{ p: at, in: [0, 0], out: [0, 0], kind: "corner" }, { p: at.slice(), in: [0, 0], out: [0, 0], kind: "corner" }]
+            const shape = tool === "line" ? line(at, at.slice())
                 : tool === "ellipse" ? ellipse(at[0], at[1], 0, 0)
-                : tool === "arc" ? arcNodes(at, at)
-                : [{ p: at, in: [0, 0], out: [0, 0], kind: "smooth" }];
-            const index = addCurve(tool === "ellipse", nodes);
+                : tool === "arc" ? arc(at, at.slice())
+                : { kind: "path", closed: false, nodes: [{ p: at, in: [0, 0], out: [0, 0], kind: "smooth" }] };
+            const index = addCurve(shape);
             drag = { kind: tool, curve: index, start: at, points: [at] };
         }
         changed();
@@ -1492,7 +1696,10 @@ for (const view of views) {
             curve.nodes[drag.node].p = add(drag.origin, delta);
             break;
         case "curve":
-            curve.nodes.forEach((node, i) => node.p = add(drag.origin[i], delta));
+            moveCurve(curve, drag.origin, delta);
+            break;
+        case "shape":
+            moveShapeHandle(curve, drag.handle, at, drag.origin, delta, event);
             break;
         case "handle": {
             const node = curve.nodes[drag.node];
@@ -1520,7 +1727,8 @@ for (const view of views) {
             break;
         }
         case "line":
-            curve.nodes[1].p = at;
+        case "arc":
+            curve.to = at;
             break;
         case "ellipse": {
             let rx = Math.abs(delta[0]) / 2, ry = Math.abs(delta[1]) / 2;
@@ -1532,12 +1740,10 @@ for (const view of views) {
                 ry = radius / sy;
             }
             const cx = drag.start[0] + Math.sign(delta[0]) * rx, cy = drag.start[1] + Math.sign(delta[1]) * ry;
-            curve.nodes = ellipse(cx, cy, rx, ry).map(node => ({ ...node, kind: "smooth" }));
+            curve.center = [cx, cy];
+            curve.radii = [rx, ry];
             break;
         }
-        case "arc":
-            curve.nodes = arcNodes(drag.start, at);
-            break;
         case "freehand":
             drag.points.push(at);
             curve.nodes = freehandNodes(drag.points);
@@ -1557,7 +1763,7 @@ for (const view of views) {
         if (["line", "ellipse", "arc", "freehand"].includes(finished.kind)) {
             const curve = state.curves[finished.curve];
             const size = [overlay.clientWidth, overlay.clientHeight];
-            const span = Math.max(...curve.nodes.map(node => Math.hypot((node.p[0] - finished.start[0]) * size[0], (node.p[1] - finished.start[1]) * size[1])));
+            const span = Math.max(...curveNodes(curve).map(node => Math.hypot((node.p[0] - finished.start[0]) * size[0], (node.p[1] - finished.start[1]) * size[1])));
             if (span < 4) {
                 state.curves.splice(finished.curve, 1);
                 selection = null;
@@ -1656,7 +1862,7 @@ function updateControls() {
         const [first, second] = curve.closed ? ["inside", "outside"] : ["left", "right"];
         const row = list.children[i];
         row.classList.toggle("selected", selection?.curve === i);
-        row.querySelector("span").textContent = `${curve.closed ? "Closed" : "Open"} curve ${i + 1}`;
+        row.querySelector("span").textContent = curveName(curve, i);
         for (const [input, side] of [[row.querySelector(".first"), first], [row.querySelector(".second"), second]]) {
             input.title = side[0].toUpperCase() + side.slice(1);
             if (document.activeElement !== input)
@@ -1664,11 +1870,15 @@ function updateControls() {
         }
     });
     $("emptyNote").hidden = state.curves.length > 0;
+    const css = cssText();
+    if ($("output").value !== css)
+        $("output").value = css;
 
     const selected = selection && state.curves[selection.curve];
     $("selectedCurve").hidden = !selected;
     if (selected) {
-        $("selectedName").textContent = `${selected.closed ? "Closed" : "Open"} curve ${selection.curve + 1}`;
+        $("selectedName").textContent = curveName(selected, selection.curve);
+        $("toPathRow").hidden = isPath(selected);
         for (const [id, value, unit] of [["strength", selected.strength ?? 100, "%"], ["blur", selected.blur ?? 0, " px"]]) {
             $(id).value = value;
             $(id + "Value").textContent = value + unit;
@@ -1677,11 +1887,11 @@ function updateControls() {
 }
 
 const TOOL_NOTES = {
-    select: "Click a curve to select it, and drag it to move it. Drag its nodes and handles to shape it, and double-click a node to switch it between corner and smooth. Click a swatch to change that side's color.",
+    select: "Click a curve to select it, and drag it to move it. Click a swatch to change that side's color. Shapes keep their form: drag a line's or an arc's ends, an arc's middle to bend it, or an ellipse's center, its radii, and the knob that turns it. Hold Shift to make an ellipse a circle, or to turn it in steps of 15°. On a path, drag its nodes and handles, and double-click a node to switch it between corner and smooth.",
     pen: "Click to add corner nodes, or drag to add smooth ones. Click the first node to close the curve, or double-click to leave it open.",
     line: "Drag to draw a straight line.",
     ellipse: "Drag to draw an ellipse. Hold Shift for a circle.",
-    arc: "Drag from one end of the arc to the other. It bulges to the left of the way you drag.",
+    arc: "Drag from one end of the arc to the other. It bulges to the left of the way you drag, as half a circle; drag its middle to bend it more or less.",
     freehand: "Drag to draw. The stroke becomes smooth nodes.",
 };
 
@@ -1730,6 +1940,14 @@ for (const id of ["strength", "blur"]) {
         changed();
     });
 }
+
+$("toPath").addEventListener("click", () => {
+    const curve = selection && state.curves[selection.curve];
+    if (!curve || isPath(curve))
+        return;
+    convertToPath(curve);
+    changed();
+});
 
 $("preset").addEventListener("change", () => {
     if ($("preset").value === "")
@@ -1838,6 +2056,97 @@ $("playSteps").addEventListener("click", () => {
     playing.frame = requestAnimationFrame(tick);
 });
 
+// MARK: - CSS
+
+// A made-up diffusion-gradient(), each curve written as a CSS shape:
+//
+//   diffusion-gradient( [ harmonic || in <space> ]? , <diffusion-curve># )
+//   <diffusion-curve> = <basic-shape> [ left <color> right <color> | inside <color> outside <color> ]
+//                       [ strength <percentage> ]? [ blur <length> ]?
+
+const number = v => String(Math.round(v * 100) / 100 || 0);
+const percent = v => `${number(v * 100)}%`;
+const position = ([x, y]) => `${percent(x)} ${percent(y)}`;
+const pixels = v => `${number(v)}px`;
+
+// A shape() of Bézier nodes: a line for each straight stretch and a curve for each other, closed if the curve is.
+function pathShape(curve, nodes) {
+    const commands = [`from ${position(nodes[0].p)}`];
+    stretches({ ...curve, kind: "path", nodes }).forEach(([p0, p1, p2, p3], i, all) => {
+        const straight = p1[0] === p0[0] && p1[1] === p0[1] && p2[0] === p3[0] && p2[1] === p3[1];
+        // A closed shape's last stretch, if it's straight, is the close.
+        if (curve.closed && straight && i === all.length - 1 && i > 0)
+            return;
+        commands.push(straight ? `line to ${position(p3)}` : `curve to ${position(p3)} with ${position(p1)} / ${position(p2)}`);
+    });
+    if (curve.closed)
+        commands.push("close");
+    return `shape(${commands.join(", ")})`;
+}
+
+function shapeText(curve) {
+    const { width, height } = state;
+    switch (curve.kind) {
+    case "ellipse": {
+        const [rx, ry] = [curve.radii[0] * width, curve.radii[1] * height];
+        const turn = ((curve.angle % 180) + 180) % 180;
+        if (Math.abs(rx - ry) < 0.5)
+            return `circle(${pixels(rx)} at ${position(curve.center)})`;
+        if (turn < 0.05 || turn > 179.95)
+            return `ellipse(${percent(curve.radii[0])} ${percent(curve.radii[1])} at ${position(curve.center)})`;
+        if (Math.abs(turn - 90) < 0.05)
+            return `ellipse(${percent(ry / width)} ${percent(rx / height)} at ${position(curve.center)})`;
+        // Turned: four quarter arcs around it, clockwise.
+        const quarters = [1, 2, 3, 0].map(i => `arc to ${position(ellipsePoint(curve, i * Math.PI / 2))} of ${pixels(rx)} ${pixels(ry)} cw rotate ${number(curve.angle)}deg`);
+        return `shape(from ${position(ellipsePoint(curve, 0))}, ${quarters.join(", ")}, close)`;
+    }
+    case "line":
+        return `shape(from ${position(curve.from)}, line to ${position(curve.to)})`;
+    case "arc": {
+        const g = arcGeometry(curve);
+        if (g.straight)
+            return `shape(from ${position(curve.from)}, line to ${position(curve.to)})`;
+        const radius = g.radius * Math.min(width, height);
+        const size = Math.abs(g.sweep) > Math.PI ? " large" : "";
+        return `shape(from ${position(curve.from)}, arc to ${position(curve.to)} of ${pixels(radius)} ${g.sweep > 0 ? "cw" : "ccw"}${size})`;
+    }
+    default:
+        return curve.nodes.length ? pathShape(curve, curve.nodes) : "shape(from 0 0)";
+    }
+}
+
+function curveText(curve) {
+    const sides = curve.closed ? ["inside", "outside"] : ["left", "right"];
+    let text = `${shapeText(curve)} ${sides.map(side => `${side} ${curve[side]}`).join(" ")}`;
+    if ((curve.strength ?? 100) !== 100)
+        text += ` strength ${curve.strength}%`;
+    if ((curve.blur ?? 0) !== 0)
+        text += ` blur ${curve.blur}px`;
+    return text;
+}
+
+function cssText() {
+    const prelude = [state.models.length === 1 && state.models[0] === "harmonic" ? "harmonic" : "", `in ${SHADER_SPACES[state.space]}`].filter(Boolean).join(" ");
+    const lines = [prelude, ...state.curves.map(curveText)];
+    return `background-image: diffusion-gradient(${lines.join(",\n    ")});`;
+}
+
+async function copy(text, label) {
+    try {
+        await navigator.clipboard.writeText(text);
+        $("copyStatus").textContent = `Copied ${label}.`;
+    } catch {
+        $("output").select();
+        $("copyStatus").textContent = document.execCommand("copy") ? `Copied ${label}.` : "Couldn't copy.";
+    }
+    setTimeout(() => $("copyStatus").textContent = "", 1500);
+}
+$("copyCSS").addEventListener("click", () => copy($("output").value, "the CSS"));
+$("copyLink").addEventListener("click", () => {
+    writeHash();
+    copy(location.href, "the link");
+});
+
 // MARK: - URL fragment
 
 function encodeState() {
@@ -1856,6 +2165,9 @@ function decodeState(text) {
         if (data.v !== 1 || !Array.isArray(data.curves))
             return null;
         delete data.v;
+        // Before shapes kept their form, every curve was a path of nodes.
+        for (const curve of data.curves)
+            curve.kind ??= "path";
         return { ...presetState(0), ...data };
     } catch {
         return null;

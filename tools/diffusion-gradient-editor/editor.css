@@ -96,3 +96,5 @@ aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transf
 .view .sheet { height: 260px; cursor: grab; }
 .view .plot[hidden], .view .sheet[hidden], .view .numbers[hidden] { display: none; }
 .view .numbers { font-variant-numeric: tabular-nums; }
+#toPathRow[hidden] { display: none; }
+#output { min-height: 160px; white-space: pre; }
