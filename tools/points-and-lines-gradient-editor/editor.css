@@ -92,3 +92,19 @@
 #stopList .swatches .joint { align-self: center; color: var(--muted); font-size: 11px; }
 #stops [hidden] { display: none !important; }
 input.percent { width: 72px; }
+#presetNote[hidden], #levelRow[hidden], #stepsRow[hidden], #sheetRow[hidden], aside .note[hidden] { display: none; }
+#levelRow input[type=range], #stepsRow input[type=range] { flex: 1; }
+#levelValue, #stepsValue { min-width: 5.5em; text-align: right; font-variant-numeric: tabular-nums; }
+aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.view .plot, .view .sheet {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    touch-action: none;
+}
+.view .plot { height: 170px; }
+.view .sheet { height: 260px; cursor: grab; }
+.view .plot[hidden], .view .sheet[hidden], .view .numbers[hidden] { display: none; }
+.view .numbers { font-variant-numeric: tabular-nums; }
