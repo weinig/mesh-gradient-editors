@@ -23,10 +23,10 @@ def build(parts, output_path, source_path):
                 return i
         raise SystemExit(f"marker not found: {text!r}")
 
-    def between(start_marker, end_marker):
+    def between(start_marker, end_marker, include_end=False):
         a = index_of(start_marker)
         b = index_of(end_marker, a + 1)
-        return "\n".join(lines[a:b])
+        return "\n".join(lines[a:b + (1 if include_end else 0)])
 
     def fill(text, replacements):
         for marker, value in replacements.items():
@@ -61,9 +61,17 @@ def build(parts, output_path, source_path):
         "__COMMON_CONTROLS__": read(os.path.join(common, "controls.js")).rstrip("\n"),
         "__COMMON_FRAGMENT__": read(os.path.join(common, "fragment.js")).rstrip("\n") + "\n</script>\n</body>\n</html>",
     })
+    # The WGSL color conversions: the matrices, and the functions from transform() through toPremultipliedColor(), as
+    # the freeform-gradient() editor takes them. srgbToLinear() is renamed, since the renderer's shader has its own.
+    shader_color = between("fn transform(m: array<vec3f, 3>, v: vec3f) -> vec3f {", "@fragment fn meshGradientFragment")
+    assert "fn toPremultipliedColor(color: vec4f) -> vec4f {" in shader_color
+    shader_color = re.sub(r"\bsrgbToLinear\(", "colorSRGBToLinear(", shader_color.rstrip())
     # Color spaces and parsing, up to the mesh's hue fixup.
     script = fill(script, {
         "__COLORS__": between("// MARK: - Color spaces", "// MARK: - Hue fixup"),
+        "__SHADER_HELPERS__": between("const wgslNumber = ", "const wgslMatrix = ", include_end=True),
+        "__SHADER_MATRICES__": between('${wgslMatrix("linSRGBToXYZ"', "const D50 = ", include_end=True),
+        "__SHADER_COLOR__": shader_color,
         "__RENDERER__": renderer.rstrip(),
         "__SHADER__": json.dumps(read(os.path.join(vendor, "WebGPUFreeformGradient.wgsl"))),
     })

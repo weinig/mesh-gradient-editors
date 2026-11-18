@@ -1,3 +1,57 @@
+// MARK: - Colors
+
+// The interpolation space's names are SPACES, from the shared color code; the renderer and the shaders take a space
+// as its index there.
+const spaceIndex = space => SPACES.indexOf(space);
+
+// A CSS color's components in the interpolation space, and its alpha. As WebKit does for now, missing (none)
+// components are 0, rather than taking their value from the other colors.
+function interpolationComponents(text) {
+    const color = parseColor(text) ?? parseColor("black");
+    const components = convertColor(color.space, color.c, state.space, false).map(v => Number.isNaN(v) ? 0 : v);
+    return [...components, Number.isNaN(color.alpha) ? 0 : color.alpha];
+}
+
+// Colors as the renderer takes them, from their components in the interpolation space and alpha: in a polar space,
+// each hue moved by whole turns to within half a turn of the hues' circular mean, so the solve takes the shorter way
+// between them; then premultiplied, but for the hue.
+function rendererColors(colors) {
+    const hue = HUE_INDEX[state.space];
+    colors = colors.map(color => color.slice());
+    if (hue !== undefined && colors.length) {
+        let sine = 0, cosine = 0;
+        for (const color of colors) {
+            sine += Math.sin(color[hue] * Math.PI / 180);
+            cosine += Math.cos(color[hue] * Math.PI / 180);
+        }
+        const mean = Math.atan2(sine, cosine) * 180 / Math.PI;
+        for (const color of colors)
+            color[hue] = mean + (((color[hue] - mean) % 360 + 540) % 360 - 180);
+    }
+    for (const color of colors) {
+        for (let k = 0; k < 3; ++k) {
+            if (k !== hue)
+                color[k] *= color[3];
+        }
+    }
+    return colors;
+}
+
+// A CSS color in sRGB, clipped, as a color well's hex, without alpha.
+function hexColor(text) {
+    const color = parseColor(text) ?? parseColor("black");
+    const srgb = fromXYZ("srgb", toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
+    return "#" + srgb.map(v => Math.round(clamp(v, 0, 1) * 255).toString(16).padStart(2, "0")).join("");
+}
+
+// A CSS color as a swatch draws it: in sRGB, clipped, with its alpha, missing components as 0.
+function swatchColor(text, opacity = 1) {
+    const color = parseColor(text) ?? parseColor("black");
+    const srgb = fromXYZ("srgb", toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
+    const alpha = (Number.isNaN(color.alpha) ? 0 : color.alpha) * opacity;
+    return `rgb(${srgb.map(v => Math.round(clamp(v, 0, 1) * 255)).join(" ")} / ${clamp(alpha, 0, 1)})`;
+}
+
 // MARK: - Page
 
 const $ = id => document.getElementById(id);
@@ -151,8 +205,9 @@ const VISUALIZE_SHADER = `
 struct Visualize {
     mode: u32,
     space: u32,
-    padding0: u32,
-    padding1: u32,
+    // Read by toPremultipliedColor(), which the visualizations don't call, but which reads them.
+    outputIsDisplayP3: u32,
+    gamutMapping: u32,
 }
 
 @group(0) @binding(0) var<uniform> visualize: Visualize;
@@ -219,19 +274,18 @@ fn linearToOklab(c: vec3<f32>) -> vec3<f32> {
         0.0259040371 * r.x + 0.7827717662 * r.y - 0.8086757660 * r.z);
 }
 
-// A premultiplied color in the interpolation space as linear sRGB, unclamped, with straight alpha.
+// A premultiplied color in the interpolation space as linear sRGB, unclamped, with straight alpha. In a polar space
+// the hue isn't premultiplied.
 fn linearOf(premultiplied: vec4<f32>) -> vec4<f32> {
     if (premultiplied.a <= 1e-6) {
         return vec4<f32>(0.0);
     }
-    let c = premultiplied.rgb / premultiplied.a;
-    var result: vec3<f32>;
-    switch (visualize.space) {
-        case 0u: { result = decodeSigned(c); }
-        case 1u: { result = c; }
-        default: { result = oklabToLinear(c); }
+    var c = premultiplied.rgb / premultiplied.a;
+    let hue = hueComponent(visualize.space);
+    if (hue >= 0) {
+        c[hue] = normalizeHue(premultiplied[hue]);
     }
-    return vec4<f32>(result, premultiplied.a);
+    return vec4<f32>(transform(xyzToLinSRGB, toXYZ(visualize.space, c)), premultiplied.a);
 }
 
 // As the gradient shows a color: encoded sRGB, clamped, with straight alpha.
@@ -334,7 +388,7 @@ fn readSolution(@builtin(global_invocation_id) id: vec3<u32>) {
     readValuesOut[index] = textureLoad(readValues, vec2<i32>(id.xy), 0);
     readWeightOut[index] = textureLoad(readWeight, vec2<i32>(id.xy), 0).r;
 }
-`;
+` + COLOR_SHADER("visualize");
 
 let visualizePipeline = null;
 let readPipeline = null;
@@ -364,7 +418,7 @@ function encodeVisualization(view, encoder) {
             return;
         other = pair.renderer.levels[0].values.texture;
     }
-    device.queue.writeBuffer(view.uniforms, 0, new Uint32Array([mode, state.space, 0, 0]));
+    device.queue.writeBuffer(view.uniforms, 0, new Uint32Array([mode, spaceIndex(state.space), 0, 0]));
     const bindGroup = device.createBindGroup({
         layout: visualizePipeline.getBindGroupLayout(0),
         entries: [
@@ -499,13 +553,14 @@ function oklabLightness([r, g, b]) {
 }
 
 // A premultiplied color in the interpolation space as the gradient shows it before clipping: encoded sRGB with
-// straight alpha, and its Oklab lightness.
+// straight alpha, and its Oklab lightness. In a polar space the hue isn't premultiplied.
 function appearance(p, space) {
     const alpha = p[3];
     if (alpha <= 1e-6)
         return { rgb: [0, 0, 0], alpha: 0, L: 0 };
-    const c = [p[0] / alpha, p[1] / alpha, p[2] / alpha];
-    const linear = space === 0 ? c.map(decodeSigned) : space === 1 ? c : oklabToLinear(c);
+    const hue = HUE_INDEX[space];
+    const c = [0, 1, 2].map(k => k === hue ? ((p[k] % 360) + 360) % 360 : p[k] / alpha);
+    const linear = fromXYZ("srgb-linear", toXYZ(space, c));
     return { rgb: linear.map(encodeSigned), alpha, L: oklabLightness(linear) };
 }
 
@@ -640,13 +695,24 @@ let sheetYaw = -0.6;
 let sheetTilt = 0.8;
 
 // What the 3D view can raise the surface by: each of the interpolation space's components, as the solve has them,
-// straight rather than premultiplied, and for the sRGB spaces Oklab lightness too. Each has the range its box spans.
+// straight rather than premultiplied, over their usual range, as the freeform-gradient() editor has them; and but for
+// the Oklab spaces, Oklab lightness too.
+const COMPONENT_LABELS = {
+    "xyz-d50": ["X", "Y", "Z"], "xyz-d65": ["X", "Y", "Z"],
+    lab: ["L", "a", "b"], lch: ["L", "C", "h"], oklab: ["L", "a", "b"], oklch: ["L", "C", "h"],
+    hsl: ["h", "s", "l"], hwb: ["h", "w", "b"],
+};
+const COMPONENT_RANGES = {
+    lab: [[0, 100], [-125, 125], [-125, 125]], lch: [[0, 100], [0, 150], [0, 360]],
+    oklab: [[0, 1], [-0.4, 0.4], [-0.4, 0.4]], oklch: [[0, 1], [0, 0.4], [0, 360]],
+    hsl: [[0, 360], [0, 100], [0, 100]], hwb: [[0, 360], [0, 100], [0, 100]],
+};
+
 function sheetHeights(space) {
-    const rgb = space === 0 ? "encoded" : "linear";
-    const heights = space === 2
-        ? [{ value: "c0", label: "L (Oklab)", short: "L", range: [0, 1] }, { value: "c1", label: "a (Oklab)", short: "a", range: [-0.4, 0.4] }, { value: "c2", label: "b (Oklab)", short: "b", range: [-0.4, 0.4] }]
-        : ["Red", "Green", "Blue"].map((label, k) => ({ value: `c${k}`, label: `${label} (${rgb})`, short: label[0], range: [0, 1] }));
-    if (space !== 2)
+    const labels = COMPONENT_LABELS[space] ?? ["Red", "Green", "Blue"];
+    const ranges = COMPONENT_RANGES[space] ?? [[0, 1], [0, 1], [0, 1]];
+    const heights = labels.map((label, k) => ({ value: `c${k}`, label: `${label} (${space})`, short: label, range: ranges[k] }));
+    if (space !== "oklab" && space !== "oklch")
         heights.push({ value: "L", label: "Lightness (Oklab L)", short: "L", range: [0, 1] });
     return heights;
 }
@@ -654,7 +720,7 @@ function sheetHeights(space) {
 // The height the 3D view shows: the one chosen, or for a link from before, the component it named.
 function sheetHeight(space) {
     const heights = sheetHeights(space);
-    const legacy = { r: "c0", g: "c1", b: "c2", L: space === 2 ? "c0" : "L" };
+    const legacy = { r: "c0", g: "c1", b: "c2", L: space === "oklab" || space === "oklch" ? "c0" : "L" };
     const value = legacy[state.sheetHeight] ?? state.sheetHeight;
     return heights.find(height => height.value === value) ?? heights[0];
 }
@@ -677,7 +743,7 @@ function drawSheet(view) {
     const component = shown.value === "L" ? -1 : Number(shown.value.slice(1));
     const heightAt = p => {
         const color = sampleReadout(readout, p);
-        const value = component < 0 ? appearance(color, readout.space).L : color[3] > 1e-6 ? color[component] / color[3] : 0;
+        const value = component < 0 ? appearance(color, readout.space).L : component === HUE_INDEX[readout.space] ? color[component] : color[3] > 1e-6 ? color[component] / color[3] : 0;
         return (value - low) / (high - low);
     };
     const heights = [];
@@ -850,7 +916,7 @@ function drawSection(ctx, toPixels) {
 // The settings every editor's state has: from the current state when a preset is chosen, so they stay as they were.
 function commonState() {
     return {
-        space: state?.space ?? 2,
+        space: state?.space ?? "oklab",
         resolution: state?.resolution ?? 512,
         models: state?.models ?? ["biharmonic", "harmonic"],
         view: state?.view ?? "gradient",

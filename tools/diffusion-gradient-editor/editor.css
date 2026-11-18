@@ -14,7 +14,7 @@
 #curves input[type=range] { flex: 1; }
 #curves output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
 #curveFields input[type=color] { width: 32px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 4px; }
-#curveFields #secondColorLabel { min-width: 0; margin-left: 8px; }
+#curveFields .colorText { flex: 1; min-width: 0; }
 #shapeFields input[type=number] { width: 4.5em; }
 #curveFields + #curveList { margin-top: 10px; }
 #toPathRow[hidden] { display: none; }

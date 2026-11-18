@@ -285,17 +285,6 @@ function sideColors(curve, flat) {
     return area > 0 ? [curve.outside, curve.inside] : [curve.inside, curve.outside];
 }
 
-// The interpolation spaces the renderer's shader knows.
-const SHADER_SPACES = ["srgb", "srgb-linear", "oklab"];
-
-// A color's components in the interpolation space, premultiplied, as the renderer takes them.
-function premultiplied(text) {
-    const color = parseColor(text) ?? parseColor("black");
-    const alpha = Number.isNaN(color.alpha) ? 0 : color.alpha;
-    const c = fromXYZ(SHADER_SPACES[state.space], toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
-    return [c[0] * alpha, c[1] * alpha, c[2] * alpha, alpha];
-}
-
 // How far either side of a curve its colors are held, in units of the box's shorter side: MeshShader2's default
 // point radius. The renderer would hold a two-sided line across at least 1.5 texels, but a band that thin stops the
 // biharmonic solve from settling, more so the finer the grid: a circle red inside and blue outside comes out
@@ -343,11 +332,11 @@ function gradientData(model) {
         }
         lines.push({ ends: flat.flat(), closed });
     };
-    for (const curve of state.curves) {
-        const flat = pieces(curve);
-        if (!flat.length)
-            continue;
-        const [left, right] = sideColors(curve, flat).map(premultiplied);
+    // Every curve's colors are taken to the renderer at once, so a polar space's hues are moved together.
+    const drawn = state.curves.map(curve => ({ curve, flat: pieces(curve) })).filter(({ flat }) => flat.length);
+    const prepared = rendererColors(drawn.flatMap(({ curve, flat }) => sideColors(curve, flat).map(interpolationComponents)));
+    for (const [i, { curve, flat }] of drawn.entries()) {
+        const left = prepared[2 * i], right = prepared[2 * i + 1];
         colors.push(left, right);
         const strength = model === "harmonic" ? ((curve.strength ?? 100) / 100) ** 3 : 1;
         const blur = (curve.blur ?? 0) / Math.min(state.width, state.height);
@@ -361,7 +350,7 @@ function gradientData(model) {
     }
     const average = [0, 1, 2, 3].map(k => colors.length ? colors.reduce((sum, c) => sum + c[k], 0) / colors.length : 0);
     return {
-        space: state.space, resolution: (drag && drag.kind !== "section") || adjusting ? Math.min(state.resolution, 256) : state.resolution, model,
+        space: spaceIndex(state.space), resolution: (drag && drag.kind !== "section") || adjusting ? Math.min(state.resolution, 256) : state.resolution, model,
         isEmpty: !segments.length, average, points: [], segments, strengths, lines,
         hasTwoSidedLines: segments.some((_, i) => i % 23 === 22 && segments[i] !== 0), isOpaque: colors.every(c => c[3] >= 1),
     };
@@ -444,7 +433,7 @@ function drawOverlay(view, dpr) {
         }
         for (const { side, at } of swatches(curve, size)) {
             const half = 4.5;
-            ctx.fillStyle = curve[side];
+            ctx.fillStyle = swatchColor(curve[side]);
             ctx.fillRect(at[0] - half, at[1] - half, 2 * half, 2 * half);
             ctx.lineWidth = 1.5;
             ctx.strokeStyle = "#fff";
@@ -761,7 +750,7 @@ function finishPen() {
 
 // Opens a color picker for one side of a curve, where the pointer is.
 function pickColor(index, side, event) {
-    const input = Object.assign(document.createElement("input"), { type: "color", value: state.curves[index][side] });
+    const input = Object.assign(document.createElement("input"), { type: "color", value: hexColor(state.curves[index][side]) });
     Object.assign(input.style, { position: "fixed", left: `${event.clientX}px`, top: `${event.clientY}px`, width: "1px", height: "1px", opacity: "0" });
     document.body.append(input);
     input.addEventListener("input", () => {
@@ -1003,7 +992,7 @@ function updateControls() {
         for (const [input, side] of [[row.querySelector(".first"), first], [row.querySelector(".second"), second]]) {
             input.title = side[0].toUpperCase() + side.slice(1);
             if (document.activeElement !== input)
-                input.value = curve[side];
+                input.value = hexColor(curve[side]);
         }
     });
     $("emptyNote").hidden = state.curves.length > 0;
@@ -1018,8 +1007,9 @@ function updateControls() {
         const sides = selected.closed ? ["inside", "outside"] : ["left", "right"];
         for (const [which, side] of [["first", sides[0]], ["second", sides[1]]]) {
             $(which + "ColorLabel").textContent = side[0].toUpperCase() + side.slice(1);
-            if (document.activeElement !== $(which + "Color"))
-                $(which + "Color").value = selected[side];
+            $(which + "Color").value = hexColor(selected[side]);
+            if (document.activeElement !== $(which + "Text"))
+                $(which + "Text").value = selected[side];
         }
         updateShapeFields(selected);
         $("toPathRow").hidden = isPath(selected);
@@ -1085,15 +1075,23 @@ function shapeFieldRow([label, key, type]) {
     return row;
 }
 
+// A side's color, from its color well or as any CSS color typed in.
 for (const which of ["first", "second"]) {
-    $(which + "Color").addEventListener("input", () => {
+    const setColor = text => {
         const curve = selection && state.curves[selection.curve];
         if (!curve)
             return;
         const sides = curve.closed ? ["inside", "outside"] : ["left", "right"];
-        curve[sides[which === "first" ? 0 : 1]] = $(which + "Color").value;
+        curve[sides[which === "first" ? 0 : 1]] = text;
         changed();
+    };
+    $(which + "Color").addEventListener("input", () => setColor($(which + "Color").value));
+    $(which + "Text").addEventListener("input", () => {
+        const text = $(which + "Text").value.trim();
+        if (parseColor(text))
+            setColor(text);
     });
+    $(which + "Text").addEventListener("change", () => updateControls());
 }
 
 const TOOL_NOTES = {
@@ -1243,7 +1241,7 @@ function curveText(curve) {
 }
 
 function cssText() {
-    const prelude = [state.models.length === 1 && state.models[0] === "harmonic" ? "harmonic" : "", `in ${SHADER_SPACES[state.space]}`].filter(Boolean).join(" ");
+    const prelude = [state.models.length === 1 && state.models[0] === "harmonic" ? "harmonic" : "", `in ${state.space}`].filter(Boolean).join(" ");
     const lines = [prelude, ...state.curves.map(curveText)];
     return `background-image: diffusion-gradient(${lines.join(",\n    ")});`;
 }

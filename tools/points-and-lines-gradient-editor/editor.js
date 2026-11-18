@@ -206,17 +206,6 @@ function stretchPieces({ bezier: points }) {
     return result;
 }
 
-// The interpolation spaces the renderer's shader knows.
-const SHADER_SPACES = ["srgb", "srgb-linear", "oklab"];
-
-// A stop's color in the interpolation space with its opacity, premultiplied, as the renderer takes it.
-function premultiplied(stop) {
-    const color = parseColor(stop.color) ?? parseColor("black");
-    const alpha = (Number.isNaN(color.alpha) ? 0 : color.alpha) * stop.opacity / 100;
-    const c = fromXYZ(SHADER_SPACES[state.space], toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
-    return [c[0] * alpha, c[1] * alpha, c[2] * alpha, alpha];
-}
-
 // How far a stop or line holds its color, in units of the box's shorter side, at a spread of 0: MeshShader2's
 // default point radius.
 const STOP_RADIUS = 0.01;
@@ -228,7 +217,13 @@ const spreadRadius = stop => STOP_RADIUS + (FULL_SPREAD - STOP_RADIUS) * stop.sp
 // The gradient as MeshShader2's renderer takes it: each stop on no line a point, held out to its spread, and each
 // line's pieces one-sided segments, their colors blended from stop to stop.
 function gradientData(model) {
-    const points = [], segments = [], lines = [], colors = state.stops.map(premultiplied);
+    // A stop's opacity scales its color's own alpha.
+    const colors = rendererColors(state.stops.map(stop => {
+        const components = interpolationComponents(stop.color);
+        components[3] *= stop.opacity / 100;
+        return components;
+    }));
+    const points = [], segments = [], lines = [];
     state.stops.forEach((stop, i) => {
         if (!linesThrough(i).length)
             points.push(...colors[i], stop.p[0], stop.p[1], spreadRadius(stop), 0);
@@ -248,7 +243,7 @@ function gradientData(model) {
     }
     const average = [0, 1, 2, 3].map(k => colors.length ? colors.reduce((sum, c) => sum + c[k], 0) / colors.length : 0);
     return {
-        space: state.space, resolution: (drag && drag.kind !== "section") || adjusting ? Math.min(state.resolution, 256) : state.resolution, model,
+        space: spaceIndex(state.space), resolution: (drag && drag.kind !== "section") || adjusting ? Math.min(state.resolution, 256) : state.resolution, model,
         isEmpty: !points.length && !segments.length, average, points, segments, lines, hasTwoSidedLines: false,
         isOpaque: colors.every(c => c[3] >= 1),
     };
@@ -333,7 +328,7 @@ function drawOverlay(view) {
         ctx.stroke();
         ctx.beginPath();
         ctx.arc(...at, radius, 0, 2 * Math.PI);
-        ctx.fillStyle = stop.color;
+        ctx.fillStyle = swatchColor(stop.color, stop.opacity / 100);
         ctx.fill();
         ctx.globalAlpha = 1;
     });
@@ -688,20 +683,12 @@ function updateStopList() {
     }
     for (const button of list.querySelectorAll("button[data-stop]")) {
         const stop = state.stops[Number(button.dataset.stop)];
-        button.firstChild.style.background = stop.color;
-        button.firstChild.style.opacity = stop.opacity / 100;
+        button.firstChild.style.background = swatchColor(stop.color, stop.opacity / 100);
         button.title = `${stop.color}${stop.opacity < 100 ? `, ${stop.opacity}%` : ""}`;
         button.classList.toggle("selected", Number(button.dataset.stop) === selection);
     }
     for (const row of list.children)
         row.classList.toggle("drawing", row.dataset.line !== "" && Number(row.dataset.line) === drawing);
-}
-
-// A CSS color as the sRGB hex a color well takes, clipped.
-function hexColor(text) {
-    const color = parseColor(text) ?? parseColor("black");
-    const srgb = fromXYZ("srgb", toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
-    return "#" + srgb.map(v => Math.round(clamp(v, 0, 1) * 255).toString(16).padStart(2, "0")).join("");
 }
 
 $("stopPicker").addEventListener("input", () => {

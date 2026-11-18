@@ -252,7 +252,7 @@ export class WebGPUFreeformGradientRenderer {
       this.solvedSize = [width, height];
     }
 
-    this.device.queue.writeBuffer(this.displayUniforms, 0, new Uint32Array([this.gradient.space, 0, 0, 0]));
+    this.device.queue.writeBuffer(this.displayUniforms, 0, new Uint32Array([this.gradient.space, this.gradient.outputIsDisplayP3 ?? 0, this.gradient.gamutMapping ?? 0, 0]));
     const render = pass();
     render.setPipeline(this.displayPipeline);
     render.setBindGroup(0, this.bindGroup(this.displayPipeline, [

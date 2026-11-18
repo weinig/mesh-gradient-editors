@@ -3,6 +3,8 @@
 // The editor gives PRESETS, PRESET_KEYS (the state a preset sets besides the box), presetState(index), resetEditing()
 // for when a preset replaces the state, and VIEW_NOTES.
 
+for (const space of SPACES)
+    $("space").add(new Option(space, space));
 $("preset").add(new Option("Custom", ""));
 PRESETS.forEach((preset, index) => $("preset").add(new Option(preset.name, String(index))));
 
@@ -48,7 +50,7 @@ function updateCommonControls() {
         if (document.activeElement !== $(id))
             $(id).value = state[id];
     }
-    $("space").value = String(state.space);
+    $("space").value = state.space;
     $("resolution").value = String(state.resolution);
     for (const button of document.querySelectorAll("#modelBar button"))
         button.setAttribute("aria-pressed", String(state.models.includes(button.dataset.model)));
@@ -70,7 +72,7 @@ for (const id of ["width", "height"]) {
     });
 }
 $("space").addEventListener("change", () => {
-    state.space = Number($("space").value);
+    state.space = $("space").value;
     changed();
 });
 $("resolution").addEventListener("change", () => {

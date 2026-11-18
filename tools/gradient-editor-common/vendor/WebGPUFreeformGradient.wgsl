@@ -353,9 +353,10 @@ fn freeformCorrect(@builtin(global_invocation_id) id: vec3<u32>) {
 
 struct DisplayUniforms {
     space: u32,
-    padding0: u32,
-    padding1: u32,
-    padding2: u32,
+    // Read by the page's toPremultipliedColor().
+    outputIsDisplayP3: u32,
+    gamutMapping: u32,
+    padding: u32,
 }
 
 @group(0) @binding(0) var<uniform> display: DisplayUniforms;
@@ -377,27 +378,6 @@ fn freeformDisplayVertex(@builtin(vertex_index) vid: u32) -> DisplayVertex {
     return out;
 }
 
-fn linearToSRGB(c: vec3<f32>) -> vec3<f32> {
-    return select(1.055 * pow(c, vec3<f32>(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3<f32>(0.0031308));
-}
-
-fn srgbToLinear(c: vec3<f32>) -> vec3<f32> {
-    return select(pow((c + 0.055) / 1.055, vec3<f32>(2.4)), c / 12.92, c <= vec3<f32>(0.04045));
-}
-
-fn oklabToLinearSRGB(lab: vec3<f32>) -> vec3<f32> {
-    let l_ = lab.x + 0.3963377774 * lab.y + 0.2158037573 * lab.z;
-    let m_ = lab.x - 0.1055613458 * lab.y - 0.0638541728 * lab.z;
-    let s_ = lab.x - 0.0894841775 * lab.y - 1.2914855480 * lab.z;
-    let l = l_ * l_ * l_;
-    let m = m_ * m_ * m_;
-    let s = s_ * s_ * s_;
-    return vec3<f32>(
-        4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-        -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-        -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s);
-}
-
 // Interleaved gradient noise, to dither away the banding a smooth gradient
 // shows in 8 bits.
 fn ditherNoise(position: vec2<f32>) -> f32 {
@@ -405,20 +385,23 @@ fn ditherNoise(position: vec2<f32>) -> f32 {
 }
 
 // A premultiplied color in the interpolation space, taken back to sRGB:
-// encoded components, clamped to the gamut, and straight alpha.
+// encoded components, clamped or gamut mapped, and straight alpha. In a
+// polar space the hue isn't premultiplied. The conversion is the page's own:
+// hueComponent() and toPremultipliedColor(), which the page appends to this
+// shader, reading display.space, display.outputIsDisplayP3 and
+// display.gamutMapping.
 fn toSRGB(premultiplied: vec4<f32>, space: u32) -> vec4<f32> {
     let alpha = saturate(premultiplied.a);
     if (alpha <= 0.0) {
         return vec4<f32>(0.0);
     }
-    let color = premultiplied.rgb / premultiplied.a;
-    var linearColor: vec3<f32>;
-    switch (space) {
-        case 0u: { linearColor = srgbToLinear(saturate(color)); }
-        case 1u: { linearColor = color; }
-        default: { linearColor = oklabToLinearSRGB(color); }
+    var color = premultiplied.rgb / alpha;
+    let hue = hueComponent(space);
+    if (hue >= 0) {
+        color[hue] = premultiplied[hue];
     }
-    return vec4<f32>(linearToSRGB(saturate(linearColor)), alpha);
+    let shown = toPremultipliedColor(vec4<f32>(color, alpha));
+    return vec4<f32>(shown.rgb / alpha, alpha);
 }
 
 // Filters the solution up to the view, and writes it premultiplied, encoded

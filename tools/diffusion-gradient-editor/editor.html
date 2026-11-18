@@ -18,10 +18,14 @@
             <h2 id="curvesTitle">Curves</h2>
             <div id="curveFields">
                 <div class="row">
-                    <label id="firstColorLabel" for="firstColor"></label>
-                    <input id="firstColor" type="color">
-                    <label id="secondColorLabel" for="secondColor"></label>
-                    <input id="secondColor" type="color">
+                    <label id="firstColorLabel" for="firstText"></label>
+                    <input id="firstColor" type="color" title="Pick an sRGB color">
+                    <input id="firstText" class="colorText" type="text" spellcheck="false" title="Any CSS color, with alpha. Missing (none) components are 0 for now.">
+                </div>
+                <div class="row">
+                    <label id="secondColorLabel" for="secondText"></label>
+                    <input id="secondColor" type="color" title="Pick an sRGB color">
+                    <input id="secondText" class="colorText" type="text" spellcheck="false" title="Any CSS color, with alpha. Missing (none) components are 0 for now.">
                 </div>
                 <div id="shapeFields"></div>
                 <div class="row" title="How firmly the curve holds its colors. Below 100%, the colors around it bleed in. Only the harmonic model takes it for now.">

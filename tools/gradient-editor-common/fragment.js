@@ -15,6 +15,10 @@ function decodeState(text) {
         const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(binary, ch => ch.charCodeAt(0))));
         if (data.v !== 1 || !acceptsState(data))
             return null;
+        if (typeof data.space === "number")
+            data.space = ["srgb", "srgb-linear", "oklab"][data.space];
+        if (!SPACES.includes(data.space))
+            data.space = "oklab";
         delete data.v;
         return { ...presetState(DEFAULT_PRESET), ...data };
     } catch {
