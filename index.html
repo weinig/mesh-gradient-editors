@@ -73,6 +73,11 @@ code { font: 13px ui-monospace, Menlo, monospace; }
         <p>Place color stops anywhere, drag them around, and copy the CSS. Compares three ways to blend colors between the stops, side by side: the thin-plate spline WebKit draws, and biharmonic and harmonic grids. For each, it shows overshoot and clipping, each stop's influence, the difference from another model, cross-sections and 3D surfaces, and what a spec would need to define.</p>
     </a>
 
+    <a class="card" href="diffusion-gradient-editor.html">
+        <h2>Diffusion Gradient Editor</h2>
+        <p>WebGPU only. Draw curves with the pen, as lines, ellipses, arcs, or freehand, each with a color on either side, and the colors spread between them by solving the biharmonic or the harmonic equation, side by side. Each curve has a strength and a blur.</p>
+    </a>
+
     <p>The native renderer needs a WebKit build with the <code>CSSMeshGradientsEnabled</code> or <code>CSSFreeformGradientsEnabled</code> preference on. The WebGPU renderer needs a browser with WebGPU.</p>
 </main>
 </body>
