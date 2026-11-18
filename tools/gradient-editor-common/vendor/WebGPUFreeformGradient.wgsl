@@ -357,6 +357,9 @@ struct DisplayUniforms {
     outputIsDisplayP3: u32,
     gamutMapping: u32,
     padding: u32,
+    // The part of the solved box the view shows: its origin and size, 0 to
+    // 1 across and down the box. All of it but for open edges.
+    window: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> display: DisplayUniforms;
@@ -409,7 +412,8 @@ fn toSRGB(premultiplied: vec4<f32>, space: u32) -> vec4<f32> {
 @fragment
 fn freeformDisplayFragment(input: DisplayVertex) -> @location(0) vec4<f32> {
     let size = vec2<f32>(textureDimensions(displaySolution));
-    let color = toSRGB(bilinearRead(displaySolution, input.uv * size - 0.5), display.space);
+    let uv = display.window.xy + input.uv * display.window.zw;
+    let color = toSRGB(bilinearRead(displaySolution, uv * size - 0.5), display.space);
     let encoded = saturate(color.rgb + (ditherNoise(input.position.xy) - 0.5) / 255.0);
     return vec4<f32>(encoded * color.a, color.a);
 }
@@ -447,7 +451,8 @@ fn freeformEdgeVertex(@builtin(vertex_index) vid: u32) -> EdgeFragment {
     let corner = edgeVertices[vid];
     let size = vec2<f32>(textureDimensions(displaySolution));
     var out: EdgeFragment;
-    out.position = vec4<f32>(corner.position * vec2<f32>(2.0, -2.0) + vec2<f32>(-1.0, 1.0), 0.0, 1.0);
+    let shown = (corner.position - display.window.xy) / display.window.zw;
+    out.position = vec4<f32>(shown * vec2<f32>(2.0, -2.0) + vec2<f32>(-1.0, 1.0), 0.0, 1.0);
     out.color = corner.color;
     if (corner.samplesSolution != 0u) {
         out.color = bilinearRead(displaySolution, corner.position * size - 0.5);

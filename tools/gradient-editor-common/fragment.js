@@ -25,6 +25,8 @@ function decodeState(text) {
             data.backdrop = "checkerboard";
         if (!GAMUTS.includes(data.gamut))
             data.gamut = "srgb";
+        if (!EDGES.includes(data.edges))
+            data.edges = "mirrored";
         delete data.v;
         return { ...presetState(DEFAULT_PRESET), ...data };
     } catch {

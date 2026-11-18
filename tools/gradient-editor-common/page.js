@@ -52,6 +52,39 @@ function swatchColor(text, opacity = 1) {
     return `rgb(${srgb.map(v => Math.round(clamp(v, 0, 1) * 255)).join(" ")} / ${clamp(alpha, 0, 1)})`;
 }
 
+// MARK: - Edges
+
+// With mirrored edges the grid is the box. With open edges it reaches half the box's size past each side, so its edges
+// are far from the stops: the renderer solves a box twice the size, with the gradient in its middle, and shows the
+// middle. Its texels are bigger as a result.
+const EDGES = ["mirrored", "open"];
+const openEdges = () => state.edges === "open";
+
+// The part of the solved box the view shows: its origin and size, 0 to 1 across and down the box.
+const viewWindow = () => openEdges() ? [0.25, 0.25, 0.5, 0.5] : [0, 0, 1, 1];
+
+// The gradient moved into the bigger box: positions into its middle, and lengths, which are in units of the box's
+// shorter side, halved.
+function windowed(data) {
+    if (!openEdges())
+        return data;
+    const inside = v => 0.25 + v / 2;
+    const points = data.points.slice(), segments = data.segments.slice();
+    for (let i = 0; i < points.length; i += 8) {
+        points[i + 4] = inside(points[i + 4]);
+        points[i + 5] = inside(points[i + 5]);
+        points[i + 6] /= 2;
+    }
+    for (let i = 0; i < segments.length; i += 23) {
+        for (let k = 16; k < 20; ++k)
+            segments[i + k] = inside(segments[i + k]);
+        segments[i + 20] /= 2;
+        segments[i + 21] /= 2;
+    }
+    const lines = data.lines.map(line => ({ ...line, ends: line.ends.map(inside) }));
+    return { ...data, points, segments, lines, window: viewWindow() };
+}
+
 // MARK: - Page
 
 const $ = id => document.getElementById(id);
@@ -114,7 +147,7 @@ async function setUpGPU() {
         view.context.configure({ device, format, alphaMode: "premultiplied" });
         view.renderer = new WebGPUFreeformGradientRenderer(device, { shader: SHADER, format });
         view.influence = new WebGPUFreeformGradientRenderer(device, { shader: SHADER, format });
-        view.uniforms = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        view.uniforms = device.createBuffer({ size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     }
     const module = device.createShaderModule({ code: VISUALIZE_SHADER });
     visualizePipeline = device.createRenderPipeline({
@@ -179,8 +212,10 @@ function render() {
 }
 
 // Solves the view's gradient if it changed, or relaxes it for the relaxation view, and draws it.
-function encodeView(view, encoder, width, height) {
-    const data = { ...gradientData(view.model), gamutMapping: state.gamutMapping === "map" ? 1 : 0 };
+function encodeView(view, encoder, viewWidth, viewHeight) {
+    const data = { ...windowed(gradientData(view.model)), gamutMapping: state.gamutMapping === "map" ? 1 : 0 };
+    // The box the renderer solves: the view's, or twice it for open edges.
+    const width = openEdges() ? 2 * viewWidth : viewWidth, height = openEdges() ? 2 * viewHeight : viewHeight;
     const relaxing = state.view === "relaxation" && view.model === "harmonic";
     const key = JSON.stringify(data) + (relaxing ? `:relaxed ${2 ** state.steps}` : "");
     if (key !== view.gradientKey) {
@@ -200,7 +235,7 @@ function encodeView(view, encoder, width, height) {
     view.solveKey = `${key} ${width}x${height}`;
     // The influence is solved as a gradient of its own, drawn over by the visualization.
     if (state.view === "influence" && influenceAvailable()) {
-        const influence = gradientData(view.model, true);
+        const influence = windowed(gradientData(view.model, true));
         const influenceKey = JSON.stringify(influence);
         if (influenceKey !== view.influenceKey) {
             view.influence.setGradient(influence);
@@ -227,6 +262,8 @@ struct Visualize {
     padding0: u32,
     padding1: u32,
     padding2: u32,
+    // The part of the solved box the view shows: its origin and size, 0 to 1 across and down it.
+    window: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> visualize: Visualize;
@@ -353,7 +390,8 @@ fn dither(position: vec2<f32>) -> f32 {
 @fragment
 fn visualizeFragment(input: VisualizeVertex) -> @location(0) vec4<f32> {
     let size = vec2<f32>(textureDimensions(solution));
-    let texelPosition = input.uv * size;
+    let uv = visualize.window.xy + input.uv * visualize.window.zw;
+    let texelPosition = uv * size;
     // Device pixels a texel spans.
     let texelPixels = 1.0 / max(fwidth(texelPosition.x), 1e-6);
     let value = linearOf(bilinear(solution, texelPosition - 0.5));
@@ -386,7 +424,7 @@ fn visualizeFragment(input: VisualizeVertex) -> @location(0) vec4<f32> {
             color = vec4<f32>(mix(color.rgb, contrast(color.rgb), 0.8 * onLine), max(color.a, onLine));
         }
         case 4u: {
-            let other = shown(linearOf(bilinear(otherSolution, input.uv * vec2<f32>(textureDimensions(otherSolution)) - 0.5)));
+            let other = shown(linearOf(bilinear(otherSolution, uv * vec2<f32>(textureDimensions(otherSolution)) - 0.5)));
             let a = linearToOklab(decodeSigned(color.rgb)) * color.a;
             let b = linearToOklab(decodeSigned(other.rgb)) * other.a;
             let difference = length(vec4<f32>(a - b, color.a - other.a));
@@ -465,7 +503,10 @@ function encodeVisualization(view, encoder) {
             return;
         other = pair.renderer.levels[0].values.texture;
     }
-    device.queue.writeBuffer(view.uniforms, 0, new Uint32Array([mode, spaceIndex(state.space), 0, 0, GAMUTS.indexOf(state.gamut), 0, 0, 0]));
+    const uniforms = new ArrayBuffer(48);
+    new Uint32Array(uniforms, 0, 8).set([mode, spaceIndex(state.space), 0, 0, GAMUTS.indexOf(state.gamut), 0, 0, 0]);
+    new Float32Array(uniforms, 32, 4).set(viewWindow());
+    device.queue.writeBuffer(view.uniforms, 0, uniforms);
     const bindGroup = device.createBindGroup({
         layout: visualizePipeline.getBindGroupLayout(0),
         entries: [
@@ -560,7 +601,7 @@ async function readBack(view, index) {
     try {
         await Promise.all([valuesRead.mapAsync(GPUMapMode.READ), weightsRead.mapAsync(GPUMapMode.READ)]);
         view.readout = {
-            width, height, space, level: index, stats: null,
+            width, height, space, level: index, stats: null, window: viewWindow(),
             values: new Float32Array(valuesRead.getMappedRange()).slice(0, width * height * 4),
             weights: new Float32Array(weightsRead.getMappedRange()).slice(0, width * height),
         };
@@ -621,8 +662,13 @@ function excessOf({ linear, alpha }) {
     return Math.max(0, ...encoded.map(v => Math.max(-v, v - 1)), -alpha, alpha - 1);
 }
 
-// The readout's premultiplied color at a point, 0 to 1 across and down the box, filtered as the gradient is.
-function sampleReadout({ width, height, values }, [u, v]) {
+// Where a point of the view is in the readout's grid, 0 to 1 across and down it.
+const inReadout = ({ window }, [u, v]) => [window[0] + u * window[2], window[1] + v * window[3]];
+
+// The readout's premultiplied color at a point, 0 to 1 across and down the view's box, filtered as the gradient is.
+function sampleReadout(readout, p) {
+    const { width, height, values } = readout;
+    const [u, v] = inReadout(readout, p);
     const x = clamp(u * width - 0.5, 0, width - 1), y = clamp(v * height - 0.5, 0, height - 1);
     const x0 = Math.floor(x), y0 = Math.floor(y), x1 = Math.min(x0 + 1, width - 1), y1 = Math.min(y0 + 1, height - 1);
     const fx = x - x0, fy = y - y0;
@@ -630,8 +676,11 @@ function sampleReadout({ width, height, values }, [u, v]) {
     return [0, 1, 2, 3].map(k => (at(x0, y0, k) * (1 - fx) + at(x1, y0, k) * fx) * (1 - fy) + (at(x0, y1, k) * (1 - fx) + at(x1, y1, k) * fx) * fy);
 }
 
-const weightAt = ({ width, height, weights }, [u, v]) =>
-    weights[clamp(Math.floor(v * height), 0, height - 1) * width + clamp(Math.floor(u * width), 0, width - 1)];
+function weightAt(readout, p) {
+    const { width, height, weights } = readout;
+    const [u, v] = inReadout(readout, p);
+    return weights[clamp(Math.floor(v * height), 0, height - 1) * width + clamp(Math.floor(u * width), 0, width - 1)];
+}
 
 // MARK: - Under each box
 
@@ -750,8 +799,7 @@ let sheetYaw = -0.6;
 let sheetTilt = 0.8;
 
 // What the 3D view can raise the surface by: each of the interpolation space's components, as the solve has them,
-// straight rather than premultiplied, over their usual range, as the freeform-gradient() editor has them; and but for
-// the Oklab spaces, Oklab lightness too.
+// straight rather than premultiplied, over their usual range, then alpha, as the freeform-gradient() editor has them.
 const COMPONENT_LABELS = {
     "xyz-d50": ["X", "Y", "Z"], "xyz-d65": ["X", "Y", "Z"],
     lab: ["L", "a", "b"], lch: ["L", "C", "h"], oklab: ["L", "a", "b"], oklch: ["L", "C", "h"],
@@ -766,16 +814,16 @@ const COMPONENT_RANGES = {
 function sheetHeights(space) {
     const labels = COMPONENT_LABELS[space] ?? ["Red", "Green", "Blue"];
     const ranges = COMPONENT_RANGES[space] ?? [[0, 1], [0, 1], [0, 1]];
-    const heights = labels.map((label, k) => ({ value: `c${k}`, label: `${label} (${space})`, short: label, range: ranges[k] }));
-    if (space !== "oklab" && space !== "oklch")
-        heights.push({ value: "L", label: "Lightness (Oklab L)", short: "L", range: [0, 1] });
-    return heights;
+    return [
+        ...labels.map((label, k) => ({ value: `c${k}`, label: `${label} (${space})`, short: label, range: ranges[k] })),
+        { value: "c3", label: "Alpha", short: "alpha", range: [0, 1] },
+    ];
 }
 
 // The height the 3D view shows: the one chosen, or for a link from before, the component it named.
 function sheetHeight(space) {
     const heights = sheetHeights(space);
-    const legacy = { r: "c0", g: "c1", b: "c2", L: space === "oklab" || space === "oklch" ? "c0" : "L" };
+    const legacy = { r: "c0", g: "c1", b: "c2", L: "c0" };
     const value = legacy[state.sheetHeight] ?? state.sheetHeight;
     return heights.find(height => height.value === value) ?? heights[0];
 }
@@ -795,10 +843,11 @@ function drawSheet(view) {
     const columns = Math.max(2, Math.round(56 * extentX)), rows = Math.max(2, Math.round(56 * extentY));
     const shown = sheetHeight(readout.space);
     const [low, high] = shown.range;
-    const component = shown.value === "L" ? -1 : Number(shown.value.slice(1));
+    const component = Number(shown.value.slice(1));
     const heightAt = p => {
         const color = sampleReadout(readout, p);
-        const value = component < 0 ? appearance(color, readout.space).L : component === HUE_INDEX[readout.space] ? color[component] : color[3] > 1e-6 ? color[component] / color[3] : 0;
+        // Alpha and a polar space's hue are as the solve has them; the others are premultiplied.
+        const value = component === 3 || component === HUE_INDEX[readout.space] ? color[component] : color[3] > 1e-6 ? color[component] / color[3] : 0;
         return (value - low) / (high - low);
     };
     const heights = [];
@@ -913,8 +962,15 @@ function numbersText(view) {
         return "Reading the solve…";
     if (readout.stats?.gamut !== state.gamut) {
         let held = 0, outside = 0, furthest = 0, darkest = Infinity, lightest = -Infinity;
-        const count = readout.width * readout.height;
-        for (let i = 0; i < count; ++i) {
+        const [x0, y0, x1, y1] = [readout.window[0] * readout.width, readout.window[1] * readout.height,
+            (readout.window[0] + readout.window[2]) * readout.width, (readout.window[1] + readout.window[3]) * readout.height].map(Math.round);
+        const shown = [];
+        for (let y = y0; y < y1; ++y) {
+            for (let x = x0; x < x1; ++x)
+                shown.push(y * readout.width + x);
+        }
+        const count = shown.length;
+        for (const i of shown) {
             if (readout.weights[i] > 0)
                 ++held;
             const color = appearance(readout.values.subarray(i * 4, i * 4 + 4), readout.space);
@@ -931,7 +987,7 @@ function numbersText(view) {
     const levels = view.renderer.levels;
     const coarsest = levels[levels.length - 1];
     const grid = readout.level === 0
-        ? `Grid ${readout.width} × ${readout.height} texels, in ${levels.length} levels down to ${coarsest.width} × ${coarsest.height}.`
+        ? `Grid ${readout.width} × ${readout.height} texels, in ${levels.length} levels down to ${coarsest.width} × ${coarsest.height}${readout.window[2] < 1 ? ", the middle half of it shown" : ""}.`
         : `Level ${readout.level}: ${readout.width} × ${readout.height} texels.`;
     const percent = value => `${(100 * value / count).toFixed(value && value < count / 1000 ? 2 : 1)}%`;
     return `${grid} ${held.toLocaleString()} held (${percent(held)}). ${percent(outside)} outside ${GAMUT_NAMES[state.gamut]}` +
@@ -985,6 +1041,7 @@ function commonState() {
         sheetHeight: state?.sheetHeight ?? "L",
         numbers: state?.numbers ?? false,
         about: state?.about ?? false,
+        edges: state?.edges ?? "mirrored",
         gamut: state?.gamut ?? "srgb",
         sample: state?.sample ?? false,
     };

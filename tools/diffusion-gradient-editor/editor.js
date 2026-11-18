@@ -366,14 +366,14 @@ __COMMON_PAGE__
 
 const MODEL_ABOUT = {
     biharmonic: {
-        note: "A stiff sheet (∆²u = 0) held along the curves. Each side of a curve holds its color across a thin band, and between the curves the sheet bends as little as it can. It's solved on a grid, coarse to fine, by MeshShader2's solver.",
+        note: "A stiff sheet (∆²u = 0) held along the curves. Each side of a curve holds its color across a thin band, and between the curves the sheet bends as little as it can. It's solved on a grid, coarse to fine.",
         pros: ["Smooth everywhere, its slope too", "Shading rolls off away from a curve, like light on a surface", "A few curves go a long way"],
         cons: ["Overshoots past a curve's colors, out of gamut beside sharp jumps", "A partly held curve overshoots badly, so Strength is for the harmonic model only for now", "Needs a solver, so engines would only match approximately", "Solves again whenever a curve moves or the box changes size"],
         source: "Finch, Snyder and Hoppe, <a href=\"https://hhoppe.com/proj/freeform/\" target=\"_blank\" rel=\"noopener\">“Freeform Vector Graphics with Controlled Thin-Plate Splines”</a> (2011, <a href=\"https://doi.org/10.1145/2070781.2024200\" target=\"_blank\" rel=\"noopener\">DOI</a>). They hold curves the same way, and add controls for tension and for where the slope may break.",
         spec: "A spec would define how wide a curve's bands are, what happens at the box's edges, what strength and blur do, and how accurate the solve has to be.",
     },
     harmonic: {
-        note: "A stretched membrane (∆u = 0) held along the curves. Each texel is the average of its neighbors, so the colors spread out from the curves and meet between them. It's solved on a grid, coarse to fine, by MeshShader2's solver.",
+        note: "A stretched membrane (∆u = 0) held along the curves. Each texel is the average of its neighbors, so the colors spread out from the curves and meet between them. It's solved on a grid, coarse to fine.",
         pros: ["Never overshoots: every color is a mix of the curves' colors", "Strength and blur behave predictably", "Simple, with fast solvers that suit the GPU"],
         cons: ["Creased along the curves, and peaked at their ends", "Can look flat between curves", "Depends on how wide the bands are, the grid and the edges"],
         source: "Orzan et al., <a href=\"https://inria.hal.science/inria-00274768\" target=\"_blank\" rel=\"noopener\">“Diffusion Curves: A Vector Representation for Smooth-Shaded Images”</a> (2008, <a href=\"https://doi.org/10.1145/1399504.1360691\" target=\"_blank\" rel=\"noopener\">DOI</a>). Colors spread out from curves, each side its own color, and are blurred across them where they ask for it.",

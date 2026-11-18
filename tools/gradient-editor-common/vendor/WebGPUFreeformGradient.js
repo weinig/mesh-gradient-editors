@@ -220,7 +220,7 @@ export class WebGPUFreeformGradientRenderer {
       size: uniformSlotBytes * uniformSlots, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.fillColor = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    this.displayUniforms = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.displayUniforms = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
 
     this.gradient = null;
     this.levels = [];
@@ -252,7 +252,10 @@ export class WebGPUFreeformGradientRenderer {
       this.solvedSize = [width, height];
     }
 
-    this.device.queue.writeBuffer(this.displayUniforms, 0, new Uint32Array([this.gradient.space, this.gradient.outputIsDisplayP3 ?? 0, this.gradient.gamutMapping ?? 0, 0]));
+    const uniforms = new ArrayBuffer(32);
+    new Uint32Array(uniforms, 0, 4).set([this.gradient.space, this.gradient.outputIsDisplayP3 ?? 0, this.gradient.gamutMapping ?? 0, 0]);
+    new Float32Array(uniforms, 16, 4).set(this.gradient.window ?? [0, 0, 1, 1]);
+    this.device.queue.writeBuffer(this.displayUniforms, 0, uniforms);
     const render = pass();
     render.setPipeline(this.displayPipeline);
     render.setBindGroup(0, this.bindGroup(this.displayPipeline, [

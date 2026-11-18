@@ -80,6 +80,13 @@
                 </select>
                 <span class="note">texels on the longer side</span>
             </div>
+            <div class="row" title="Mirrored: the grid is exactly the box, and the surface meets each side flat, as if a mirror stood there. Open: the grid reaches half the box's size past each side, so its edges are far from the stops, and its texels are bigger as a result.">
+                <label for="edges">Edges</label>
+                <select id="edges">
+                    <option value="mirrored">Mirrored</option>
+                    <option value="open">Open</option>
+                </select>
+            </div>
             <div class="row" title="Colors outside the screen's gamut are clipped, as WebKit does, or gamut mapped as CSS Color 4 says.">
                 <label for="gamutMapping">Out of gamut</label>
                 <select id="gamutMapping">

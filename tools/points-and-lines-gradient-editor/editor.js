@@ -257,14 +257,14 @@ __COMMON_PAGE__
 
 const MODEL_ABOUT = {
     biharmonic: {
-        note: "A stiff sheet (∆²u = 0) held at the stops. Each point holds its color across a disc out to its spread, each line along a thin band, and between them the sheet bends as little as it can. It's solved on a grid, coarse to fine, by MeshShader2's solver.",
+        note: "A stiff sheet (∆²u = 0) held at the stops. Each point holds its color across a disc out to its spread, each line along a thin band, and between them the sheet bends as little as it can. It's solved on a grid, coarse to fine.",
         pros: ["Smooth everywhere, its slope too", "Close to the thin-plate spline freeform-gradient() draws, but it stops at the box's edges", "Single points are enough to hold it"],
         cons: ["Overshoots between and past the stops, most of all near the box's edges", "Needs a solver, so engines would only match approximately", "Solves again whenever a stop moves or the box changes size"],
         source: "Finch, Snyder and Hoppe, <a href=\"https://hhoppe.com/proj/freeform/\" target=\"_blank\" rel=\"noopener\">“Freeform Vector Graphics with Controlled Thin-Plate Splines”</a> (2011, <a href=\"https://doi.org/10.1145/2070781.2024200\" target=\"_blank\" rel=\"noopener\">DOI</a>). They hold the sheet at points and along curves in the same way.",
         spec: "A spec would define how big a point is and what its spread does, how wide a line is, what happens at the box's edges, and how accurate the solve has to be.",
     },
     harmonic: {
-        note: "A stretched membrane (∆u = 0) held at the stops. It forms a tent at each point and a ridge along each line, and never goes past the stops' colors. It's solved on a grid, coarse to fine, by MeshShader2's solver.",
+        note: "A stretched membrane (∆u = 0) held at the stops. It forms a tent at each point and a ridge along each line, and never goes past the stops' colors. It's solved on a grid, coarse to fine.",
         pros: ["Never overshoots", "Each stop's influence stays between 0 and 1", "A line reads clearly as a ridge of color"],
         cons: ["Peaks at every point and creases along every line", "A point needs a size: without one, its color shrinks to a dot as the grid gets finer", "Can look flat between stops"],
         source: "Orzan et al., <a href=\"https://inria.hal.science/inria-00274768\" target=\"_blank\" rel=\"noopener\">“Diffusion Curves: A Vector Representation for Smooth-Shaded Images”</a> (2008, <a href=\"https://doi.org/10.1145/1399504.1360691\" target=\"_blank\" rel=\"noopener\">DOI</a>), which spreads colors out from curves the same way.",
