@@ -1,5 +1,18 @@
 <body>
 <main>
+    <nav id="toolbar" aria-label="Tools">
+        <button data-tool="select" title="Select" aria-label="Select"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3l12 9-5.5 1.2L16 19.5l-2.4 1.2-3-6.3L6 18z" fill="currentColor"/></svg></button>
+        <button data-tool="pen" title="Pen" aria-label="Pen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l5 9-5 9-5-9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></button>
+        <button data-tool="line" title="Straight line" aria-label="Straight line"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19L19 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        <button data-tool="ellipse" title="Ellipse" aria-label="Ellipse"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="8" ry="6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>
+        <button data-tool="arc" title="Arc" aria-label="Arc"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18a8 8 0 0 1 16 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        <button data-tool="freehand" title="Freehand" aria-label="Freehand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16c3-7 5 3 8-3s5-6 8 1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+        <div id="newColors" title="The colors of new curves: left, or inside, above; right, or outside, below">
+            <input id="newFirst" type="color" aria-label="New curves' left or inside color">
+            <input id="newSecond" type="color" aria-label="New curves' right or outside color">
+            <button id="swapNewColors" title="Swap" aria-label="Swap the new curves' colors">⇅</button>
+        </div>
+    </nav>
     <div id="stageScroller">
         <div id="topBar">
             <div id="modelBar" role="group" aria-label="Models">
@@ -60,10 +73,27 @@
             <p id="gpuStatus" class="status"></p>
         </section>
 
+        <section id="selectedCurve" hidden>
+            <h2 id="selectedName"></h2>
+            <div class="row" title="How firmly the curve holds its colors. Below 100%, the colors around it bleed in. Only the harmonic model takes it for now.">
+                <label for="strength">Strength</label>
+                <input id="strength" type="range" min="0" max="100" step="1">
+                <output id="strengthValue"></output>
+            </div>
+            <div class="row" title="How wide a band the jump between the curve's two colors is softened over.">
+                <label for="blur">Blur</label>
+                <input id="blur" type="range" min="0" max="100" step="1">
+                <output id="blurValue"></output>
+            </div>
+        </section>
+
         <section>
             <h2>Curves</h2>
             <p class="note">Each curve holds a color on each side. For a closed curve, that's inside and outside.</p>
+            <p id="toolNote" class="note"></p>
             <div id="curveList"></div>
+            <p id="emptyNote" class="note">No curves. Draw some with the tools on the left.</p>
+            <div class="row"><button id="clearCurves" class="small">Remove all curves</button></div>
         </section>
     </aside>
 </main>

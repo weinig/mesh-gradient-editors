@@ -942,8 +942,19 @@ export class WebGPUFreeformGradientRenderer {
     const finest = this.levels[0];
     const boxScale = this.boxScale.map(fround);
     const texel = Math.max(fround(boxScale[0] / finest.width), fround(boxScale[1] / finest.height));
+    // A segment that holds its colors less than fully lets the solution in
+    // right up to it, so it has no strips.
+    let segments = this.gradient.segments;
+    if (this.gradient.strengths?.some(strength => strength < 1)) {
+      segments = segments.slice();
+      this.gradient.strengths.forEach((strength, i) => {
+        if (strength < 1) {
+          segments[i * 23 + 22] = 0;
+        }
+      });
+    }
     const quads = this.gradient.isEmpty ? [] : edgeQuads(
-      this.gradient.segments, boxScale, texel, fround(edgeBlendTexels * texel), fround(2 * texel));
+      segments, boxScale, texel, fround(edgeBlendTexels * texel), fround(2 * texel));
     this.edgeVertexCount = quads.length * 6;
     if (quads.length === 0) {
       return;
@@ -1061,6 +1072,7 @@ export class WebGPUFreeformGradientRenderer {
       u32[o + 22] = twoSided ? 1 : 0;
       f32[o + 23] = i < distances.length ? distances[i][0] : far;
       f32[o + 24] = i < distances.length ? distances[i][1] : far;
+      f32[o + 25] = gradient.strengths?.[i] ?? 1;
     }
 
     this.pointBuffer = this.storageBuffer(this.pointBuffer, pointData);

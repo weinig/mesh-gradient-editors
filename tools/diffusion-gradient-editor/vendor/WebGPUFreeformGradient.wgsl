@@ -30,6 +30,9 @@ struct FreeformSegment {
     isTwoSided: u32,
     startDistance: f32,
     endDistance: f32,
+    // How firmly the segment holds its colors, 0 to 1: its weight where it
+    // covers a texel fully.
+    strength: f32,
 }
 
 // Must match the uniforms WebGPUFreeformGradient.js writes for a level.
@@ -145,7 +148,7 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
         let color = mix(mix(segment.startRight, segment.endRight, t), mix(segment.startLeft, segment.endLeft, t), left);
         colorSum += coverage * color;
         coverageSum += coverage;
-        weight = max(weight, coverage);
+        weight = max(weight, coverage * segment.strength);
     }
 
     var color = vec4<f32>(0.0);
