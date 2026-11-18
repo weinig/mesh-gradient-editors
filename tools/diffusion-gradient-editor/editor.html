@@ -148,12 +148,7 @@
             <p id="crossSectionNote" class="note">The color's red, green and blue along the dashed line from A to B, as encoded sRGB before it's clipped. Where they go past 0 or 1, in the shaded bands, the color is clipped. The bars along the bottom show how firmly the curves hold each point. Drag A and B in either box.</p>
             <div id="sheetRow" class="row">
                 <label for="sheetHeight">Height</label>
-                <select id="sheetHeight">
-                    <option value="L">Lightness (Oklab L)</option>
-                    <option value="r">Red</option>
-                    <option value="g">Green</option>
-                    <option value="b">Blue</option>
-                </select>
+                <select id="sheetHeight" title="One of the components the solve works in, in the space it interpolates in"></select>
             </div>
             <p id="sheetNote" class="note">One component as a height over the box. The harmonic model is a membrane, stretched between the curves that hold it: it's creased along them and peaked at their ends. The biharmonic model is a stiff sheet that bends smoothly through them, and past a jump it keeps going, above 1 or below 0. Drag to turn it.</p>
             <p id="numbersNote" class="note">Under each box: its grid, how many texels the curves hold, how much of it is outside sRGB and how far, and its range of lightness.</p>

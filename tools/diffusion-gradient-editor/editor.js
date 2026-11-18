@@ -1019,6 +1019,26 @@ function drawPlot(view) {
 let sheetYaw = -0.6;
 let sheetTilt = 0.8;
 
+// What the 3D view can raise the surface by: each of the interpolation space's components, as the solve has them,
+// straight rather than premultiplied, and for the sRGB spaces Oklab lightness too. Each has the range its box spans.
+function sheetHeights(space) {
+    const rgb = space === 0 ? "encoded" : "linear";
+    const heights = space === 2
+        ? [{ value: "c0", label: "L (Oklab)", short: "L", range: [0, 1] }, { value: "c1", label: "a (Oklab)", short: "a", range: [-0.4, 0.4] }, { value: "c2", label: "b (Oklab)", short: "b", range: [-0.4, 0.4] }]
+        : ["Red", "Green", "Blue"].map((label, k) => ({ value: `c${k}`, label: `${label} (${rgb})`, short: label[0], range: [0, 1] }));
+    if (space !== 2)
+        heights.push({ value: "L", label: "Lightness (Oklab L)", short: "L", range: [0, 1] });
+    return heights;
+}
+
+// The height the 3D view shows: the one chosen, or for a link from before, the component it named.
+function sheetHeight(space) {
+    const heights = sheetHeights(space);
+    const legacy = { r: "c0", g: "c1", b: "c2", L: space === 2 ? "c0" : "L" };
+    const value = legacy[state.sheetHeight] ?? state.sheetHeight;
+    return heights.find(height => height.value === value) ?? heights[0];
+}
+
 // One component of the solution as a height over the box, colored as the gradient is: the colors as a surface.
 function drawSheet(view) {
     const { ctx, width, height } = sizeCanvas(view.sheet);
@@ -1032,13 +1052,19 @@ function drawSheet(view) {
     const longest = Math.max(state.width, state.height);
     const extentX = state.width / longest, extentY = state.height / longest;
     const columns = Math.max(2, Math.round(56 * extentX)), rows = Math.max(2, Math.round(56 * extentY));
-    const component = state.sheetHeight === "L" ? -1 : "rgb".indexOf(state.sheetHeight);
-    const heightOf = color => component < 0 ? color.L : color.rgb[component];
+    const shown = sheetHeight(readout.space);
+    const [low, high] = shown.range;
+    const component = shown.value === "L" ? -1 : Number(shown.value.slice(1));
+    const heightAt = p => {
+        const color = sampleReadout(readout, p);
+        const value = component < 0 ? appearance(color, readout.space).L : color[3] > 1e-6 ? color[component] / color[3] : 0;
+        return (value - low) / (high - low);
+    };
     const heights = [];
     for (let j = 0; j <= rows; ++j) {
         heights.push([]);
         for (let i = 0; i <= columns; ++i)
-            heights[j].push(heightOf(appearance(sampleReadout(readout, [i / columns, j / rows]), readout.space)));
+            heights[j].push(heightAt([i / columns, j / rows]));
     }
     const zScale = 0.4;
     const fit = Math.min(width, height * 1.3) * 0.56;
@@ -1067,11 +1093,10 @@ function drawSheet(view) {
     floor.forEach(([px, py], i) => i ? ctx.lineTo(px, py) : ctx.moveTo(px, py));
     ctx.fill();
     const top = outline(1, [4, 4], 0.3);
-    const label = component < 0 ? "L" : state.sheetHeight;
     ctx.fillStyle = `rgba(${ink}, 0.6)`;
     ctx.textBaseline = "alphabetic";
-    ctx.fillText(`${label} = 1`, top[0][0] + 6, top[0][1] - 4);
-    ctx.fillText(`${label} = 0`, floor[0][0] + 6, floor[0][1] + 14);
+    ctx.fillText(`${shown.short} = ${high}`, top[0][0] + 6, top[0][1] - 4);
+    ctx.fillText(`${shown.short} = ${low}`, floor[0][0] + 6, floor[0][1] + 14);
 
     const items = [];
     for (let j = 0; j < rows; ++j) {
@@ -1097,7 +1122,7 @@ function drawSheet(view) {
         const points = [];
         for (let i = 0; i <= 80; ++i) {
             const t = i / 80, p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-            points.push(project(p[0], p[1], heightOf(appearance(sampleReadout(readout, p), readout.space))));
+            points.push(project(p[0], p[1], heightAt(p)));
         }
         for (let i = 0; i + 1 < points.length; ++i) {
             const [p, q] = [points[i], points[i + 1]];
@@ -1254,7 +1279,7 @@ function drawOverlay(view, dpr) {
     const toPixels = ([x, y]) => [x * size[0], y * size[1]];
     if (state.crossSection)
         drawSection(ctx, toPixels);
-    if (!state.showCurves && tool === "select" && !selection)
+    if (!state.showCurves)
         return;
     state.curves.forEach((curve, index) => {
         const selected = selection?.curve === index;
@@ -1839,7 +1864,12 @@ function updateControls() {
         $(id + "Note").hidden = !state[id];
     }
     $("sheetRow").hidden = !state.sheet;
-    $("sheetHeight").value = state.sheetHeight;
+    const heights = sheetHeights(state.space);
+    if ($("sheetHeight").dataset.space !== String(state.space)) {
+        $("sheetHeight").replaceChildren(...heights.map(height => new Option(height.label, height.value)));
+        $("sheetHeight").dataset.space = String(state.space);
+    }
+    $("sheetHeight").value = sheetHeight(state.space).value;
     for (const id of ["width", "height"]) {
         if (document.activeElement !== $(id))
             $(id).value = state[id];
