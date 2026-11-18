@@ -146,8 +146,10 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
             coverage *= saturate(1.0 - max(0.0, past) / (openEndFade * texel));
         }
         let color = mix(mix(segment.startRight, segment.endRight, t), mix(segment.startLeft, segment.endLeft, t), left);
-        colorSum += coverage * color;
-        coverageSum += coverage;
+        // A segment's color counts as much as it holds, so a weak one doesn't
+        // dilute a strong hold where they cross.
+        colorSum += coverage * segment.strength * color;
+        coverageSum += coverage * segment.strength;
         weight = max(weight, coverage * segment.strength);
     }
 
@@ -398,7 +400,9 @@ fn toSRGB(premultiplied: vec4<f32>, space: u32) -> vec4<f32> {
     if (alpha <= 0.0) {
         return vec4<f32>(0.0);
     }
-    var color = premultiplied.rgb / alpha;
+    // Unpremultiplied by the solve's own alpha, which can overshoot past 1;
+    // only the alpha drawn with is clamped.
+    var color = premultiplied.rgb / premultiplied.a;
     let hue = hueComponent(space);
     if (hue >= 0) {
         color[hue] = premultiplied[hue];

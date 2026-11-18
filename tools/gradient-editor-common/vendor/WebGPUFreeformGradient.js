@@ -372,9 +372,12 @@ export class WebGPUFreeformGradientRenderer {
     const shortest = Math.min(width, height);
     if (shortest <= 0) {
       this.destroyLevels();
+      this.solvedSize = null;
       return false;
     }
-    const scale = Math.min(1, this.gradient.resolution / longest);
+    // The biharmonic's dot products have room for a grid of up to 2048
+    // texels a side.
+    const scale = Math.min(1, Math.min(this.gradient.resolution, 2048) / longest);
     let levelWidth = Math.max(1, Math.round(width * scale));
     let levelHeight = Math.max(1, Math.round(height * scale));
     this.boxScale = [width / shortest, height / shortest];
@@ -1075,7 +1078,8 @@ export class WebGPUFreeformGradientRenderer {
       u32[o + 22] = twoSided ? 1 : 0;
       f32[o + 23] = i < distances.length ? distances[i][0] : far;
       f32[o + 24] = i < distances.length ? distances[i][1] : far;
-      f32[o + 25] = gradient.strengths?.[i] ?? 1;
+      const strength = gradient.strengths?.[i] ?? 1;
+      f32[o + 25] = Number.isFinite(strength) ? Math.min(Math.max(strength, 0), 1) : 1;
     }
 
     this.pointBuffer = this.storageBuffer(this.pointBuffer, pointData);
@@ -1095,9 +1099,10 @@ function edgeQuads(segments, boxScale, texel, blendWidth, pieceLength) {
   const at = (a, b, t) => fround(a + fround(fround(b - a) * t));
   const mix4 = (a, b, t) => a.map((x, i) => at(x, b[i], t));
   const length = (x, y) => fround(Math.hypot(fround(x), fround(y)));
+  // A vector of no length stays one, rather than becoming NaN.
   const normalize = ([x, y]) => {
     const l = Math.hypot(x, y);
-    return [fround(x / l), fround(y / l)];
+    return l > 0 ? [fround(x / l), fround(y / l)] : [0, 0];
   };
 
   const pieces = [];
@@ -1113,12 +1118,20 @@ function edgeQuads(segments, boxScale, texel, blendWidth, pieceLength) {
     };
     const along = length(fround(fround(segment.end[0] - segment.start[0]) * boxScale[0]),
                          fround(fround(segment.end[1] - segment.start[1]) * boxScale[1]));
+    // A segment of no length has no direction to draw strips along.
+    if (!(along > 0)) {
+      continue;
+    }
     const count = Math.max(1, Math.ceil(fround(along / Math.max(pieceLength, fround(1e-4)))));
+    // The segment's own ends, exactly, so a piece ending a segment meets the
+    // piece starting the next: rounding s + (e - s) can miss e by a unit in
+    // the last place, which would break the run there.
+    const start = segment.start.map(fround), end = segment.end.map(fround);
     for (let piece = 0; piece < count; piece++) {
       const a = fround(piece / count), b = fround((piece + 1) / count);
       pieces.push({
-        start: [at(segment.start[0], segment.end[0], a), at(segment.start[1], segment.end[1], a)],
-        end: [at(segment.start[0], segment.end[0], b), at(segment.start[1], segment.end[1], b)],
+        start: piece === 0 ? start : [at(start[0], end[0], a), at(start[1], end[1], a)],
+        end: piece === count - 1 ? end : [at(start[0], end[0], b), at(start[1], end[1], b)],
         startLeft: mix4(segment.startLeft, segment.endLeft, a), endLeft: mix4(segment.startLeft, segment.endLeft, b),
         startRight: mix4(segment.startRight, segment.endRight, a), endRight: mix4(segment.startRight, segment.endRight, b),
         startRadius: at(segment.startRadius, segment.endRadius, a),
@@ -1141,6 +1154,9 @@ function edgeQuads(segments, boxScale, texel, blendWidth, pieceLength) {
 
   const quads = [];
   for (const run of runs) {
+    // A run that ends where it starts is a closed line: its seam is a joint
+    // like any other, and it has no ends for its blend to narrow toward.
+    const closed = run.length > 2 && run[0].start[0] === run.at(-1).end[0] && run[0].start[1] === run.at(-1).end[1];
     const directions = run.map((p) => normalize([fround(p.end[0] - p.start[0]) * boxScale[0],
                                                  fround(p.end[1] - p.start[1]) * boxScale[1]]));
     // Left of the way along, y down.
@@ -1152,12 +1168,17 @@ function edgeQuads(segments, boxScale, texel, blendWidth, pieceLength) {
                                                   fround(p.end[1] - p.start[1]) * boxScale[1])));
     }
     const total = lengths.at(-1);
-    const blends = lengths.map((l) => fround(blendWidth * Math.min(1, fround(Math.min(l, fround(total - l)) / Math.max(blendWidth, 1e-6)))));
+    const blends = lengths.map((l) => closed ? blendWidth : fround(blendWidth * Math.min(1, fround(Math.min(l, fround(total - l)) / Math.max(blendWidth, 1e-6)))));
     const joints = [];
     for (let index = 0; index <= run.length; index++) {
-      const before = index > 0 ? normals[index - 1] : normals[0];
-      const after = index < run.length ? normals[index] : normals[run.length - 1];
-      const miter = normalize([before[0] + after[0], before[1] + after[1]]);
+      const last = run.length - 1;
+      const before = index > 0 ? normals[index - 1] : normals[closed ? last : 0];
+      const after = index < run.length ? normals[index] : normals[closed ? 0 : last];
+      // A hairpin, which turns right back, has no miter; it takes the way on.
+      let miter = normalize([before[0] + after[0], before[1] + after[1]]);
+      if (miter[0] === 0 && miter[1] === 0) {
+        miter = after;
+      }
       // As far out along the miter as keeps the strip as wide as asked, but
       // no more than twice.
       const scale = Math.max(miter[0] * after[0] + miter[1] * after[1], 0.5);

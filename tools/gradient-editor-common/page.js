@@ -335,12 +335,13 @@ fn linearToOklab(c: vec3<f32>) -> vec3<f32> {
 
 // A premultiplied color in the interpolation space as linear sRGB, unclamped, with straight alpha. In a polar space
 // the hue isn't premultiplied.
-// Alpha is clamped before unpremultiplying, as the display does, but returned as it is, so overshoot can be measured.
+// Unpremultiplied by the solve's own alpha, as the display does, which is returned as it is, so overshoot can be
+// measured.
 fn linearOf(premultiplied: vec4<f32>) -> vec4<f32> {
     if (premultiplied.a <= 1e-6) {
         return vec4<f32>(0.0);
     }
-    var c = premultiplied.rgb / min(premultiplied.a, 1.0);
+    var c = premultiplied.rgb / premultiplied.a;
     let hue = hueComponent(visualize.space);
     if (hue >= 0) {
         c[hue] = normalizeHue(premultiplied[hue]);
@@ -648,13 +649,13 @@ function oklabLightness([r, g, b]) {
 const normalizedHue = h => ((h % 360) + 360) % 360;
 
 // A component of a premultiplied color as the gradient shows it: alpha and a polar space's hue as the solve has them,
-// the hue normalized, and the others unpremultiplied by alpha clamped to 1, as the display does.
+// the hue normalized, and the others unpremultiplied, as the display does.
 function straightComponent(color, k, space) {
     if (k === 3)
         return color[3];
     if (k === HUE_INDEX[space])
         return normalizedHue(color[k]);
-    return color[3] > 1e-6 ? color[k] / Math.min(color[3], 1) : 0;
+    return color[3] > 1e-6 ? color[k] / color[3] : 0;
 }
 
 // A premultiplied color in the interpolation space as the gradient shows it before clipping: encoded sRGB with
@@ -664,8 +665,7 @@ function appearance(p, space) {
     if (alpha <= 1e-6)
         return { rgb: [0, 0, 0], linear: [0, 0, 0], alpha: 0, L: 0 };
     const hue = HUE_INDEX[space];
-    // Alpha is clamped before unpremultiplying, as the display does.
-    const c = [0, 1, 2].map(k => k === hue ? normalizedHue(p[k]) : p[k] / Math.min(alpha, 1));
+    const c = [0, 1, 2].map(k => k === hue ? normalizedHue(p[k]) : p[k] / alpha);
     const linear = fromXYZ("srgb-linear", toXYZ(space, c));
     return { rgb: linear.map(encodeSigned), linear, alpha, L: oklabLightness(linear) };
 }
