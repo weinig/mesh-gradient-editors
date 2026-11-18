@@ -1,0 +1,2301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diffusion Gradient Editor</title>
+<style>
+:root {
+    color-scheme: light dark;
+    --bg: #f2f2f5;
+    --panel: #ffffff;
+    --fg: #1d1d1f;
+    --muted: #6e6e73;
+    --border: #d2d2d7;
+    --accent: #0a84ff;
+    --error: #d70015;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #1c1c1e;
+        --panel: #2c2c2e;
+        --fg: #f5f5f7;
+        --muted: #a1a1a6;
+        --border: #48484a;
+        --error: #ff6961;
+    }
+}
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    font: 13px/1.45 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+}
+main {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 16px;
+    align-items: flex-start;
+}
+#stageScroller {
+    flex: 1 1 560px;
+    min-width: 0;
+    height: calc(100vh - 32px);
+    position: sticky;
+    top: 16px;
+    overflow: auto;
+}
+#stageWrap {
+    width: max-content;
+}
+#stage {
+    position: relative;
+    outline: 1px solid var(--border);
+}
+#stage.checkerboard {
+    background-color: #fff;
+    background-image: conic-gradient(#ddd 0 25%, #fff 0 50%, #ddd 0 75%, #fff 0);
+    background-size: 16px 16px;
+}
+#stage.image {
+    background-position: center;
+    background-size: cover;
+}
+#stageScroller.dropTarget { outline: 2px dashed var(--accent); outline-offset: -2px; }
+#native, #gpu {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+#overlay {
+    position: absolute;
+    touch-action: none;
+}
+#stageMessage {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    color: #333;
+    background: rgba(255, 255, 255, 0.85);
+    font-size: 14px;
+}
+aside {
+    flex: 0 0 380px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+}
+h1 { font-size: 17px; margin: 0 0 4px; }
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 8px; }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
+.row > label { min-width: 84px; color: var(--muted); }
+input[type=number] { width: 64px; }
+input[type=text], select, textarea { font: inherit; }
+input[type=text] { flex: 1; min-width: 0; font-family: ui-monospace, Menlo, monospace; }
+input[type=text].invalid { outline: 2px solid var(--error); }
+textarea {
+    width: 100%;
+    min-height: 120px;
+    resize: vertical;
+    font: 12px/1.4 ui-monospace, Menlo, monospace;
+}
+.note { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
+.status { font-size: 12px; margin: 4px 0 0; }
+.status.error { color: var(--error); }
+#swatches {
+    display: grid;
+    gap: 4px;
+    margin-top: 8px;
+}
+#swatches button {
+    height: 26px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 0;
+    cursor: pointer;
+    background-image: conic-gradient(#ccc 0 25%, #fff 0 50%, #ccc 0 75%, #fff 0);
+    background-size: 8px 8px;
+    position: relative;
+}
+#swatches button span { position: absolute; inset: 0; border-radius: 4px; }
+#swatches button.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.small { font-size: 12px; }
+@media (max-width: 720px) {
+    main { padding: 8px; gap: 8px; }
+    #stageScroller { flex: 1 1 100%; height: auto; position: static; overflow: hidden; }
+    #stageWrap { transform-origin: 0 0; }
+    aside { flex: 1 1 100%; min-width: 0; }
+    /* iOS zooms into fields with text smaller than 16px when they are focused. */
+    input, select, textarea { font-size: 16px; }
+}
+#topBar {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+#modelBar { display: flex; }
+#modelBar button {
+    font: inherit;
+    padding: 5px 14px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--fg);
+    cursor: pointer;
+}
+#modelBar button + button { border-left: none; }
+#modelBar button:first-child { border-radius: 6px 0 0 6px; }
+#modelBar button:last-child { border-radius: 0 6px 6px 0; }
+#modelBar button[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: #fff; }
+#views {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+}
+.view { margin: 0; flex: 1 1 0; min-width: 0; }
+.view[hidden] { display: none; }
+.stage {
+    position: relative;
+    width: 100%;
+    outline: 1px solid var(--border);
+    background-color: #fff;
+    background-image: conic-gradient(#ddd 0 25%, #fff 0 50%, #ddd 0 75%, #fff 0);
+    background-size: 16px 16px;
+}
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.stage .overlay { touch-action: none; }
+.view figcaption { font-size: 12px; margin-top: 6px; }
+.view figcaption .note { display: block; margin-top: 2px; }
+#curveList { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+#curveList .curve { display: flex; align-items: center; gap: 8px; }
+#curveList .curve span { flex: 1; }
+#curveList input[type=color] { width: 32px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 4px; }
+@media (max-width: 720px) {
+    #views { flex-direction: column; }
+    .view { flex: none; width: 100%; }
+}
+</style>
+</head>
+<body>
+<main>
+    <div id="stageScroller">
+        <div id="topBar">
+            <div id="modelBar" role="group" aria-label="Models">
+                <button data-model="biharmonic">Biharmonic</button>
+                <button data-model="harmonic">Harmonic</button>
+            </div>
+        </div>
+        <div id="views">
+            <figure class="view" data-model="biharmonic">
+                <div class="stage">
+                    <canvas class="gpu"></canvas>
+                    <canvas class="overlay"></canvas>
+                </div>
+                <figcaption><b>Biharmonic</b><span class="note">A stiff sheet held along the curves: smooth everywhere, as in Finch et al.'s freeform vector graphics.</span></figcaption>
+            </figure>
+            <figure class="view" data-model="harmonic">
+                <div class="stage">
+                    <canvas class="gpu"></canvas>
+                    <canvas class="overlay"></canvas>
+                </div>
+                <figcaption><b>Harmonic</b><span class="note">A stretched membrane held along the curves: never overshoots, as in Orzan et al.'s diffusion curves.</span></figcaption>
+            </figure>
+        </div>
+    </div>
+    <aside>
+        <section>
+            <h1>Diffusion Gradient Editor</h1>
+            <div class="row">
+                <label for="preset">Preset</label>
+                <select id="preset"></select>
+            </div>
+            <div class="row">
+                <label>Box</label>
+                <input id="width" type="number" min="100" max="2000" step="10" title="Width"> ×
+                <input id="height" type="number" min="100" max="2000" step="10" title="Height"> px
+            </div>
+            <div class="row">
+                <label for="space">Interpolate in</label>
+                <select id="space">
+                    <option value="0">srgb</option>
+                    <option value="1">srgb-linear</option>
+                    <option value="2">oklab</option>
+                </select>
+            </div>
+            <div class="row" title="How many texels the grid has along its longer side, at most. The grid is never finer than the box's pixels.">
+                <label for="resolution">Grid</label>
+                <select id="resolution">
+                    <option value="128">128</option>
+                    <option value="256">256</option>
+                    <option value="512">512</option>
+                    <option value="1024">1024</option>
+                </select>
+                <span class="note">texels on the longer side</span>
+            </div>
+            <div class="row">
+                <label><input type="checkbox" id="showCurves" checked> Show the curves</label>
+            </div>
+            <p id="gpuStatus" class="status"></p>
+        </section>
+
+        <section>
+            <h2>Curves</h2>
+            <p class="note">Each curve holds a color on each side. For a closed curve, that's inside and outside.</p>
+            <div id="curveList"></div>
+        </section>
+    </aside>
+</main>
+<script>
+"use strict";
+
+// MARK: - Color spaces
+// Conversions follow WebCore's ColorConversion and CSS Color 4.
+
+const SPACES = ["srgb", "srgb-linear", "display-p3", "a98-rgb", "prophoto-rgb", "rec2020", "xyz-d50", "xyz-d65", "lab", "lch", "oklab", "oklch", "hsl", "hwb"];
+const PREDEFINED_SPACES = ["srgb", "srgb-linear", "display-p3", "a98-rgb", "prophoto-rgb", "rec2020", "xyz-d50", "xyz-d65"];
+const HUE_INDEX = { hsl: 0, hwb: 0, lch: 2, oklch: 2 };
+
+const M = {
+    linSRGBToXYZ: [[506752 / 1228815, 87881 / 245763, 12673 / 70218], [87098 / 409605, 175762 / 245763, 12673 / 175545], [7918 / 409605, 87881 / 737289, 1001167 / 1053270]],
+    xyzToLinSRGB: [[12831 / 3959, -329 / 214, -1974 / 3959], [-851781 / 878810, 1648619 / 878810, 36519 / 878810], [705 / 12673, -2585 / 12673, 705 / 667]],
+    linP3ToXYZ: [[608311 / 1250200, 189793 / 714400, 198249 / 1000160], [35783 / 156275, 247089 / 357200, 198249 / 2500400], [0, 32229 / 714400, 5220557 / 5000800]],
+    xyzToLinP3: [[446124 / 178915, -333277 / 357830, -72051 / 178915], [-14852 / 17905, 63121 / 35810, 423 / 17905], [11844 / 330415, -50337 / 660830, 316169 / 330415]],
+    linA98ToXYZ: [[573536 / 994567, 263643 / 1420810, 187206 / 994567], [591459 / 1989134, 6239551 / 9945670, 374412 / 4972835], [53769 / 1989134, 351524 / 4972835, 4929758 / 4972835]],
+    xyzToLinA98: [[1829569 / 896150, -506331 / 896150, -308931 / 896150], [-851781 / 878810, 1648619 / 878810, 36519 / 878810], [16779 / 1248040, -147721 / 1248040, 1266979 / 1248040]],
+    linProPhotoToXYZD50: [[0.7977666449006423, 0.13518129740053308, 0.0313477341283922], [0.2880748288194013, 0.711835234241873, 0.00008993693872564], [0, 0, 0.8251046025104602]],
+    xyzD50ToLinProPhoto: [[1.3457868816471583, -0.25557208737979464, -0.05110186497554526], [-0.5446307051249019, 1.5082477428451468, 0.02052744743642139], [0, 0, 1.2119675456389452]],
+    linRec2020ToXYZ: [[63426534 / 99577255, 20160776 / 139408157, 47086771 / 278816314], [26158966 / 99577255, 472592308 / 697040785, 8267143 / 139408157], [0, 19567812 / 697040785, 295819943 / 278816314]],
+    xyzToLinRec2020: [[30757411 / 17917100, -6372589 / 17917100, -4539589 / 17917100], [-19765991 / 29648200, 47925759 / 29648200, 467509 / 29648200], [792561 / 44930125, -1921689 / 44930125, 42328811 / 44930125]],
+    d65ToD50: [[1.0479297925449969, 0.022946870601609652, -0.05019226628920524], [0.02962780877005599, 0.9904344267538799, -0.017073799063418826], [-0.009243040646204504, 0.015055191490298152, 0.7518742814281371]],
+    d50ToD65: [[0.955473421488075, -0.02309845494876471, 0.06325924320057072], [-0.0283697093338637, 1.0099953980813041, 0.021041441191917323], [0.012314014864481998, -0.020507649298898964, 1.330365926242124]],
+    xyzToLMS: [[0.8190224379967030, 0.3619062600528904, -0.1288737815209879], [0.0329836539323885, 0.9292868615863434, 0.0361446663506424], [0.0481771893596242, 0.2642395317527308, 0.6335478284694309]],
+    lmsToOKLab: [[0.2104542683093140, 0.7936177747023054, -0.0040720430116193], [1.9779985324311684, -2.4285922420485799, 0.4505937096174110], [0.0259040424655478, 0.7827717124575296, -0.8086757549230774]],
+    okLabToLMS: [[1, 0.3963377773761749, 0.2158037573099136], [1, -0.1055613458156586, -0.0638541728258133], [1, -0.0894841775298119, -1.2914855480194092]],
+    lmsToXYZ: [[1.2268798758459243, -0.5578149944602171, 0.2813910456659647], [-0.0405757452148008, 1.1122868032803170, -0.0717110580655164], [-0.0763729366746601, -0.4214933324022432, 1.5869240198367816]],
+};
+const D50 = [0.3457 / 0.3585, 1, (1 - 0.3457 - 0.3585) / 0.3585];
+const LAB_E = 216 / 24389;
+const LAB_K = 24389 / 27;
+
+const mul = (m, v) => [0, 1, 2].map(i => m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2]);
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+function srgbToLinear(c) {
+    const a = Math.abs(c);
+    return a <= 0.04045 ? c / 12.92 : Math.sign(c) * Math.pow((a + 0.055) / 1.055, 2.4);
+}
+function srgbFromLinear(c) {
+    const a = Math.abs(c);
+    return a <= 0.0031308 ? c * 12.92 : Math.sign(c) * (1.055 * Math.pow(a, 1 / 2.4) - 0.055);
+}
+const powSigned = (c, e) => Math.sign(c) * Math.pow(Math.abs(c), e);
+const proPhotoToLinear = c => Math.abs(c) <= 16 / 512 ? c / 16 : powSigned(c, 1.8);
+const proPhotoFromLinear = c => Math.abs(c) <= 1 / 512 ? c * 16 : powSigned(c, 1 / 1.8);
+
+function labToXYZD50([L, a, b]) {
+    const f1 = (L + 16) / 116;
+    const f0 = a / 500 + f1;
+    const f2 = f1 - b / 200;
+    const x = f0 ** 3 > LAB_E ? f0 ** 3 : (116 * f0 - 16) / LAB_K;
+    const y = L > LAB_K * LAB_E ? f1 ** 3 : L / LAB_K;
+    const z = f2 ** 3 > LAB_E ? f2 ** 3 : (116 * f2 - 16) / LAB_K;
+    return [x * D50[0], y * D50[1], z * D50[2]];
+}
+function labFromXYZD50(xyz) {
+    const f = xyz.map((v, i) => {
+        v /= D50[i];
+        return v > LAB_E ? Math.cbrt(v) : (LAB_K * v + 16) / 116;
+    });
+    return [116 * f[1] - 16, 500 * (f[0] - f[1]), 200 * (f[1] - f[2])];
+}
+function lchToLab([L, C, H]) {
+    const h = H * Math.PI / 180;
+    return [L, C * Math.cos(h), C * Math.sin(h)];
+}
+function labToLCH([L, a, b], epsilon) {
+    const C = Math.hypot(a, b);
+    if (C <= epsilon)
+        return [L, 0, NaN];
+    const H = Math.atan2(b, a) * 180 / Math.PI;
+    return [L, C, H >= 0 ? H : H + 360];
+}
+function hslToSRGB([h, s, l]) {
+    s /= 100;
+    l /= 100;
+    const a = s * Math.min(l, 1 - l);
+    const f = n => {
+        const k = (n + h / 30) % 12;
+        return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    };
+    return [f(0), f(8), f(4)];
+}
+function srgbToHSL([r, g, b]) {
+    const min = Math.min(r, g, b), max = Math.max(r, g, b), d = max - min;
+    let hue = NaN, saturation = 0;
+    const lightness = (min + max) / 2;
+    if (d !== 0) {
+        saturation = lightness === 0 || lightness === 1 ? 0 : (max - lightness) / Math.min(lightness, 1 - lightness);
+        if (max === r)
+            hue = (g - b) / d + (g < b ? 6 : 0);
+        else if (max === g)
+            hue = (b - r) / d + 2;
+        else
+            hue = (r - g) / d + 4;
+        hue *= 60;
+        if (saturation < 0) {
+            hue += 180;
+            saturation = Math.abs(saturation);
+        }
+        if (saturation <= 0.001 / 100)
+            hue = NaN;
+        else if (hue >= 360)
+            hue -= 360;
+    }
+    return [hue, saturation * 100, lightness * 100];
+}
+function hwbToSRGB([h, w, b]) {
+    w /= 100;
+    b /= 100;
+    if (w + b >= 1) {
+        const gray = w / (w + b);
+        return [gray, gray, gray];
+    }
+    return hslToSRGB([h, 100, 50]).map(v => v * (1 - w - b) + w);
+}
+function srgbToHWB([r, g, b]) {
+    const min = Math.min(r, g, b), max = Math.max(r, g, b), d = max - min;
+    const whiteness = min, blackness = 1 - max;
+    let hue = NaN;
+    if (!(d === 0 || whiteness + blackness >= 1 - 0.001 / 100)) {
+        if (max === r)
+            hue = (g - b) / d + (g < b ? 6 : 0);
+        else if (max === g)
+            hue = (b - r) / d + 2;
+        else
+            hue = (r - g) / d + 4;
+        hue *= 60;
+        if (hue >= 360)
+            hue -= 360;
+    }
+    return [hue, whiteness * 100, blackness * 100];
+}
+
+function toXYZ(space, c) {
+    switch (space) {
+    case "srgb": return mul(M.linSRGBToXYZ, c.map(srgbToLinear));
+    case "srgb-linear": return mul(M.linSRGBToXYZ, c);
+    case "display-p3": return mul(M.linP3ToXYZ, c.map(srgbToLinear));
+    case "a98-rgb": return mul(M.linA98ToXYZ, c.map(v => powSigned(v, 563 / 256)));
+    case "prophoto-rgb": return mul(M.d50ToD65, mul(M.linProPhotoToXYZD50, c.map(proPhotoToLinear)));
+    case "rec2020": return mul(M.linRec2020ToXYZ, c.map(v => powSigned(v, 2.4)));
+    case "xyz-d50": return mul(M.d50ToD65, c);
+    case "xyz-d65": return c.slice();
+    case "lab": return mul(M.d50ToD65, labToXYZD50(c));
+    case "lch": return toXYZ("lab", lchToLab(c));
+    case "oklab": return mul(M.lmsToXYZ, mul(M.okLabToLMS, c).map(v => v * v * v));
+    case "oklch": return toXYZ("oklab", lchToLab(c));
+    case "hsl": return toXYZ("srgb", hslToSRGB(c));
+    case "hwb": return toXYZ("srgb", hwbToSRGB(c));
+    }
+    throw new Error(`Unknown color space ${space}`);
+}
+function fromXYZ(space, xyz) {
+    switch (space) {
+    case "srgb": return mul(M.xyzToLinSRGB, xyz).map(srgbFromLinear);
+    case "srgb-linear": return mul(M.xyzToLinSRGB, xyz);
+    case "display-p3": return mul(M.xyzToLinP3, xyz).map(srgbFromLinear);
+    case "a98-rgb": return mul(M.xyzToLinA98, xyz).map(v => powSigned(v, 256 / 563));
+    case "prophoto-rgb": return mul(M.xyzD50ToLinProPhoto, mul(M.d65ToD50, xyz)).map(proPhotoFromLinear);
+    case "rec2020": return mul(M.xyzToLinRec2020, xyz).map(v => powSigned(v, 1 / 2.4));
+    case "xyz-d50": return mul(M.d65ToD50, xyz);
+    case "xyz-d65": return xyz.slice();
+    case "lab": return labFromXYZD50(mul(M.d65ToD50, xyz));
+    case "lch": return labToLCH(fromXYZ("lab", xyz), 0.0015);
+    case "oklab": return mul(M.lmsToOKLab, mul(M.xyzToLMS, xyz).map(Math.cbrt));
+    case "oklch": return labToLCH(fromXYZ("oklab", xyz), 0.000004);
+    case "hsl": return srgbToHSL(fromXYZ("srgb", xyz));
+    case "hwb": return srgbToHWB(fromXYZ("srgb", xyz));
+    }
+    throw new Error(`Unknown color space ${space}`);
+}
+
+function categories(space) {
+    switch (space) {
+    case "lab": case "oklab": return ["lightness", "opponentA", "opponentB"];
+    case "lch": case "oklch": return ["lightness", "colorfulness", "hue"];
+    case "hsl": return ["hue", "colorfulness", "lightness"];
+    case "hwb": return ["hue", null, null];
+    default: return ["reds", "greens", "blues"];
+    }
+}
+
+// Converts, then carries missing components forward to analogous ones, like convertColorCarryingForwardMissing().
+// Missing components are NaN.
+function convertColor(from, coords, to, carryForward) {
+    if (from === to)
+        return coords.slice();
+    const output = fromXYZ(to, toXYZ(from, coords.map(v => Number.isNaN(v) ? 0 : v)));
+    if (!carryForward)
+        return output;
+    const inputCategories = categories(from);
+    const outputCategories = categories(to);
+    const analogInOutput = i => inputCategories[i] ? outputCategories.indexOf(inputCategories[i]) : -1;
+    const analogInInput = j => outputCategories[j] ? inputCategories.indexOf(outputCategories[j]) : -1;
+    const unmatched = [0, 1, 2].filter(i => analogInOutput(i) < 0);
+    if (unmatched.length && unmatched.every(i => Number.isNaN(coords[i]))) {
+        for (let j = 0; j < 3; ++j) {
+            if (analogInInput(j) < 0)
+                output[j] = NaN;
+        }
+    }
+    for (let i = 0; i < 3; ++i) {
+        if (Number.isNaN(coords[i]) && analogInOutput(i) >= 0)
+            output[analogInOutput(i)] = NaN;
+    }
+    return output;
+}
+
+// MARK: - Color parsing
+// Returns { space, c: [3 components, NaN if missing], alpha, eightBit, resolvedByBrowser }.
+
+const NUMBER = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(%|deg|rad|grad|turn)?$/i;
+
+function parseToken(token) {
+    if (token === "none")
+        return { none: true };
+    const match = NUMBER.exec(token);
+    if (!match)
+        return null;
+    return { n: parseFloat(match[1]), unit: match[2]?.toLowerCase() ?? "" };
+}
+const valueOf = (token, percentScale) => token.none ? NaN : token.unit === "%" ? token.n * percentScale : token.n;
+function hueOf(token) {
+    if (token.none)
+        return NaN;
+    switch (token.unit) {
+    case "rad": return token.n * 180 / Math.PI;
+    case "grad": return token.n * 0.9;
+    case "turn": return token.n * 360;
+    default: return token.n;
+    }
+}
+
+function parseColorFunction(name, body) {
+    if (/[()]/.test(body) || /\bfrom\b/.test(body))
+        return null;
+    let parts, alphaToken;
+    const legacy = body.includes(",");
+    if (legacy) {
+        parts = body.split(",").map(s => s.trim());
+        if (parts.length === 4)
+            alphaToken = parts.pop();
+    } else {
+        const slashParts = body.split("/");
+        if (slashParts.length > 2)
+            return null;
+        parts = slashParts[0].trim().split(/\s+/);
+        alphaToken = slashParts[1]?.trim();
+    }
+    let space = null;
+    if (name === "color") {
+        space = parts.shift();
+        if (space === "xyz")
+            space = "xyz-d65";
+        if (!PREDEFINED_SPACES.includes(space))
+            return null;
+    }
+    if (parts.length !== 3)
+        return null;
+    const tokens = parts.map(parseToken);
+    if (tokens.some(t => !t))
+        return null;
+    let alpha = 1;
+    if (alphaToken !== undefined) {
+        const token = parseToken(alphaToken);
+        if (!token)
+            return null;
+        alpha = token.none ? NaN : clamp(valueOf(token, 1 / 100), 0, 1);
+    }
+    let c;
+    let eightBitCandidate = false;
+    switch (name) {
+    case "rgb": case "rgba":
+        space = "srgb";
+        c = tokens.map(t => t.none ? NaN : clamp(t.unit === "%" ? t.n / 100 : t.n / 255, 0, 1));
+        eightBitCandidate = true;
+        break;
+    case "hsl": case "hsla":
+        space = "hsl";
+        c = [hueOf(tokens[0]), valueOf(tokens[1], 1), valueOf(tokens[2], 1)];
+        if (!Number.isNaN(c[1]))
+            c[1] = Math.max(0, c[1]);
+        eightBitCandidate = !(c[1] > 100 || c[2] < 0 || c[2] > 100);
+        break;
+    case "hwb":
+        space = "hwb";
+        c = [hueOf(tokens[0]), valueOf(tokens[1], 1), valueOf(tokens[2], 1)];
+        eightBitCandidate = !(c[1] < 0 || c[1] > 100 || c[2] < 0 || c[2] > 100);
+        break;
+    case "lab":
+        space = "lab";
+        c = [valueOf(tokens[0], 1), valueOf(tokens[1], 1.25), valueOf(tokens[2], 1.25)];
+        if (!Number.isNaN(c[0]))
+            c[0] = clamp(c[0], 0, 100);
+        break;
+    case "lch":
+        space = "lch";
+        c = [valueOf(tokens[0], 1), valueOf(tokens[1], 1.5), hueOf(tokens[2])];
+        if (!Number.isNaN(c[0]))
+            c[0] = clamp(c[0], 0, 100);
+        if (!Number.isNaN(c[1]))
+            c[1] = Math.max(0, c[1]);
+        break;
+    case "oklab":
+        space = "oklab";
+        c = [valueOf(tokens[0], 1 / 100), valueOf(tokens[1], 0.004), valueOf(tokens[2], 0.004)];
+        if (!Number.isNaN(c[0]))
+            c[0] = clamp(c[0], 0, 1);
+        break;
+    case "oklch":
+        space = "oklch";
+        c = [valueOf(tokens[0], 1 / 100), valueOf(tokens[1], 0.004), hueOf(tokens[2])];
+        if (!Number.isNaN(c[0]))
+            c[0] = clamp(c[0], 0, 1);
+        if (!Number.isNaN(c[1]))
+            c[1] = Math.max(0, c[1]);
+        break;
+    case "color":
+        c = tokens.map(t => valueOf(t, 1 / 100));
+        break;
+    default:
+        return null;
+    }
+    // Like WebCore, rgb(), hsl() and hwb() without missing components and within the sRGB gamut are stored as 8-bit sRGB.
+    if (eightBitCandidate && !c.some(Number.isNaN) && !Number.isNaN(alpha))
+        return eightBitColor(convertColor(space, c, "srgb", false), alpha);
+    return { space, c, alpha, eightBit: false };
+}
+
+function eightBitColor(srgb, alpha) {
+    const quantize = v => Math.round(clamp(v, 0, 1) * 255) / 255;
+    return { space: "srgb", c: srgb.map(quantize), alpha: quantize(alpha), eightBit: true };
+}
+
+let colorProbe = null;
+const colorCache = new Map();
+
+function parseColor(text) {
+    const key = text.trim().toLowerCase();
+    if (colorCache.has(key))
+        return colorCache.get(key);
+    const result = parseColorUncached(key);
+    colorCache.set(key, result);
+    return result;
+}
+
+function parseColorUncached(text) {
+    if (!text || !CSS.supports("color", text))
+        return null;
+    const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.exec(text);
+    if (hex) {
+        let digits = hex[1];
+        if (digits.length <= 4)
+            digits = [...digits].map(d => d + d).join("");
+        const bytes = digits.match(/../g).map(h => parseInt(h, 16) / 255);
+        return { space: "srgb", c: bytes.slice(0, 3), alpha: bytes[3] ?? 1, eightBit: true };
+    }
+    const fn = /^([a-z]+)\((.*)\)$/s.exec(text);
+    if (fn) {
+        const parsed = parseColorFunction(fn[1], fn[2].trim());
+        if (parsed)
+            return parsed;
+    }
+    // Keywords and anything else this parser doesn't read: let the browser resolve it.
+    if (!colorProbe) {
+        colorProbe = document.createElement("div");
+        colorProbe.style.display = "none";
+        document.body.append(colorProbe);
+    }
+    colorProbe.style.color = "";
+    colorProbe.style.color = text;
+    const computed = getComputedStyle(colorProbe).color.toLowerCase();
+    const inner = /^([a-z]+)\((.*)\)$/s.exec(computed);
+    const parsed = inner && parseColorFunction(inner[1], inner[2].trim());
+    if (!parsed)
+        return null;
+    // A plain keyword is an 8-bit color in WebCore. Anything else is resolved by this browser, so it may differ.
+    parsed.resolvedByBrowser = !/^[a-z]+$/.test(text) || text === "currentcolor";
+    return parsed;
+}
+
+const BLACK = { space: "srgb", c: [0, 0, 0], alpha: 1, eightBit: true };
+
+function toOutput(color, outputSpace) {
+    const xyz = toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v));
+    const rgb = fromXYZ(outputSpace, xyz).map(v => clamp(v, 0, 1));
+    return [...rgb, Number.isNaN(color.alpha) ? 0 : color.alpha];
+}
+
+function hexForColor(color) {
+    return "#" + toOutput(color, "srgb").slice(0, 3).map(v => Math.round(v * 255).toString(16).padStart(2, "0")).join("");
+}
+
+
+// MARK: - Renderer
+
+// MeshShader2's WebGPU freeform gradient renderer: its constraint rasterizer, harmonic and biharmonic multigrids,
+// and the sharp edges drawn along two-sided lines. See tools/diffusion-gradient-editor/vendor/README.md.
+// Draws a freeform gradient with WebGPU: the browser side of the
+// FreeformGradient package's WebGPU renderer, a port of its Metal renderer:
+// the solver's harmonic and biharmonic multigrids, and the sharp edges drawn
+// over two-sided lines. It is given the WGSL in WebGPUFreeformGradient.wgsl and a
+// gradient as WebGPUFreeformGradient.GradientData encodes it, solves it for
+// the size of whatever it draws into, and draws into any texture view of the
+// format it was made for. Its readPixels needs readTexturePixels, from the
+// WebGPUHost package's script, which pages inline before it.
+//
+//   const renderer = new WebGPUFreeformGradientRenderer(device, { shader, format: "bgra8unorm" });
+//   renderer.setGradient(gradient);
+//   const encoder = device.createCommandEncoder();
+//   renderer.encode(encoder, context.getCurrentTexture().createView(), canvas.width, canvas.height);
+//   device.queue.submit([encoder.finish()]);
+
+// What the Metal solver's harmonic multigrid does, in the same numbers: see
+// FreeformGradientSolver.swift.
+const preSmoothing = 2;
+const postSmoothing = 2;
+const smallLevelSmoothing = 8;
+const coarsestSmoothing = 500;
+const finestCycles = 2;
+const twoSidedCycles = 2;
+const harmonicOmega = 0.9;
+// A two-sided segment is never thinner than this many texels of the finest
+// level: FreeformGradientDescriptor.twoSidedTexels.
+const twoSidedTexels = 1.5;
+// Levels of no more than this many texels take all their smoothing steps in
+// one dispatch, as many as the device allows: the Metal solver's
+// smallLevelTexels.
+const maximumSmallLevelTexels = 1024;
+
+// What the Metal solver's biharmonic does, settled as its images are.
+const biharmonicOmega = 0.55;
+const biharmonicSmoothing = 4;
+const galerkinSmoothing = 4;
+const biharmonicCycles = 1;
+const finestBiharmonicCycles = 16;
+const twoSidedBiharmonicCycles = 4;
+const conjugateGradientSmoothing = 2;
+// The coarsest level's inverse, n × n with n up to 64, then each row's scale.
+const coarsestTexels = 64;
+// Partial sums of a dot product, one a workgroup of 16×16 texels, over a
+// 2048-texel grid.
+const maximumPartialSums = (2048 / 16) * (2048 / 16);
+// What a level's Galerkin coefficients take: 25 coefficients, whether the row
+// is free, its magnitude, its sum, and whether it is the background.
+const coefficientSlices = 29;
+
+// How far beyond where a two-sided line holds its colors its strips blend
+// into the solution, in finest texels: the Metal renderer's edgeBlendTexels.
+const edgeBlendTexels = 1.5;
+
+const fround = Math.fround;
+
+// The rows of the Galerkin levels below a level's own equation where no point
+// and no edge reaches: the 13-point stencil's Pᵀ K P / 4 on an unbounded
+// grid, and that of each in turn, 25 numbers a row, as the Metal solver's
+// backgroundRows.
+function backgroundRows() {
+  let stencil = new Map();
+  const key = (x, y) => `${x},${y}`;
+  for (const [x, y, c] of [
+    [0, 0, 20], [-1, 0, -8], [1, 0, -8], [0, -1, -8], [0, 1, -8],
+    [-1, -1, 2], [1, -1, 2], [-1, 1, 2], [1, 1, 2], [-2, 0, 1], [2, 0, 1], [0, -2, 1], [0, 2, 1],
+  ]) {
+    stencil.set(key(x, y), { x, y, c });
+  }
+  const corners = (i) => {
+    const x = 0.5 * i - 0.25;
+    const base = Math.floor(x);
+    return [[base, 1 - (x - base)], [base + 1, x - base]];
+  };
+  const fromOrigin = [[-1, 0.25], [0, 0.75], [1, 0.75], [2, 0.25]];
+  const rows = [];
+  for (let level = 0; level < 16; level++) {
+    const coarse = new Map();
+    for (const [ix, wx] of fromOrigin) {
+      for (const [iy, wy] of fromOrigin) {
+        for (const { x, y, c } of stencil.values()) {
+          for (const [jx, vx] of corners(ix + x)) {
+            for (const [jy, vy] of corners(iy + y)) {
+              const k = key(jx, jy);
+              const entry = coarse.get(k) ?? { x: jx, y: jy, c: 0 };
+              entry.c += 0.25 * wx * wy * c * vx * vy;
+              coarse.set(k, entry);
+            }
+          }
+        }
+      }
+    }
+    stencil = coarse;
+    for (let o = 0; o < 25; o++) {
+      rows.push(coarse.get(key(o % 5 - 2, Math.floor(o / 5) - 2))?.c ?? 0);
+    }
+  }
+  return new Float32Array(rows);
+}
+
+// Each Chebyshev step's weights, toward eigenvalues in [1/16, 1] of a level
+// scaled so that none is larger than 1, in 32-bit floats as the Metal solver
+// works them out.
+function chebyshevSteps(count) {
+  const low = fround(1 / 16), high = 1;
+  const gamma = fround(2 / fround(low + high));
+  const sigma = fround(fround(high - low) / fround(high + low));
+  const steps = [];
+  let omega = 1;
+  for (let index = 0; index < count; index++) {
+    if (index === 1) {
+      omega = fround(1 / fround(1 - fround(fround(sigma * sigma) / 2)));
+    } else if (index > 1) {
+      omega = fround(1 / fround(1 - fround(fround(fround(sigma * sigma) * omega) / 4)));
+    }
+    steps.push({ omega, gamma });
+  }
+  return steps;
+}
+
+// The index of a grid's texture that is neither of two others.
+function spare(a, b) {
+  return [0, 1, 2].find((i) => i !== a && i !== b);
+}
+
+// Textures of a level, so a step reads one and writes another: two, and a
+// third for the biharmonic's Chebyshev steps, which also read the one before.
+// The same as the Metal solver's Grid.
+class Grid {
+  constructor(textures) {
+    this.textures = textures;
+    this.current = 0;
+  }
+  // What the last step wrote.
+  get texture() { return this.textures[this.current]; }
+  // What the next step writes.
+  get next() { return this.textures[this.current === 0 ? 1 : 0]; }
+  flip() { this.current = this.current === 0 ? 1 : 0; }
+}
+
+// A level's uniforms, 64 bytes, in slots this far apart.
+const uniformSlotBytes = 256;
+const uniformSlots = 1024;
+
+class WebGPUFreeformGradientRenderer {
+  // The pipelines do not depend on the gradient, so they are made once. The
+  // display pass writes encoded sRGB, for a unorm format: bgra8unorm, as the
+  // Metal renderer's view is.
+  constructor(device, { shader, format }) {
+    this.device = device;
+    this.format = format;
+    const limits = device.limits;
+    // As many texels as one workgroup can hold, two copies of each. Pages ask
+    // for the device's own limits, so it is the Metal solver's 1024 on a Mac.
+    this.smallLevelTexels = Math.max(1, Math.min(
+      maximumSmallLevelTexels,
+      limits.maxComputeInvocationsPerWorkgroup,
+      limits.maxComputeWorkgroupSizeX,
+      Math.floor(limits.maxComputeWorkgroupStorageSize / 32)));
+
+    const module = device.createShaderModule({ code: shader });
+    const compute = (entryPoint, constants) => device.createComputePipeline({
+      layout: "auto", compute: { module, entryPoint, constants },
+    });
+    this.pipelines = {
+      constraints: compute("freeformConstraints"),
+      fill: compute("freeformFill"),
+      prolong: compute("freeformProlong"),
+      smooth: compute("freeformSmooth"),
+      smoothSmall: compute("freeformSmoothSmall", { smallLevelTexels: this.smallLevelTexels }),
+      restrict: compute("freeformRestrict"),
+      correct: compute("freeformCorrect"),
+    };
+    for (const name of [
+      "OwnCoefficients", "BackgroundFromOwn", "BackgroundFromGalerkin", "EntriesFromOwn", "EntriesFromGalerkin",
+      "RowsFromOwn", "RowsFromGalerkin", "ChebyshevOwn", "ChebyshevGalerkin", "ResidualOwn", "ResidualGalerkin",
+      "RestrictOwn", "RestrictGalerkin", "CorrectOwn", "CorrectGalerkin", "CoarsestInverse", "CoarsestSolve",
+      "CoarsestSolveOwn", "ChebyshevOwnCorrection", "ResidualOwnCorrection", "Clear", "Dot", "Scalars", "Reset",
+      "HoldColors", "Direction", "Step", "ProlongHeld", "FillHeld",
+    ]) {
+      this.pipelines[name] = compute("bh" + name);
+    }
+    this.displayPipeline = device.createRenderPipeline({
+      layout: "auto",
+      vertex: { module, entryPoint: "freeformDisplayVertex" },
+      fragment: { module, entryPoint: "freeformDisplayFragment", targets: [{ format }] },
+      primitive: { topology: "triangle-list" },
+    });
+    this.edgePipeline = device.createRenderPipeline({
+      layout: "auto",
+      vertex: { module, entryPoint: "freeformEdgeVertex" },
+      fragment: { module, entryPoint: "freeformEdgeFragment", targets: [{ format }] },
+      primitive: { topology: "triangle-list" },
+    });
+
+    const storage = (size) => device.createBuffer({ size, usage: GPUBufferUsage.STORAGE });
+    this.coarsestInverse = storage((coarsestTexels * coarsestTexels + coarsestTexels) * 4);
+    this.partialSums = storage(maximumPartialSums * 16);
+    this.conjugateGradientState = storage(64);
+    const rows = backgroundRows();
+    this.backgroundRows = device.createBuffer({
+      size: rows.byteLength, usage: GPUBufferUsage.STORAGE, mappedAtCreation: true,
+    });
+    new Float32Array(this.backgroundRows.getMappedRange()).set(rows);
+    this.backgroundRows.unmap();
+    this.edgeBuffer = null;
+    this.edgeVertexCount = 0;
+
+    // A solve is a thousand dispatches or more, and WebKit makes each bind
+    // group an argument buffer of its own: made anew every solve, they take
+    // about as long as the GPU does. So views and bind groups are made once
+    // and kept — the same textures, buffers and uniform slots are bound the
+    // same way solve after solve — until the pyramid or a buffer they bind
+    // is replaced.
+    this.views = new WeakMap();
+    this.bindGroups = new Map();
+    this.ids = new WeakMap();
+    this.lastID = 0;
+
+    this.uniforms = device.createBuffer({
+      size: uniformSlotBytes * uniformSlots, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    this.fillColor = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+    this.displayUniforms = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+
+    this.gradient = null;
+    this.levels = [];
+    this.boxScale = [1, 1];
+    // The box the gradient was last solved for, or null if it is not.
+    this.solvedSize = null;
+    this.pointBuffer = null;
+    this.segmentBuffer = null;
+  }
+
+  // Replaces the gradient, to be solved the next time it is drawn.
+  setGradient(gradient) {
+    this.gradient = gradient;
+    this.solvedSize = null;
+  }
+
+  // Encodes solving the gradient for a box `width` by `height`, if it is not
+  // solved for one already, and drawing it into `view`.
+  encode(encoder, view, width, height) {
+    const pass = () => encoder.beginRenderPass({
+      colorAttachments: [{ view, clearValue: { r: 0, g: 0, b: 0, a: 0 }, loadOp: "clear", storeOp: "store" }],
+    });
+    if (!this.gradient || !this.prepare(width, height)) {
+      pass().end();
+      return;
+    }
+    if (this.solvedSize?.[0] !== width || this.solvedSize?.[1] !== height) {
+      this.encodeSolve(encoder);
+      this.solvedSize = [width, height];
+    }
+
+    this.device.queue.writeBuffer(this.displayUniforms, 0, new Uint32Array([this.gradient.space, 0, 0, 0]));
+    const render = pass();
+    render.setPipeline(this.displayPipeline);
+    render.setBindGroup(0, this.bindGroup(this.displayPipeline, [
+      { binding: 0, resource: { buffer: this.displayUniforms } },
+      { binding: 1, resource: this.view(this.levels[0].values.texture) },
+    ]));
+    render.draw(3);
+    if (this.edgeVertexCount > 0) {
+      // Over the gradient, the strips either side of its two-sided lines.
+      render.setPipeline(this.edgePipeline);
+      render.setBindGroup(0, this.bindGroup(this.edgePipeline, [
+        { binding: 0, resource: { buffer: this.displayUniforms } },
+        { binding: 1, resource: this.view(this.levels[0].values.texture) },
+        { binding: 2, resource: { buffer: this.edgeBuffer } },
+      ]));
+      render.draw(this.edgeVertexCount);
+    }
+    render.end();
+  }
+
+  // Draws the gradient into a texture of its own, `width` by `height` pixels,
+  // its box that size, and resolves to its pixels: rows of `width * 4` bytes
+  // from the top, in the format's byte order, premultiplied.
+  async readPixels(width, height) {
+    const { device } = this;
+    const texture = device.createTexture({
+      size: [width, height], format: this.format,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+    });
+    const encoder = device.createCommandEncoder();
+    this.encode(encoder, texture.createView(), width, height);
+    device.queue.submit([encoder.finish()]);
+    const pixels = await readTexturePixels(device, texture, width, height);
+    texture.destroy();
+    return pixels;
+  }
+
+  destroy() {
+    this.destroyLevels();
+    this.pointBuffer?.destroy();
+    this.segmentBuffer?.destroy();
+    this.edgeBuffer?.destroy();
+    for (const buffer of [this.coarsestInverse, this.partialSums, this.conjugateGradientState, this.backgroundRows]) {
+      buffer.destroy();
+    }
+    this.uniforms.destroy();
+    this.fillColor.destroy();
+    this.displayUniforms.destroy();
+  }
+
+  // MARK: - Views and bind groups
+
+  // A view of the whole of `texture`, made the first time it is asked for.
+  view(texture) {
+    let view = this.views.get(texture);
+    if (!view) {
+      view = texture.createView();
+      this.views.set(texture, view);
+    }
+    return view;
+  }
+
+  // A bind group of `pipeline`'s first group with `entries`, made the first
+  // time they are bound together.
+  bindGroup(pipeline, entries) {
+    const key = [this.id(pipeline), ...entries.map(({ binding, resource }) => resource.buffer
+      ? `${binding}:${this.id(resource.buffer)}:${resource.offset ?? 0}:${resource.size ?? 0}`
+      : `${binding}:${this.id(resource)}`)].join(" ");
+    let group = this.bindGroups.get(key);
+    if (!group) {
+      group = this.device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries });
+      this.bindGroups.set(key, group);
+    }
+    return group;
+  }
+
+  // A number for an object, the same each time, for a bind group's key.
+  id(object) {
+    let id = this.ids.get(object);
+    if (id === undefined) {
+      id = ++this.lastID;
+      this.ids.set(object, id);
+    }
+    return id;
+  }
+
+  // Replaces `old` with a storage buffer holding `data`, or writes `data` into
+  // it if it has room, so that the bind groups that bind it stay good.
+  storageBuffer(old, data) {
+    if (old && old.size >= data.byteLength) {
+      this.device.queue.writeBuffer(old, 0, data);
+      return old;
+    }
+    old?.destroy();
+    this.bindGroups.clear();
+    // Room to grow, so a gradient that gains a point or a segment does not
+    // make a new one.
+    const result = this.device.createBuffer({
+      size: Math.max(256, Math.ceil(data.byteLength * 1.5 / 16) * 16),
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+    this.device.queue.writeBuffer(result, 0, data);
+    return result;
+  }
+
+  // MARK: - The pyramid
+
+  // Sizes the pyramid for a box `width` by `height`, as the Metal solver's
+  // prepare(boxSize:resolution:) does: a grid of the box's shape whose
+  // longest side is no more than the resolution nor the box's own, halving
+  // down to a few texels. Returns whether there is a grid at all.
+  prepare(width, height) {
+    const longest = Math.max(width, height);
+    const shortest = Math.min(width, height);
+    if (shortest <= 0) {
+      this.destroyLevels();
+      return false;
+    }
+    const scale = Math.min(1, this.gradient.resolution / longest);
+    let levelWidth = Math.max(1, Math.round(width * scale));
+    let levelHeight = Math.max(1, Math.round(height * scale));
+    this.boxScale = [width / shortest, height / shortest];
+    const finest = this.levels[0];
+    if (finest && finest.width === levelWidth && finest.height === levelHeight) {
+      return true;
+    }
+
+    this.destroyLevels();
+    const levels = [];
+    while (true) {
+      levels.push(this.makeLevel(levelWidth, levelHeight));
+      if (Math.max(levelWidth, levelHeight) <= 8) {
+        break;
+      }
+      levelWidth = Math.floor((levelWidth + 1) / 2);
+      levelHeight = Math.floor((levelHeight + 1) / 2);
+    }
+    this.levels = levels;
+    return true;
+  }
+
+  makeLevel(width, height) {
+    const { device } = this;
+    const texture = (format) => device.createTexture({
+      size: [width, height], format,
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING,
+    });
+    // Two textures to start with; the biharmonic adds a third.
+    const grid = () => new Grid([texture("rgba32float"), texture("rgba32float")]);
+    return {
+      texture,
+      width, height,
+      values: grid(),
+      constraintColor: texture("rgba32float"),
+      constraintWeight: texture("r32float"),
+      rightHandSide: texture("rgba32float"),
+      correction: grid(),
+      correctionRightHandSide: texture("rgba32float"),
+      // What only the biharmonic needs, made when it first does.
+      coefficients: null,
+      conjugateGradient: null,
+      owned: [],
+    };
+  }
+
+  // Gives the levels what the biharmonic needs besides: a third texture for
+  // each grid; coefficients for each level but the finest of several; and on
+  // that one, the conjugate gradients' residual, direction and K times it —
+  // two of the first two, since a step cannot read and write a texture.
+  prepareBiharmonic() {
+    const { device, levels } = this;
+    levels.forEach((level, index) => {
+      if (level.values.textures.length < 3) {
+        for (const grid of [level.values, level.correction]) {
+          const texture = level.texture("rgba32float");
+          grid.textures.push(texture);
+          level.owned.push(texture);
+        }
+      }
+      if (!level.coefficients && (index > 0 || levels.length === 1)) {
+        level.coefficients = device.createBuffer({
+          size: level.width * level.height * coefficientSlices * 4, usage: GPUBufferUsage.STORAGE,
+        });
+        level.owned.push(level.coefficients);
+      }
+      if (!level.conjugateGradient && index === 0 && levels.length > 1) {
+        const textures = [0, 1, 2, 3, 4].map(() => level.texture("rgba32float"));
+        level.owned.push(...textures);
+        level.conjugateGradient = {
+          residual: new Grid(textures.slice(0, 2)),
+          direction: new Grid(textures.slice(2, 4)),
+          product: textures[4],
+        };
+      }
+    });
+  }
+
+  destroyLevels() {
+    for (const level of this.levels) {
+      for (const t of [...level.values.textures.slice(0, 2), level.constraintColor, level.constraintWeight,
+                       level.rightHandSide, ...level.correction.textures.slice(0, 2), level.correctionRightHandSide,
+                       ...level.owned]) {
+        t.destroy();
+      }
+    }
+    this.levels = [];
+    this.bindGroups.clear();
+  }
+
+  // MARK: - Solving
+
+  encodeSolve(encoder) {
+    const { device, gradient, levels } = this;
+    this.slots = new Map();
+    this.slotData = new ArrayBuffer(uniformSlotBytes * uniformSlots);
+    this.packSources();
+
+    const pass = encoder.beginComputePass();
+    this.pass = pass;
+    const finest = levels[0];
+    // With no points to diffuse, the gradient is transparent.
+    if (gradient.isEmpty) {
+      this.fill(finest, [0, 0, 0, 0]);
+    } else {
+      for (let index = 0; index < levels.length; index++) {
+        this.dispatch("constraints", levels[index], [
+          this.uniformEntry(index, index),
+          { binding: 1, resource: { buffer: this.pointBuffer } },
+          { binding: 2, resource: { buffer: this.segmentBuffer } },
+          { binding: 3, resource: this.view(levels[index].constraintColor) },
+          { binding: 4, resource: this.view(levels[index].constraintWeight) },
+          { binding: 5, resource: this.view(levels[index].rightHandSide) },
+        ]);
+      }
+      if (gradient.model === "biharmonic") {
+        this.encodeBiharmonic();
+      } else {
+        this.encodeMultigrid();
+      }
+    }
+    pass.end();
+    this.pass = null;
+    device.queue.writeBuffer(this.uniforms, 0, this.slotData, 0, uniformSlotBytes * Math.max(this.slots.size, 1));
+    this.makeEdges();
+  }
+
+  // Full multigrid: the coarsest level solved outright, then each finer level
+  // started from the one below and V-cycled, the finest more than once.
+  encodeMultigrid() {
+    const { levels, gradient } = this;
+    const coarsest = levels.length - 1;
+    const bottom = levels[coarsest];
+    this.fill(bottom, gradient.average);
+    this.smooth(coarsest, bottom.values, bottom.rightHandSide, coarsestSmoothing, coarsest);
+    for (let index = coarsest - 1; index >= 0; index--) {
+      this.prolong(index);
+      const extra = gradient.hasTwoSidedLines ? twoSidedCycles : 0;
+      const cycles = index === 0 ? 1 + finestCycles + extra : 1;
+      for (let cycle = 0; cycle < cycles; cycle++) {
+        this.vCycle(index, levels[index].values, levels[index].rightHandSide, index);
+      }
+    }
+  }
+
+  vCycle(index, x, b, top) {
+    const { levels } = this;
+    const level = levels[index];
+    if (index === levels.length - 1) {
+      this.smooth(index, x, b, coarsestSmoothing, top);
+      return;
+    }
+    const small = this.isSmall(level);
+    this.smooth(index, x, b, small ? smallLevelSmoothing : preSmoothing, top);
+
+    const coarse = levels[index + 1];
+    this.dispatch("restrict", coarse, [
+      this.uniformEntry(index, top, 0, [coarse.width, coarse.height]),
+      { binding: 1, resource: this.view(x.texture) },
+      { binding: 2, resource: this.view(b) },
+      { binding: 3, resource: this.view(level.constraintWeight) },
+      { binding: 4, resource: this.view(coarse.correctionRightHandSide) },
+      { binding: 5, resource: this.view(coarse.correction.texture) },
+    ]);
+
+    this.vCycle(index + 1, coarse.correction, coarse.correctionRightHandSide, top);
+
+    this.dispatch("correct", level, [
+      this.uniformEntry(index, top),
+      { binding: 1, resource: this.view(coarse.correction.texture) },
+      { binding: 2, resource: this.view(x.texture) },
+      { binding: 3, resource: this.view(x.next) },
+      { binding: 4, resource: this.view(level.constraintWeight) },
+    ]);
+    x.flip();
+
+    this.smooth(index, x, b, small ? smallLevelSmoothing : postSmoothing, top);
+  }
+
+  // `times` smoothing steps of `x` toward `b` on level `index`: a dispatch
+  // each, or for a small level, all in one.
+  smooth(index, x, b, times, top) {
+    if (times <= 0) {
+      return;
+    }
+    const level = this.levels[index];
+    const entries = (iterations) => [
+      this.uniformEntry(index, top, iterations),
+      { binding: 1, resource: this.view(x.texture) },
+      { binding: 2, resource: this.view(x.next) },
+      { binding: 3, resource: this.view(b) },
+      { binding: 4, resource: this.view(level.constraintWeight) },
+    ];
+    if (this.isSmall(level)) {
+      const pipeline = this.pipelines.smoothSmall;
+      this.pass.setPipeline(pipeline);
+      this.pass.setBindGroup(0, this.bindGroup(pipeline, entries(times)));
+      this.pass.dispatchWorkgroups(1);
+      x.flip();
+      return;
+    }
+    for (let step = 0; step < times; step++) {
+      this.dispatch("smooth", level, entries(0));
+      x.flip();
+    }
+  }
+
+  isSmall(level) {
+    return level.width * level.height <= this.smallLevelTexels;
+  }
+
+  // Starts level `index` from the solution of the level below it.
+  prolong(index) {
+    const level = this.levels[index];
+    level.values.current = 0;
+    this.dispatch("prolong", level, [
+      this.uniformEntry(index, index),
+      { binding: 1, resource: this.view(this.levels[index + 1].values.texture) },
+      { binding: 2, resource: this.view(level.values.textures[0]) },
+    ]);
+  }
+
+  fill(level, color) {
+    this.device.queue.writeBuffer(this.fillColor, 0, new Float32Array(color));
+    level.values.current = 0;
+    this.dispatch("fill", level, [
+      this.uniformEntry(this.levels.indexOf(level), this.levels.indexOf(level)),
+      { binding: 1, resource: { buffer: this.fillColor } },
+      { binding: 2, resource: this.view(level.values.textures[0]) },
+    ]);
+  }
+
+  dispatch(name, over, entries) {
+    const pipeline = this.pipelines[name];
+    this.pass.setPipeline(pipeline);
+    this.pass.setBindGroup(0, this.bindGroup(pipeline, entries));
+    this.pass.dispatchWorkgroups(Math.ceil(over.width / 8), Math.ceil(over.height / 8));
+  }
+
+  // MARK: - The biharmonic
+
+  // The biharmonic kernels' uniforms: `of` the level, or the finer of two;
+  // `coarse` the coarser, or the level itself for its own coefficients.
+  bh({ of, coarse = null, fill = [0, 0, 0, 0], step = null, flag = 0, count = 0 }) {
+    const key = ["bh", of.width, of.height, coarse?.width ?? 0, coarse?.height ?? 0, ...fill,
+                 step?.omega ?? 0, step?.gamma ?? 0, flag, count].join(":");
+    return this.slotEntry(20, key, (u32, f32) => {
+      u32[0] = of.width;
+      u32[1] = of.height;
+      u32[2] = coarse?.width ?? 0;
+      u32[3] = coarse?.height ?? 0;
+      f32.set(fill, 4);
+      f32[8] = biharmonicOmega;
+      f32[9] = step?.omega ?? 0;
+      f32[10] = step?.gamma ?? 0;
+      u32[11] = flag;
+      u32[12] = count;
+    });
+  }
+
+  // Dispatches a biharmonic kernel over `over` texels, or `[x, y, z]`
+  // workgroups, with `bindings` from the WGSL's names to what they are bound
+  // to here.
+  bhDispatch(name, over, uniforms, bindings) {
+    const numbers = {
+      x: 21, previous: 22, out: 23, color: 24, weight: 25, rightHandSide: 26, coefficients: 27,
+      coarseCoefficients: 28, background: 29, out2: 30, inverse: 31, partials: 32, state: 33, y: 34, z: 35,
+    };
+    const entries = uniforms ? [uniforms] : [];
+    for (const [name, resource] of Object.entries(bindings)) {
+      entries.push({
+        binding: numbers[name],
+        resource: resource instanceof GPUBuffer ? { buffer: resource } : this.view(resource),
+      });
+    }
+    const pipeline = this.pipelines[name];
+    this.pass.setPipeline(pipeline);
+    this.pass.setBindGroup(0, this.bindGroup(pipeline, entries));
+    if (Array.isArray(over)) {
+      this.pass.dispatchWorkgroups(...over);
+    } else {
+      this.pass.dispatchWorkgroups(Math.ceil(over.width / 8), Math.ceil(over.height / 8));
+    }
+  }
+
+  // The biharmonic, coarse to fine, as the Metal solver's encodeBiharmonic
+  // from the levels below: the coarsest level's own equation solved outright,
+  // then each finer level started from the one below and V-cycled toward its
+  // own equation, below it the Galerkin levels of that equation, and the
+  // finest settled by conjugate gradients.
+  encodeBiharmonic() {
+    const { levels, gradient } = this;
+    this.prepareBiharmonic();
+    const coarsest = levels.length - 1;
+    const bottom = levels[coarsest];
+    this.bhDispatch("FillHeld", bottom, this.bh({ of: bottom, fill: gradient.average }), {
+      out: bottom.values.textures[0], color: bottom.constraintColor, weight: bottom.constraintWeight,
+    });
+    bottom.values.current = 0;
+    this.bhDispatch("OwnCoefficients", bottom, this.bh({ of: bottom, coarse: bottom }), {
+      weight: bottom.constraintWeight, coarseCoefficients: bottom.coefficients,
+    });
+    this.invertCoarsest();
+    this.bhDispatch("CoarsestSolveOwn", [1, 1, 1], this.bh({ of: bottom }), {
+      inverse: this.coarsestInverse, x: bottom.values.texture, out: bottom.values.next,
+      color: bottom.constraintColor, weight: bottom.constraintWeight,
+    });
+    bottom.values.flip();
+
+    const cycles = finestBiharmonicCycles + (gradient.hasTwoSidedLines ? twoSidedBiharmonicCycles : 0);
+    for (let index = coarsest - 1; index >= 0; index--) {
+      const level = levels[index];
+      this.bhDispatch("ProlongHeld", level, this.bh({ of: level }), {
+        y: levels[index + 1].values.texture, out: level.values.textures[0],
+        color: level.constraintColor, weight: level.constraintWeight,
+      });
+      level.values.current = 0;
+      this.buildGalerkinLevels(index);
+      if (index === 0) {
+        this.encodeConjugateGradients(cycles);
+      } else {
+        for (let cycle = 0; cycle < biharmonicCycles; cycle++) {
+          this.biharmonicVCycle(index);
+        }
+      }
+    }
+  }
+
+  // The Galerkin levels below level `top`'s own equation, down to the
+  // coarsest, and the coarsest's inverse.
+  buildGalerkinLevels(top) {
+    const { levels } = this;
+    const level = levels[top];
+    const coarse = levels[top + 1];
+    const own = this.bh({ of: level, coarse, flag: 0 });
+    const from = { weight: level.constraintWeight, coarseCoefficients: coarse.coefficients };
+    this.bhDispatch("BackgroundFromOwn", coarse, own, { ...from, background: this.backgroundRows });
+    this.bhDispatch("EntriesFromOwn", [Math.ceil(coarse.width / 8), Math.ceil(coarse.height / 8), 13], own, from);
+    this.bhDispatch("RowsFromOwn", coarse, own, from);
+    for (let index = top + 1; index < levels.length - 1; index++) {
+      const fine = levels[index];
+      const below = levels[index + 1];
+      const uniforms = this.bh({ of: fine, coarse: below, flag: Math.min(index - top, 15) });
+      const galerkin = { coefficients: fine.coefficients, coarseCoefficients: below.coefficients };
+      this.bhDispatch("BackgroundFromGalerkin", below, uniforms, { ...galerkin, background: this.backgroundRows });
+      this.bhDispatch("EntriesFromGalerkin", [Math.ceil(below.width / 8), Math.ceil(below.height / 8), 13], uniforms, galerkin);
+      this.bhDispatch("RowsFromGalerkin", below, uniforms, galerkin);
+    }
+    this.invertCoarsest();
+  }
+
+  invertCoarsest() {
+    const bottom = this.levels[this.levels.length - 1];
+    this.bhDispatch("CoarsestInverse", [1, 1, 1], this.bh({ of: bottom }), {
+      coefficients: bottom.coefficients, inverse: this.coarsestInverse,
+    });
+  }
+
+  // One V-cycle of level `top`'s own equation: smoothed, its residual solved
+  // for on the Galerkin levels below, that correction added, and smoothed
+  // again.
+  biharmonicVCycle(top) {
+    const { levels } = this;
+    const level = levels[top];
+    const coarse = levels[top + 1];
+    const steps = chebyshevSteps(biharmonicSmoothing);
+
+    this.chebyshevOwn(level, steps);
+    // The level's residual goes in its correction's right-hand side, which the
+    // level being solved does not otherwise use.
+    this.bhDispatch("ResidualOwn", level, this.bh({ of: level }), {
+      x: level.values.texture, out: level.correctionRightHandSide,
+      color: level.constraintColor, weight: level.constraintWeight,
+    });
+    this.bhDispatch("RestrictOwn", coarse, this.bh({ of: level, coarse }), {
+      x: level.correctionRightHandSide, weight: level.constraintWeight,
+      out: coarse.correctionRightHandSide, out2: coarse.correction.textures[0],
+    });
+    coarse.correction.current = 0;
+
+    this.encodeCoarseCorrection(top, galerkinSmoothing);
+
+    this.bhDispatch("CorrectOwn", level, this.bh({ of: level }), {
+      y: coarse.correction.texture, x: level.values.texture, out: level.values.next, weight: level.constraintWeight,
+    });
+    level.values.flip();
+    this.chebyshevOwn(level, steps);
+  }
+
+  // The correction of level `top` its residual, restricted to the level
+  // below's right-hand side, asks for: V-cycled on the Galerkin levels, down
+  // to the coarsest, solved outright, and back up. It is left in the level
+  // below's correction.
+  encodeCoarseCorrection(top, smoothing) {
+    const { levels } = this;
+    const coarsest = levels.length - 1;
+    const steps = chebyshevSteps(smoothing);
+    for (let index = top + 1; index < coarsest; index++) {
+      const fine = levels[index];
+      const below = levels[index + 1];
+      this.chebyshevGalerkin(fine, steps);
+      // The residual goes in a texture of the correction the smoothing is
+      // done with.
+      const residual = fine.correction.textures[fine.correction.current === 0 ? 1 : 0];
+      this.bhDispatch("ResidualGalerkin", fine, this.bh({ of: fine }), {
+        x: fine.correction.texture, out: residual, rightHandSide: fine.correctionRightHandSide,
+        coefficients: fine.coefficients,
+      });
+      this.bhDispatch("RestrictGalerkin", below, this.bh({ of: fine, coarse: below }), {
+        x: residual, coefficients: fine.coefficients,
+        out: below.correctionRightHandSide, out2: below.correction.textures[0],
+      });
+      below.correction.current = 0;
+    }
+
+    const bottom = levels[coarsest];
+    this.bhDispatch("CoarsestSolve", [1, 1, 1], this.bh({ of: bottom }), {
+      inverse: this.coarsestInverse, rightHandSide: bottom.correctionRightHandSide, out: bottom.correction.next,
+    });
+    bottom.correction.flip();
+
+    for (let index = coarsest - 1; index > top; index--) {
+      const fine = levels[index];
+      this.bhDispatch("CorrectGalerkin", fine, this.bh({ of: fine }), {
+        y: levels[index + 1].correction.texture, x: fine.correction.texture, out: fine.correction.next,
+        coefficients: fine.coefficients,
+      });
+      fine.correction.flip();
+      this.chebyshevGalerkin(fine, steps);
+    }
+  }
+
+  // `count` steps of conjugate gradients on the finest level's own equation,
+  // preconditioned by a V-cycle, from the solution it holds.
+  encodeConjugateGradients(count) {
+    const { levels } = this;
+    if (count <= 0 || levels.length <= 1) {
+      return;
+    }
+    const level = levels[0];
+    const { residual, direction, product } = level.conjugateGradient;
+    const uniforms = this.bh({ of: level });
+    // The held texels at their colors — conjugate gradients never change
+    // them — then r = D c - K x, and the scalars reset.
+    this.bhDispatch("HoldColors", level, uniforms, {
+      x: level.values.texture, out: level.values.next, color: level.constraintColor, weight: level.constraintWeight,
+    });
+    level.values.flip();
+    this.bhDispatch("ResidualOwn", level, uniforms, {
+      x: level.values.texture, out: residual.texture, color: level.constraintColor, weight: level.constraintWeight,
+    });
+    this.bhDispatch("Reset", [1, 1, 1], null, { state: this.conjugateGradientState });
+
+    for (let step = 0; step < count; step++) {
+      const z = this.encodePreconditioner();
+      this.encodeDot(residual.texture, z, false);
+      this.bhDispatch("Direction", level, uniforms, {
+        state: this.conjugateGradientState, x: z, y: direction.texture, out: direction.next,
+      });
+      direction.flip();
+      this.bhDispatch("ResidualOwnCorrection", level, this.bh({ of: level, flag: 1 }), {
+        x: direction.texture, out: product, rightHandSide: residual.texture, weight: level.constraintWeight,
+      });
+      this.encodeDot(direction.texture, product, true);
+      this.bhDispatch("Step", level, uniforms, {
+        state: this.conjugateGradientState, x: direction.texture, y: product, z: level.values.texture,
+        rightHandSide: residual.texture, out: level.values.next, out2: residual.next,
+      });
+      level.values.flip();
+      residual.flip();
+    }
+  }
+
+  // a · b over the finest level, into the scalars: r · z and beta, or with
+  // `alpha`, alpha.
+  encodeDot(a, b, alpha) {
+    const level = this.levels[0];
+    const groups = [Math.ceil(level.width / 16), Math.ceil(level.height / 16), 1];
+    this.bhDispatch("Dot", groups, null, { x: a, y: b, partials: this.partialSums });
+    this.bhDispatch("Scalars", [1, 1, 1], this.bh({ of: level, flag: alpha ? 1 : 0, count: groups[0] * groups[1] }), {
+      partials: this.partialSums, state: this.conjugateGradientState,
+    });
+  }
+
+  // The preconditioner: z for the residual r, by a V-cycle of the finest
+  // level's correction toward K z = r from zero. Returns z, in the finest
+  // level's correction.
+  encodePreconditioner() {
+    const { levels } = this;
+    const level = levels[0];
+    const coarse = levels[1];
+    const residual = level.conjugateGradient.residual.texture;
+    const steps = chebyshevSteps(conjugateGradientSmoothing);
+
+    this.bhDispatch("Clear", level, this.bh({ of: level }), { out: level.correction.textures[0] });
+    level.correction.current = 0;
+    this.chebyshevOwnCorrection(level, residual, steps);
+
+    this.bhDispatch("ResidualOwnCorrection", level, this.bh({ of: level, flag: 0 }), {
+      x: level.correction.texture, out: level.correctionRightHandSide, rightHandSide: residual,
+      weight: level.constraintWeight,
+    });
+    this.bhDispatch("RestrictOwn", coarse, this.bh({ of: level, coarse }), {
+      x: level.correctionRightHandSide, weight: level.constraintWeight,
+      out: coarse.correctionRightHandSide, out2: coarse.correction.textures[0],
+    });
+    coarse.correction.current = 0;
+
+    this.encodeCoarseCorrection(0, conjugateGradientSmoothing);
+
+    this.bhDispatch("CorrectOwn", level, this.bh({ of: level }), {
+      y: coarse.correction.texture, x: level.correction.texture, out: level.correction.next,
+      weight: level.constraintWeight,
+    });
+    level.correction.flip();
+    this.chebyshevOwnCorrection(level, residual, steps);
+    return level.correction.texture;
+  }
+
+  chebyshevOwnCorrection(level, rightHandSide, steps) {
+    const grid = level.correction;
+    let previous = grid.current;
+    for (const step of steps) {
+      const next = spare(grid.current, previous);
+      this.bhDispatch("ChebyshevOwnCorrection", level, this.bh({ of: level, step }), {
+        x: grid.texture, previous: grid.textures[previous], out: grid.textures[next],
+        rightHandSide, weight: level.constraintWeight,
+      });
+      previous = grid.current;
+      grid.current = next;
+    }
+  }
+
+  chebyshevOwn(level, steps) {
+    const grid = level.values;
+    let previous = grid.current;
+    for (const step of steps) {
+      const next = spare(grid.current, previous);
+      this.bhDispatch("ChebyshevOwn", level, this.bh({ of: level, step }), {
+        x: grid.texture, previous: grid.textures[previous], out: grid.textures[next],
+        color: level.constraintColor, weight: level.constraintWeight,
+      });
+      previous = grid.current;
+      grid.current = next;
+    }
+  }
+
+  chebyshevGalerkin(level, steps) {
+    const grid = level.correction;
+    let previous = grid.current;
+    for (const step of steps) {
+      const next = spare(grid.current, previous);
+      this.bhDispatch("ChebyshevGalerkin", level, this.bh({ of: level, step }), {
+        x: grid.texture, previous: grid.textures[previous], out: grid.textures[next],
+        rightHandSide: level.correctionRightHandSide, coefficients: level.coefficients,
+      });
+      previous = grid.current;
+      grid.current = next;
+    }
+  }
+
+  // MARK: - Sharp edges
+
+  // The strips either side of the two-sided lines, for the box and the finest
+  // level as they are now, as the Metal renderer's makeEdges: six vertices a
+  // quad, of 12 numbers each.
+  makeEdges() {
+    const finest = this.levels[0];
+    const boxScale = this.boxScale.map(fround);
+    const texel = Math.max(fround(boxScale[0] / finest.width), fround(boxScale[1] / finest.height));
+    const quads = this.gradient.isEmpty ? [] : edgeQuads(
+      this.gradient.segments, boxScale, texel, fround(edgeBlendTexels * texel), fround(2 * texel));
+    this.edgeVertexCount = quads.length * 6;
+    if (quads.length === 0) {
+      return;
+    }
+    const bytes = new ArrayBuffer(this.edgeVertexCount * 48);
+    const floats = new Float32Array(bytes);
+    const words = new Uint32Array(bytes);
+    let v = 0;
+    for (const quad of quads) {
+      for (const corner of [0, 1, 2, 0, 2, 3]) {
+        const o = v * 12;
+        floats.set(quad.colors[corner] ?? [0, 0, 0, 0], o);
+        floats.set(quad.edgeColors[corner], o + 4);
+        floats.set(quad.corners[corner], o + 8);
+        floats[o + 10] = quad.across[corner];
+        words[o + 11] = quad.colors[corner] ? 0 : 1;
+        v++;
+      }
+    }
+    this.edgeBuffer = this.storageBuffer(this.edgeBuffer, bytes);
+  }
+
+  // MARK: - Uniforms and sources
+
+  // The uniforms of level `index` solving level `top`'s equation, in a slot of
+  // their own, the same slot each time they are the same.
+  uniformEntry(index, top, iterations = 0, coarseSize = [0, 0]) {
+    return this.slotEntry(0, `level:${index}:${top}:${iterations}:${coarseSize[0]}x${coarseSize[1]}`, (u32, f32) => {
+      const level = this.levels[index];
+      u32[0] = level.width;
+      u32[1] = level.height;
+      f32[2] = this.boxScale[0] / level.width;
+      f32[3] = this.boxScale[1] / level.height;
+      f32[4] = this.boxScale[0];
+      f32[5] = this.boxScale[1];
+      u32[6] = this.pointCount;
+      u32[7] = this.segmentCount;
+      f32[8] = harmonicOmega;
+      f32[9] = this.scale(index, top);
+      u32[10] = iterations;
+      u32[12] = coarseSize[0];
+      u32[13] = coarseSize[1];
+    });
+  }
+
+  // 64 bytes of uniforms at `binding`, written by `write` into a slot of their
+  // own, the same slot each time `key` is the same.
+  slotEntry(binding, key, write) {
+    let slot = this.slots.get(key);
+    if (slot === undefined) {
+      slot = this.slots.size;
+      if (slot >= uniformSlots) {
+        throw new Error("The solve needs more uniform slots than there are.");
+      }
+      this.slots.set(key, slot);
+      const offset = slot * uniformSlotBytes;
+      write(new Uint32Array(this.slotData, offset, 16), new Float32Array(this.slotData, offset, 16));
+    }
+    return { binding, resource: { buffer: this.uniforms, offset: slot * uniformSlotBytes, size: 64 } };
+  }
+
+  // How much coarser level `index` is than `top`, squared.
+  scale(index, top) {
+    const ratio = Math.max(this.levels[top].width, this.levels[top].height)
+      / Math.max(this.levels[index].width, this.levels[index].height);
+    return Math.fround(ratio * ratio);
+  }
+
+  // The points and the lines' segments, as the shader reads them, for the box
+  // and the finest level as they are now: a two-sided segment is never
+  // thinner than twoSidedTexels of the finest level, and its distances to its
+  // line's ends are in units of the box's shorter side. As the Metal solver's
+  // segments(of:settings:boxScale:finestTexel:) does, the distances go by
+  // each line's own segments, in order, to the resolved segments in order.
+  packSources() {
+    const { gradient, boxScale } = this;
+    const points = gradient.points;
+    this.pointCount = points.length / 8;
+    const pointData = new Float32Array(Math.max(points.length, 8));
+    pointData.set(points);
+
+    const finest = this.levels[0];
+    const texel = Math.max(boxScale[0] / finest.width, boxScale[1] / finest.height);
+    const least = twoSidedTexels * texel;
+    const segments = gradient.segments;
+    const count = segments.length / 23;
+    this.segmentCount = count;
+    const segmentBytes = new ArrayBuffer(Math.max(count, 1) * 112);
+    const f32 = new Float32Array(segmentBytes);
+    const u32 = new Uint32Array(segmentBytes);
+    const far = 3.4028234663852886e38;
+    const distances = [];
+    for (const line of gradient.lines) {
+      const lengths = [];
+      for (let e = 0; e < line.ends.length; e += 4) {
+        lengths.push(Math.fround(Math.hypot((line.ends[e + 2] - line.ends[e]) * boxScale[0],
+                                            (line.ends[e + 3] - line.ends[e + 1]) * boxScale[1])));
+      }
+      const total = lengths.reduce((a, b) => a + b, 0);
+      let before = 0;
+      for (const length of lengths) {
+        distances.push(line.closed ? [far, far] : [before, total - before - length]);
+        before += length;
+      }
+    }
+    for (let i = 0; i < count; i++) {
+      const s = i * 23;
+      const o = i * 28;
+      const twoSided = segments[s + 22] !== 0;
+      for (let k = 0; k < 20; k++) {
+        f32[o + k] = segments[s + k];
+      }
+      f32[o + 20] = twoSided ? Math.max(segments[s + 20], least) : segments[s + 20];
+      f32[o + 21] = twoSided ? Math.max(segments[s + 21], least) : segments[s + 21];
+      u32[o + 22] = twoSided ? 1 : 0;
+      f32[o + 23] = i < distances.length ? distances[i][0] : far;
+      f32[o + 24] = i < distances.length ? distances[i][1] : far;
+    }
+
+    this.pointBuffer = this.storageBuffer(this.pointBuffer, pointData);
+    this.segmentBuffer = this.storageBuffer(this.segmentBuffer, segmentBytes);
+  }
+}
+
+// MARK: - Edge quads
+
+// The strips either side of the two-sided stretches of the lines, a port of
+// FreeformGradientDescriptor.edgeQuads(settings:boxScale:texel:blendWidth:pieceLength:),
+// from the resolved segments, 23 numbers each. Each side's strip is held color
+// out to where the solver holds it, then blends to the solution over
+// `blendWidth` more. In 32-bit floats where a result decides something — how
+// many pieces, whether pieces meet — so they come out as Swift's do.
+function edgeQuads(segments, boxScale, texel, blendWidth, pieceLength) {
+  const at = (a, b, t) => fround(a + fround(fround(b - a) * t));
+  const mix4 = (a, b, t) => a.map((x, i) => at(x, b[i], t));
+  const length = (x, y) => fround(Math.hypot(fround(x), fround(y)));
+  const normalize = ([x, y]) => {
+    const l = Math.hypot(x, y);
+    return [fround(x / l), fround(y / l)];
+  };
+
+  const pieces = [];
+  for (let s = 0; s + 22 < segments.length; s += 23) {
+    if (segments[s + 22] === 0) {
+      continue;
+    }
+    const segment = {
+      startLeft: segments.slice(s, s + 4), endLeft: segments.slice(s + 4, s + 8),
+      startRight: segments.slice(s + 8, s + 12), endRight: segments.slice(s + 12, s + 16),
+      start: segments.slice(s + 16, s + 18), end: segments.slice(s + 18, s + 20),
+      startRadius: segments[s + 20], endRadius: segments[s + 21],
+    };
+    const along = length(fround(fround(segment.end[0] - segment.start[0]) * boxScale[0]),
+                         fround(fround(segment.end[1] - segment.start[1]) * boxScale[1]));
+    const count = Math.max(1, Math.ceil(fround(along / Math.max(pieceLength, fround(1e-4)))));
+    for (let piece = 0; piece < count; piece++) {
+      const a = fround(piece / count), b = fround((piece + 1) / count);
+      pieces.push({
+        start: [at(segment.start[0], segment.end[0], a), at(segment.start[1], segment.end[1], a)],
+        end: [at(segment.start[0], segment.end[0], b), at(segment.start[1], segment.end[1], b)],
+        startLeft: mix4(segment.startLeft, segment.endLeft, a), endLeft: mix4(segment.startLeft, segment.endLeft, b),
+        startRight: mix4(segment.startRight, segment.endRight, a), endRight: mix4(segment.startRight, segment.endRight, b),
+        startRadius: at(segment.startRadius, segment.endRadius, a),
+        endRadius: at(segment.startRadius, segment.endRadius, b),
+      });
+    }
+  }
+
+  // Runs of two-sided segments end to end, so the strips of a curve's
+  // segments share their corners rather than gaping at each joint.
+  const runs = [];
+  for (const piece of pieces) {
+    const last = runs.at(-1)?.at(-1);
+    if (last && last.end[0] === piece.start[0] && last.end[1] === piece.start[1]) {
+      runs.at(-1).push(piece);
+    } else {
+      runs.push([piece]);
+    }
+  }
+
+  const quads = [];
+  for (const run of runs) {
+    const directions = run.map((p) => normalize([fround(p.end[0] - p.start[0]) * boxScale[0],
+                                                 fround(p.end[1] - p.start[1]) * boxScale[1]]));
+    // Left of the way along, y down.
+    const normals = directions.map(([x, y]) => [y, -x]);
+    // Toward a run's open ends, the blend narrows to nothing.
+    const lengths = [0];
+    for (const p of run) {
+      lengths.push(fround(lengths.at(-1) + length(fround(p.end[0] - p.start[0]) * boxScale[0],
+                                                  fround(p.end[1] - p.start[1]) * boxScale[1])));
+    }
+    const total = lengths.at(-1);
+    const blends = lengths.map((l) => fround(blendWidth * Math.min(1, fround(Math.min(l, fround(total - l)) / Math.max(blendWidth, 1e-6)))));
+    const joints = [];
+    for (let index = 0; index <= run.length; index++) {
+      const before = index > 0 ? normals[index - 1] : normals[0];
+      const after = index < run.length ? normals[index] : normals[run.length - 1];
+      const miter = normalize([before[0] + after[0], before[1] + after[1]]);
+      // As far out along the miter as keeps the strip as wide as asked, but
+      // no more than twice.
+      const scale = Math.max(miter[0] * after[0] + miter[1] * after[1], 0.5);
+      joints.push([fround(miter[0] / scale), fround(miter[1] / scale)]);
+    }
+    run.forEach((segment, index) => {
+      const held = [Math.max(segment.startRadius, fround(twoSidedTexels * texel)),
+                    Math.max(segment.endRadius, fround(twoSidedTexels * texel))];
+      const half = (a, b) => a.map((x, i) => fround(fround(x + b[i]) / 2));
+      const edge = [half(segment.startLeft, segment.startRight), half(segment.endLeft, segment.endRight)];
+      for (const sign of [1, -1]) {
+        const colors = sign > 0 ? [segment.startLeft, segment.endLeft] : [segment.startRight, segment.endRight];
+        const out = (position, joint, distance) => [
+          fround(position[0] + fround(fround(sign * joint[0] * distance) / boxScale[0])),
+          fround(position[1] + fround(fround(sign * joint[1] * distance) / boxScale[1])),
+        ];
+        const start = joints[index], end = joints[index + 1];
+        const heldStart = out(segment.start, start, held[0]), heldEnd = out(segment.end, end, held[1]);
+        quads.push({
+          corners: [segment.start, segment.end, heldEnd, heldStart],
+          colors: [colors[0], colors[1], colors[1], colors[0]],
+          across: [0, 0, held[1], held[0]],
+          edgeColors: [edge[0], edge[1], edge[1], edge[0]],
+        });
+        const blend = [blends[index], blends[index + 1]];
+        if (!(blend[0] > 0 || blend[1] > 0)) {
+          continue;
+        }
+        quads.push({
+          corners: [heldStart, heldEnd, out(segment.end, end, held[1] + blend[1]), out(segment.start, start, held[0] + blend[0])],
+          colors: [colors[0], colors[1], null, null],
+          across: [held[0], held[1], held[1] + blend[1], held[0] + blend[0]],
+          edgeColors: [edge[0], edge[1], edge[1], edge[0]],
+        });
+      }
+    });
+  }
+  return quads;
+}
+
+const SHADER = "// A freeform gradient with WebGPU: a port of MetalFreeformGradient.metal's\n// harmonic solve and its display. The points and lines are rasterized into\n// each level of a pyramid as color sources, the harmonic, \u2206u = 0, is solved by\n// full multigrid, and the finest level is filtered up to the view in sRGB.\n// Each kernel does what the Metal one of the same name does; see there for\n// why.\n\n// Must match the points WebGPUFreeformGradient.js packs.\nstruct FreeformPoint {\n    // Premultiplied, in the interpolation space.\n    color: vec4<f32>,\n    // 0 to 1 across and down the gradient box.\n    position: vec2<f32>,\n    // In units of the box's shorter side.\n    radius: f32,\n    padding: f32,\n}\n\n// A straight piece of a line. Must match the segments WebGPUFreeformGradient.js\n// packs.\nstruct FreeformSegment {\n    startLeft: vec4<f32>,\n    endLeft: vec4<f32>,\n    startRight: vec4<f32>,\n    endRight: vec4<f32>,\n    start: vec2<f32>,\n    end: vec2<f32>,\n    startRadius: f32,\n    endRadius: f32,\n    isTwoSided: u32,\n    startDistance: f32,\n    endDistance: f32,\n}\n\n// Must match the uniforms WebGPUFreeformGradient.js writes for a level.\nstruct Level {\n    size: vec2<u32>,\n    // The size of one texel, in units of the box's shorter side.\n    texelSize: vec2<f32>,\n    // The box's size in units of its shorter side.\n    boxScale: vec2<f32>,\n    pointCount: u32,\n    segmentCount: u32,\n    // The Jacobi damping factor.\n    omega: f32,\n    // How much coarser this level is than the one whose equation is being\n    // solved, squared. 1 on that level itself.\n    scale: f32,\n    // Smoothing steps, for freeformSmoothSmall.\n    iterations: u32,\n    padding0: u32,\n    // The level below, for freeformRestrict.\n    coarseSize: vec2<u32>,\n    padding1: vec2<u32>,\n}\n\n// MARK: - Color sources\n\n@group(0) @binding(0) var<uniform> constraintsLevel: Level;\n@group(0) @binding(1) var<storage, read> points: array<FreeformPoint>;\n@group(0) @binding(2) var<storage, read> segments: array<FreeformSegment>;\n@group(0) @binding(3) var constraintColorOut: texture_storage_2d<rgba32float, write>;\n@group(0) @binding(4) var constraintWeightOut: texture_storage_2d<r32float, write>;\n@group(0) @binding(5) var rightHandSideOut: texture_storage_2d<rgba32float, write>;\n\nfn segmentCrossesBox(a: vec2<f32>, b: vec2<f32>, center: vec2<f32>, halfSize: vec2<f32>) -> bool {\n    let d = b - a;\n    let p = a - center;\n    var enter = 0.0;\n    var leave = 1.0;\n    for (var axis = 0; axis < 2; axis++) {\n        if (abs(d[axis]) < 1e-12) {\n            if (abs(p[axis]) > halfSize[axis]) {\n                return false;\n            }\n            continue;\n        }\n        let t0 = (-halfSize[axis] - p[axis]) / d[axis];\n        let t1 = (halfSize[axis] - p[axis]) / d[axis];\n        enter = max(enter, min(t0, t1));\n        leave = min(leave, max(t0, t1));\n    }\n    return enter <= leave;\n}\n\nconst openEndFan = 2.0;\nconst openEndLead = 2.0;\nconst openEndFade = 4.0;\n\n@compute @workgroup_size(8, 8)\nfn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {\n    let level = constraintsLevel;\n    let gid = id.xy;\n    if (any(gid >= level.size)) {\n        return;\n    }\n\n    let position = (vec2<f32>(gid) + 0.5) * level.texelSize;\n    let texel = max(level.texelSize.x, level.texelSize.y);\n\n    var colorSum = vec4<f32>(0.0);\n    var coverageSum = 0.0;\n    var weight = 0.0;\n    for (var i = 0u; i < level.pointCount; i++) {\n        let point = points[i];\n        let delta = position - point.position * level.boxScale;\n        var coverage = saturate((point.radius - length(delta)) / texel + 0.5);\n        if (all(abs(delta) <= 0.5 * level.texelSize)) {\n            coverage = 1.0;\n        }\n        colorSum += coverage * point.color;\n        coverageSum += coverage;\n        weight = max(weight, coverage);\n    }\n    for (var i = 0u; i < level.segmentCount; i++) {\n        let segment = segments[i];\n        let a = segment.start * level.boxScale;\n        let b = segment.end * level.boxScale;\n        let along = b - a;\n        let lengthSquared = dot(along, along);\n        var t = 0.0;\n        if (lengthSquared > 0.0) {\n            t = saturate(dot(position - a, along) / lengthSquared);\n        }\n        let radius = mix(segment.startRadius, segment.endRadius, t);\n        var coverage = saturate((radius - distance(position, a + t * along)) / texel + 0.5);\n        if (segmentCrossesBox(a, b, position, 0.5 * level.texelSize)) {\n            coverage = 1.0;\n        }\n        let offset = position - a;\n        let segmentLength = sqrt(lengthSquared);\n        var across = 0.0;\n        var distanceAlong = 0.0;\n        if (lengthSquared > 0.0) {\n            across = -(along.x * offset.y - along.y * offset.x) / segmentLength;\n            distanceAlong = dot(offset, along) / segmentLength;\n        }\n        let past = max(-(segment.startDistance + distanceAlong),\n                       distanceAlong - segmentLength - segment.endDistance);\n        let blend = texel + openEndFan * max(0.0, past + openEndLead * texel);\n        let left = saturate(0.5 + across / blend);\n        if (segment.isTwoSided != 0u) {\n            coverage *= saturate(1.0 - max(0.0, past) / (openEndFade * texel));\n        }\n        let color = mix(mix(segment.startRight, segment.endRight, t), mix(segment.startLeft, segment.endLeft, t), left);\n        colorSum += coverage * color;\n        coverageSum += coverage;\n        weight = max(weight, coverage);\n    }\n\n    var color = vec4<f32>(0.0);\n    if (coverageSum > 0.0) {\n        color = colorSum / coverageSum;\n    }\n    textureStore(constraintColorOut, gid, color);\n    textureStore(constraintWeightOut, gid, vec4<f32>(weight));\n    textureStore(rightHandSideOut, gid, weight * color);\n}\n\n// MARK: - Starting a level\n\n@group(0) @binding(0) var<uniform> fillLevel: Level;\n@group(0) @binding(1) var<uniform> fillColor: vec4<f32>;\n@group(0) @binding(2) var fillOut: texture_storage_2d<rgba32float, write>;\n\n@compute @workgroup_size(8, 8)\nfn freeformFill(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= fillLevel.size)) {\n        return;\n    }\n    textureStore(fillOut, id.xy, fillColor);\n}\n\n// Bilinear filtering by hand: 32-bit float textures are not filterable.\nfn bilinearRead(t: texture_2d<f32>, position: vec2<f32>) -> vec4<f32> {\n    let size = vec2<i32>(textureDimensions(t));\n    let base = floor(position);\n    let f = position - base;\n    let p0 = clamp(vec2<i32>(base), vec2<i32>(0), size - 1);\n    let p1 = clamp(vec2<i32>(base) + 1, vec2<i32>(0), size - 1);\n    let top = mix(textureLoad(t, vec2<i32>(p0.x, p0.y), 0), textureLoad(t, vec2<i32>(p1.x, p0.y), 0), f.x);\n    let bottom = mix(textureLoad(t, vec2<i32>(p0.x, p1.y), 0), textureLoad(t, vec2<i32>(p1.x, p1.y), 0), f.x);\n    return mix(top, bottom, f.y);\n}\n\n@group(0) @binding(0) var<uniform> prolongLevel: Level;\n@group(0) @binding(1) var prolongCoarse: texture_2d<f32>;\n@group(0) @binding(2) var prolongOut: texture_storage_2d<rgba32float, write>;\n\n@compute @workgroup_size(8, 8)\nfn freeformProlong(@builtin(global_invocation_id) id: vec3<u32>) {\n    let size = prolongLevel.size;\n    if (any(id.xy >= size)) {\n        return;\n    }\n    let coarseSize = vec2<f32>(textureDimensions(prolongCoarse));\n    let position = (vec2<f32>(id.xy) + 0.5) * coarseSize / vec2<f32>(size) - 0.5;\n    textureStore(prolongOut, id.xy, bilinearRead(prolongCoarse, position));\n}\n\n// MARK: - Multigrid\n\n// Neumann boundaries: the grid is mirrored about its edges, half a texel out.\nfn mirrored(position: vec2<i32>, size: vec2<i32>) -> vec2<i32> {\n    var p = select(position, -position - 1, position < vec2<i32>(0));\n    p = select(p, 2 * size - p - 1, p >= size);\n    return clamp(p, vec2<i32>(0), size - 1);\n}\n\nfn neighborAverage(x: texture_2d<f32>, p: vec2<i32>, size: vec2<i32>) -> vec4<f32> {\n    return 0.25 * (textureLoad(x, mirrored(p + vec2<i32>(-1, 0), size), 0)\n                   + textureLoad(x, mirrored(p + vec2<i32>(1, 0), size), 0)\n                   + textureLoad(x, mirrored(p + vec2<i32>(0, -1), size), 0)\n                   + textureLoad(x, mirrored(p + vec2<i32>(0, 1), size), 0));\n}\n\nfn residual(x: vec4<f32>, n: vec4<f32>, b: vec4<f32>, w: f32, level: Level) -> vec4<f32> {\n    return b - (w * x + (1.0 - w) * (level.omega / level.scale) * (x - n));\n}\n\nfn smoothed(x: vec4<f32>, n: vec4<f32>, b: vec4<f32>, w: f32, level: Level) -> vec4<f32> {\n    return x + residual(x, n, b, w, level) / (w + (1.0 - w) / level.scale);\n}\n\n@group(0) @binding(0) var<uniform> smoothLevel: Level;\n@group(0) @binding(1) var smoothSource: texture_2d<f32>;\n@group(0) @binding(2) var smoothOut: texture_storage_2d<rgba32float, write>;\n@group(0) @binding(3) var smoothRightHandSide: texture_2d<f32>;\n@group(0) @binding(4) var smoothWeight: texture_2d<f32>;\n\n@compute @workgroup_size(8, 8)\nfn freeformSmooth(@builtin(global_invocation_id) id: vec3<u32>) {\n    let level = smoothLevel;\n    if (any(id.xy >= level.size)) {\n        return;\n    }\n    let p = vec2<i32>(id.xy);\n    let x = textureLoad(smoothSource, p, 0);\n    let n = neighborAverage(smoothSource, p, vec2<i32>(level.size));\n    let b = textureLoad(smoothRightHandSide, p, 0);\n    let w = textureLoad(smoothWeight, p, 0).r;\n    textureStore(smoothOut, id.xy, smoothed(x, n, b, w, level));\n}\n\n// A level of no more than this many texels takes all its smoothing steps in\n// one dispatch, in workgroup memory: as many as the device's limits allow, up\n// to 1024. Set when the pipeline is made.\noverride smallLevelTexels: u32 = 256;\n\n// Two copies of the level, one after the other, so a step reads one and\n// writes the other.\nvar<workgroup> smallLevel: array<vec4<f32>, 2 * smallLevelTexels>;\n\nfn smallAverage(base: u32, p: vec2<i32>, size: vec2<i32>) -> vec4<f32> {\n    let a = mirrored(p + vec2<i32>(-1, 0), size);\n    let b = mirrored(p + vec2<i32>(1, 0), size);\n    let c = mirrored(p + vec2<i32>(0, -1), size);\n    let d = mirrored(p + vec2<i32>(0, 1), size);\n    let width = size.x;\n    return 0.25 * (smallLevel[base + u32(a.y * width + a.x)] + smallLevel[base + u32(b.y * width + b.x)]\n                   + smallLevel[base + u32(c.y * width + c.x)] + smallLevel[base + u32(d.y * width + d.x)]);\n}\n\n@compute @workgroup_size(smallLevelTexels)\nfn freeformSmoothSmall(@builtin(local_invocation_index) index: u32) {\n    let level = smoothLevel;\n    let size = vec2<i32>(level.size);\n    let count = level.size.x * level.size.y;\n    let inside = index < count;\n    let p = vec2<i32>(i32(index % level.size.x), i32(index / level.size.x));\n    var b = vec4<f32>(0.0);\n    var w = 0.0;\n    if (inside) {\n        smallLevel[index] = textureLoad(smoothSource, p, 0);\n        b = textureLoad(smoothRightHandSide, p, 0);\n        w = textureLoad(smoothWeight, p, 0).r;\n    }\n    workgroupBarrier();\n\n    for (var i = 0u; i < level.iterations; i++) {\n        let reading = (i % 2u) * smallLevelTexels;\n        let writing = smallLevelTexels - reading;\n        if (inside) {\n            smallLevel[writing + index] = smoothed(smallLevel[reading + index], smallAverage(reading, p, size), b, w, level);\n        }\n        workgroupBarrier();\n    }\n\n    if (inside) {\n        textureStore(smoothOut, vec2<u32>(p), smallLevel[(level.iterations % 2u) * smallLevelTexels + index]);\n    }\n}\n\n@group(0) @binding(0) var<uniform> restrictLevel: Level;\n@group(0) @binding(1) var restrictX: texture_2d<f32>;\n@group(0) @binding(2) var restrictRightHandSide: texture_2d<f32>;\n@group(0) @binding(3) var restrictWeight: texture_2d<f32>;\n@group(0) @binding(4) var restrictCoarseRightHandSide: texture_storage_2d<rgba32float, write>;\n@group(0) @binding(5) var restrictCoarseCorrection: texture_storage_2d<rgba32float, write>;\n\n// A level's residual, averaged over each 2\u00d72 block, as the right-hand side of\n// the correction one level down \u2014 and that correction started at zero. One\n// thread a coarse texel; the uniforms are the fine level's.\n@compute @workgroup_size(8, 8)\nfn freeformRestrict(@builtin(global_invocation_id) id: vec3<u32>) {\n    let level = restrictLevel;\n    if (any(id.xy >= level.coarseSize)) {\n        return;\n    }\n    let size = vec2<i32>(level.size);\n    var sum = vec4<f32>(0.0);\n    var count = 0.0;\n    for (var dy = 0; dy < 2; dy++) {\n        for (var dx = 0; dx < 2; dx++) {\n            let p = vec2<i32>(id.xy) * 2 + vec2<i32>(dx, dy);\n            if (any(p >= size)) {\n                continue;\n            }\n            sum += residual(textureLoad(restrictX, p, 0), neighborAverage(restrictX, p, size),\n                            textureLoad(restrictRightHandSide, p, 0), textureLoad(restrictWeight, p, 0).r, level);\n            count += 1.0;\n        }\n    }\n    textureStore(restrictCoarseRightHandSide, id.xy, sum / count);\n    textureStore(restrictCoarseCorrection, id.xy, vec4<f32>(0.0));\n}\n\n@group(0) @binding(0) var<uniform> correctLevel: Level;\n@group(0) @binding(1) var correctCoarse: texture_2d<f32>;\n@group(0) @binding(2) var correctSource: texture_2d<f32>;\n@group(0) @binding(3) var correctOut: texture_storage_2d<rgba32float, write>;\n@group(0) @binding(4) var correctWeight: texture_2d<f32>;\n\n// Adds the correction from the level below, filtered up as freeformProlong\n// filters a solution, except where a texel is held.\n@compute @workgroup_size(8, 8)\nfn freeformCorrect(@builtin(global_invocation_id) id: vec3<u32>) {\n    let size = correctLevel.size;\n    if (any(id.xy >= size)) {\n        return;\n    }\n    let coarseSize = vec2<f32>(textureDimensions(correctCoarse));\n    let position = (vec2<f32>(id.xy) + 0.5) * coarseSize / vec2<f32>(size) - 0.5;\n    let correction = bilinearRead(correctCoarse, position);\n    let p = vec2<i32>(id.xy);\n    textureStore(correctOut, id.xy, textureLoad(correctSource, p, 0) + (1.0 - textureLoad(correctWeight, p, 0).r) * correction);\n}\n\n// MARK: - Display\n\nstruct DisplayUniforms {\n    space: u32,\n    padding0: u32,\n    padding1: u32,\n    padding2: u32,\n}\n\n@group(0) @binding(0) var<uniform> display: DisplayUniforms;\n@group(0) @binding(1) var displaySolution: texture_2d<f32>;\n\nstruct DisplayVertex {\n    @builtin(position) position: vec4<f32>,\n    // 0 to 1 across and down the gradient box.\n    @location(0) uv: vec2<f32>,\n}\n\n// One triangle that covers the view.\n@vertex\nfn freeformDisplayVertex(@builtin(vertex_index) vid: u32) -> DisplayVertex {\n    let uv = vec2<f32>(f32((vid << 1u) & 2u), f32(vid & 2u));\n    var out: DisplayVertex;\n    out.position = vec4<f32>(uv * vec2<f32>(2.0, -2.0) + vec2<f32>(-1.0, 1.0), 0.0, 1.0);\n    out.uv = uv;\n    return out;\n}\n\nfn linearToSRGB(c: vec3<f32>) -> vec3<f32> {\n    return select(1.055 * pow(c, vec3<f32>(1.0 / 2.4)) - 0.055, c * 12.92, c <= vec3<f32>(0.0031308));\n}\n\nfn srgbToLinear(c: vec3<f32>) -> vec3<f32> {\n    return select(pow((c + 0.055) / 1.055, vec3<f32>(2.4)), c / 12.92, c <= vec3<f32>(0.04045));\n}\n\nfn oklabToLinearSRGB(lab: vec3<f32>) -> vec3<f32> {\n    let l_ = lab.x + 0.3963377774 * lab.y + 0.2158037573 * lab.z;\n    let m_ = lab.x - 0.1055613458 * lab.y - 0.0638541728 * lab.z;\n    let s_ = lab.x - 0.0894841775 * lab.y - 1.2914855480 * lab.z;\n    let l = l_ * l_ * l_;\n    let m = m_ * m_ * m_;\n    let s = s_ * s_ * s_;\n    return vec3<f32>(\n        4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,\n        -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,\n        -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s);\n}\n\n// Interleaved gradient noise, to dither away the banding a smooth gradient\n// shows in 8 bits.\nfn ditherNoise(position: vec2<f32>) -> f32 {\n    return fract(52.9829189 * fract(dot(position, vec2<f32>(0.06711056, 0.00583715))));\n}\n\n// A premultiplied color in the interpolation space, taken back to sRGB:\n// encoded components, clamped to the gamut, and straight alpha.\nfn toSRGB(premultiplied: vec4<f32>, space: u32) -> vec4<f32> {\n    let alpha = saturate(premultiplied.a);\n    if (alpha <= 0.0) {\n        return vec4<f32>(0.0);\n    }\n    let color = premultiplied.rgb / premultiplied.a;\n    var linearColor: vec3<f32>;\n    switch (space) {\n        case 0u: { linearColor = srgbToLinear(saturate(color)); }\n        case 1u: { linearColor = color; }\n        default: { linearColor = oklabToLinearSRGB(color); }\n    }\n    return vec4<f32>(linearToSRGB(saturate(linearColor)), alpha);\n}\n\n// Filters the solution up to the view, and writes it premultiplied, encoded\n// sRGB for a unorm target, dithered.\n@fragment\nfn freeformDisplayFragment(input: DisplayVertex) -> @location(0) vec4<f32> {\n    let size = vec2<f32>(textureDimensions(displaySolution));\n    let color = toSRGB(bilinearRead(displaySolution, input.uv * size - 0.5), display.space);\n    let encoded = saturate(color.rgb + (ditherNoise(input.position.xy) - 0.5) / 255.0);\n    return vec4<f32>(encoded * color.a, color.a);\n}\n\n// MARK: - Sharp edges\n\n// A corner of the strips either side of a two-sided line, drawn over the\n// solution so the jump from one side's colors to the other's stays sharp\n// however the solution is filtered. Must match the vertices\n// WebGPUFreeformGradient.js packs from its edge quads.\nstruct EdgeVertex {\n    // Premultiplied, in the interpolation space.\n    color: vec4<f32>,\n    // The color on the line: halfway between the two sides'.\n    edgeColor: vec4<f32>,\n    // 0 to 1 across and down the gradient box.\n    position: vec2<f32>,\n    // How far the corner is from the line, in units of the box's shorter side.\n    across: f32,\n    // Whether its color is the solution's there, rather than `color`.\n    samplesSolution: u32,\n}\n\n@group(0) @binding(2) var<storage, read> edgeVertices: array<EdgeVertex>;\n\nstruct EdgeFragment {\n    @builtin(position) position: vec4<f32>,\n    @location(0) color: vec4<f32>,\n    @location(1) edgeColor: vec4<f32>,\n    @location(2) across: f32,\n}\n\n@vertex\nfn freeformEdgeVertex(@builtin(vertex_index) vid: u32) -> EdgeFragment {\n    let corner = edgeVertices[vid];\n    let size = vec2<f32>(textureDimensions(displaySolution));\n    var out: EdgeFragment;\n    out.position = vec4<f32>(corner.position * vec2<f32>(2.0, -2.0) + vec2<f32>(-1.0, 1.0), 0.0, 1.0);\n    out.color = corner.color;\n    if (corner.samplesSolution != 0u) {\n        out.color = bilinearRead(displaySolution, corner.position * size - 0.5);\n    }\n    out.edgeColor = corner.edgeColor;\n    out.across = corner.across;\n    return out;\n}\n\n// The strip's color, blended within half a pixel of the line toward the color\n// halfway between the sides, so the edge is antialiased as the strips on\n// either side of it meet.\n@fragment\nfn freeformEdgeFragment(input: EdgeFragment) -> @location(0) vec4<f32> {\n    let edge = saturate(2.0 * input.across / max(fwidth(input.across), 1e-7));\n    let color = toSRGB(mix(input.edgeColor, input.color, edge), display.space);\n    let encoded = saturate(color.rgb + (ditherNoise(input.position.xy) - 0.5) / 255.0);\n    return vec4<f32>(encoded * color.a, color.a);\n}\n\n// MARK: - Biharmonic multigrid\n\n// The biharmonic's own multigrid, a port of MetalFreeformGradient.metal's: see\n// there for the method and why. In short, a level's own equation, where\n// texels with w < 1 are free, is\n//\n//     K x = D x + B x = D c,   D = w / ((1 - w) k),   k = omega / 20,\n//\n// B the 13-point stencil with mirrored edges, and held texels at their\n// colors. The levels below it are Galerkin's, P\u1d40 K P / 4, each row's 25\n// coefficients and after them whether it is free, its magnitude, its sum and\n// whether it is the background; each level is smoothed by Chebyshev steps;\n// the coarsest is solved by its inverse; and the finest by conjugate\n// gradients, V-cycles their preconditioner.\n//\n// A level's coefficients are a storage buffer here, slice by slice, rather\n// than a texture array: 32-bit float storage textures cannot be read and\n// written at once. For the same reason the steps that Metal does in place \u2014\n// holding colors, the conjugate gradients' direction and step \u2014 write a\n// texture of their own instead.\n\n// What every biharmonic kernel is given. Must match what\n// WebGPUFreeformGradient.js writes.\nstruct Biharmonic {\n    // The level's size; for a kernel between two levels, the finer's.\n    size: vec2<u32>,\n    // The coarser level's; a level's own coefficients are written at its own.\n    coarseSize: vec2<u32>,\n    // The color the coarsest level starts from.\n    fill: vec4<f32>,\n    // The penalty's damping factor, as the Metal solver's uniforms have it.\n    omega: f32,\n    // The Chebyshev step.\n    stepOmega: f32,\n    stepGamma: f32,\n    // Which background row, for the background kernels; whether to write K e,\n    // for the correction's residual; whether it is alpha, for the scalars.\n    flag: u32,\n    // How many partial sums there are.\n    count: u32,\n    padding0: u32,\n    padding1: u32,\n    padding2: u32,\n}\n\nstruct ConjugateGradientState {\n    // r \u00b7 z of the last step.\n    rz: vec4<f32>,\n    alpha: vec4<f32>,\n    beta: vec4<f32>,\n    // Whether the next step is the first.\n    first: u32,\n}\n\n@group(0) @binding(20) var<uniform> bh: Biharmonic;\n// What a kernel reads: the values or correction a step starts from, and\n// whatever else it reads besides.\n@group(0) @binding(21) var bX: texture_2d<f32>;\n@group(0) @binding(22) var bPrevious: texture_2d<f32>;\n@group(0) @binding(23) var bOut: texture_storage_2d<rgba32float, write>;\n@group(0) @binding(24) var bColor: texture_2d<f32>;\n@group(0) @binding(25) var bWeight: texture_2d<f32>;\n@group(0) @binding(26) var bRightHandSide: texture_2d<f32>;\n// A level's coefficients, read; the coarser level's, written.\n@group(0) @binding(27) var<storage, read> bCoefficients: array<f32>;\n@group(0) @binding(28) var<storage, read_write> bCoarseCoefficients: array<f32>;\n// The background rows, 25 numbers each, the first a level's below.\n@group(0) @binding(29) var<storage, read> bBackground: array<f32>;\n@group(0) @binding(30) var bOut2: texture_storage_2d<rgba32float, write>;\n// The coarsest level's inverse, n \u00d7 n, then the scale of each row.\n@group(0) @binding(31) var<storage, read_write> bInverse: array<f32>;\n@group(0) @binding(32) var<storage, read_write> bPartials: array<vec4<f32>>;\n@group(0) @binding(33) var<storage, read_write> bState: ConjugateGradientState;\n@group(0) @binding(34) var bY: texture_2d<f32>;\n@group(0) @binding(35) var bZ: texture_2d<f32>;\n\nconst coefficientFree = 25u;\nconst coefficientMagnitude = 26u;\nconst coefficientSum = 27u;\nconst coefficientBackground = 28u;\n\nvar<private> biharmonicOffsets: array<vec2<i32>, 13> = array<vec2<i32>, 13>(\n    vec2<i32>(0, 0),\n    vec2<i32>(-1, 0), vec2<i32>(1, 0), vec2<i32>(0, -1), vec2<i32>(0, 1),\n    vec2<i32>(-1, -1), vec2<i32>(1, -1), vec2<i32>(-1, 1), vec2<i32>(1, 1),\n    vec2<i32>(-2, 0), vec2<i32>(2, 0), vec2<i32>(0, -2), vec2<i32>(0, 2));\nvar<private> biharmonicCoefficients: array<f32, 13> = array<f32, 13>(\n    20.0, -8.0, -8.0, -8.0, -8.0, 2.0, 2.0, 2.0, 2.0, 1.0, 1.0, 1.0, 1.0);\n\nfn penalty(w: f32) -> f32 {\n    return w / ((1.0 - w) * (bh.omega / 20.0));\n}\n\n// The stencil sums to zero, so it is applied to differences from the center.\nfn biharmonicStencil(p: vec2<i32>, size: vec2<i32>) -> vec4<f32> {\n    let center = textureLoad(bX, p, 0);\n    var sum = vec4<f32>(0.0);\n    for (var o = 1; o < 13; o++) {\n        sum += biharmonicCoefficients[o] * (textureLoad(bX, mirrored(p + biharmonicOffsets[o], size), 0) - center);\n    }\n    return sum;\n}\n\n// The residual of a level's own equation, D c - K x; zero where it is held.\nfn ownResidual(p: vec2<i32>, size: vec2<i32>) -> vec4<f32> {\n    let w = textureLoad(bWeight, p, 0).r;\n    if (w >= 1.0) {\n        return vec4<f32>(0.0);\n    }\n    return penalty(w) * (textureLoad(bColor, p, 0) - textureLoad(bX, p, 0)) - biharmonicStencil(p, size);\n}\n\n// K e of the level's own equation, for a correction e.\nfn ownProduct(p: vec2<i32>, size: vec2<i32>, w: f32) -> vec4<f32> {\n    return penalty(w) * textureLoad(bX, p, 0) + biharmonicStencil(p, size);\n}\n\n// The weight fine texel i has from coarse texel I in cell-centred bilinear\n// interpolation at exactly twice the resolution, clamped at the edges.\nfn prolongWeight(i: i32, I: i32, coarseSize: i32) -> f32 {\n    let x = 0.5 * f32(i) - 0.25;\n    let base = floor(x);\n    let f = x - base;\n    let lo = clamp(i32(base), 0, coarseSize - 1);\n    let hi = clamp(i32(base) + 1, 0, coarseSize - 1);\n    return select(0.0, 1.0 - f, lo == I) + select(0.0, f, hi == I);\n}\n\nstruct Corners {\n    lo: vec2<i32>,\n    hi: vec2<i32>,\n    f: vec2<f32>,\n}\n\n// The coarse texels fine texel p is interpolated from, and their weights.\nfn prolongCorners(p: vec2<i32>, coarseSize: vec2<i32>) -> Corners {\n    let x = 0.5 * vec2<f32>(p) - 0.25;\n    let base = floor(x);\n    var c: Corners;\n    c.f = x - base;\n    c.lo = clamp(vec2<i32>(base), vec2<i32>(0), coarseSize - 1);\n    c.hi = clamp(vec2<i32>(base) + 1, vec2<i32>(0), coarseSize - 1);\n    return c;\n}\n\n// The coarse correction, bY, interpolated by P at fine texel p.\nfn prolongRead(p: vec2<i32>) -> vec4<f32> {\n    let c = prolongCorners(p, vec2<i32>(textureDimensions(bY)));\n    let top = mix(textureLoad(bY, vec2<i32>(c.lo.x, c.lo.y), 0), textureLoad(bY, vec2<i32>(c.hi.x, c.lo.y), 0), c.f.x);\n    let bottom = mix(textureLoad(bY, vec2<i32>(c.lo.x, c.hi.y), 0), textureLoad(bY, vec2<i32>(c.hi.x, c.hi.y), 0), c.f.x);\n    return mix(top, bottom, c.f.y);\n}\n\nfn coefficientSlice(offset: vec2<i32>) -> u32 {\n    return u32((offset.y + 2) * 5 + offset.x + 2);\n}\n\n// A coefficient of the level's rows, at its size.\nfn coefficient(slice: u32, p: vec2<i32>) -> f32 {\n    return bCoefficients[(slice * bh.size.y + u32(p.y)) * bh.size.x + u32(p.x)];\n}\n\nfn coarseIndex(slice: u32, p: vec2<i32>) -> u32 {\n    return (slice * bh.coarseSize.y + u32(p.y)) * bh.coarseSize.x + u32(p.x);\n}\n\nfn readCoarse(slice: u32, p: vec2<i32>) -> f32 {\n    return bCoarseCoefficients[coarseIndex(slice, p)];\n}\n\nfn writeCoarse(slice: u32, p: vec2<i32>, value: f32) {\n    bCoarseCoefficients[coarseIndex(slice, p)] = value;\n}\n\n// A Galerkin level's row applied to the correction bX at p.\nfn galerkinApply(p: vec2<i32>, size: vec2<i32>) -> vec4<f32> {\n    let center = textureLoad(bX, p, 0);\n    var sum = coefficient(coefficientSum, p) * center;\n    for (var dy = -2; dy <= 2; dy++) {\n        for (var dx = -2; dx <= 2; dx++) {\n            let q = p + vec2<i32>(dx, dy);\n            if ((dx == 0 && dy == 0) || any(q < vec2<i32>(0)) || any(q >= size)) {\n                continue;\n            }\n            let c = coefficient(coefficientSlice(vec2<i32>(dx, dy)), p);\n            if (c != 0.0) {\n                sum += c * (textureLoad(bX, q, 0) - center);\n            }\n        }\n    }\n    return sum;\n}\n\n// Writes a row of the coarser level's coefficients, with its diagonal made to\n// give the row the sum gathered apart; or the identity where nothing was\n// gathered.\nfn writeCoefficients(p: vec2<i32>, row: ptr<function, array<f32, 25>>, rowSum: f32, background: bool) {\n    writeCoarse(coefficientBackground, p, select(0.0, 1.0, background));\n    let free = (*row)[12] > 0.0;\n    if (free) {\n        var offDiagonal = 0.0;\n        for (var o = 0; o < 25; o++) {\n            offDiagonal += select((*row)[o], 0.0, o == 12);\n        }\n        (*row)[12] = rowSum - offDiagonal;\n    }\n    var magnitude = 0.0;\n    for (var o = 0; o < 25; o++) {\n        let c = select(select(0.0, 1.0, o == 12), (*row)[o], free);\n        magnitude += abs(c);\n        writeCoarse(u32(o), p, c);\n    }\n    writeCoarse(coefficientFree, p, select(0.0, 1.0, free));\n    writeCoarse(coefficientMagnitude, p, magnitude);\n    writeCoarse(coefficientSum, p, select(1.0, rowSum, free));\n}\n\n// A level's own equation as coefficients, for when it is the coarsest, at its\n// own size: held texels are the identity, and the free ones do not reach them.\n@compute @workgroup_size(8, 8)\nfn bhOwnCoefficients(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.size)) {\n        return;\n    }\n    let size = vec2<i32>(bh.size);\n    let p = vec2<i32>(id.xy);\n    var row: array<f32, 25>;\n    var rowSum = 0.0;\n    let w = textureLoad(bWeight, p, 0).r;\n    if (w < 1.0) {\n        row[12] = penalty(w);\n        rowSum = row[12];\n        for (var o = 0; o < 13; o++) {\n            let j = mirrored(p + biharmonicOffsets[o], size);\n            if (textureLoad(bWeight, j, 0).r < 1.0) {\n                row[coefficientSlice(j - p)] += biharmonicCoefficients[o];\n            } else {\n                rowSum -= biharmonicCoefficients[o];\n            }\n        }\n    }\n    writeCoefficients(p, &row, rowSum, false);\n}\n\nfn backgroundRow(index: u32) -> array<f32, 25> {\n    var row: array<f32, 25>;\n    for (var o = 0u; o < 25u; o++) {\n        row[o] = bBackground[index * 25u + o];\n    }\n    return row;\n}\n\n// Which rows of the Galerkin level below a level's own equation are the\n// background, written as such.\n@compute @workgroup_size(8, 8)\nfn bhBackgroundFromOwn(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.coarseSize)) {\n        return;\n    }\n    let size = vec2<i32>(bh.size);\n    let I = vec2<i32>(id.xy);\n    var background = all(2 * I - 3 >= vec2<i32>(0)) && all(2 * I + 4 < size);\n    for (var fy = 2 * I.y - 3; background && fy <= 2 * I.y + 4; fy++) {\n        for (var fx = 2 * I.x - 3; fx <= 2 * I.x + 4; fx++) {\n            background = background && textureLoad(bWeight, vec2<i32>(fx, fy), 0).r == 0.0;\n        }\n    }\n    if (background) {\n        var row = backgroundRow(bh.flag);\n        writeCoefficients(I, &row, 0.0, true);\n    } else {\n        writeCoarse(coefficientBackground, I, 0.0);\n    }\n}\n\n// As bhBackgroundFromOwn, below a Galerkin level.\n@compute @workgroup_size(8, 8)\nfn bhBackgroundFromGalerkin(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.coarseSize)) {\n        return;\n    }\n    let size = vec2<i32>(bh.size);\n    let I = vec2<i32>(id.xy);\n    var background = all(2 * I - 3 >= vec2<i32>(0)) && all(2 * I + 4 < size);\n    for (var fy = 2 * I.y - 3; background && fy <= 2 * I.y + 4; fy++) {\n        for (var fx = 2 * I.x - 3; fx <= 2 * I.x + 4; fx++) {\n            background = background && coefficient(coefficientBackground, vec2<i32>(fx, fy)) != 0.0;\n        }\n    }\n    if (background) {\n        var row = backgroundRow(bh.flag);\n        writeCoefficients(I, &row, 0.0, true);\n    } else {\n        writeCoarse(coefficientBackground, I, 0.0);\n    }\n}\n\n// The fine texels P interpolates from coarse texel I, in one dimension.\nfn prolongRange(I: i32, size: i32) -> vec2<i32> {\n    return vec2<i32>(max(2 * I - 1, 0), min(2 * I + 2, size - 1));\n}\n\n// K(i, j) of a level's own equation, between two texels P keeps.\nfn ownEntry(i: vec2<i32>, j: vec2<i32>, size: vec2<i32>, d: f32) -> f32 {\n    let s = j - i;\n    if (any(abs(s) > vec2<i32>(2))) {\n        return 0.0;\n    }\n    let nearEdge = any(i < vec2<i32>(2)) || any(i + 2 >= size);\n    if (!nearEdge) {\n        let a = abs(s.x) + abs(s.y);\n        var c = 0.0;\n        if (a == 0) {\n            c = 20.0;\n        } else if (a == 1) {\n            c = -8.0;\n        } else if (a == 2) {\n            c = select(1.0, 2.0, abs(s.x) == 1);\n        }\n        return c + select(0.0, d, a == 0);\n    }\n    var c = select(0.0, d, all(s == vec2<i32>(0)));\n    for (var o = 0; o < 13; o++) {\n        if (all(mirrored(i + biharmonicOffsets[o], size) == j)) {\n            c += biharmonicCoefficients[o];\n        }\n    }\n    return c;\n}\n\n// The Galerkin levels' entries, a thread each: the diagonal and those after it.\n@compute @workgroup_size(8, 8, 1)\nfn bhEntriesFromOwn(@builtin(global_invocation_id) id: vec3<u32>) {\n    let I = vec2<i32>(id.xy);\n    if (any(id.xy >= bh.coarseSize) || readCoarse(coefficientBackground, I) != 0.0) {\n        return;\n    }\n    let size = vec2<i32>(bh.size);\n    let coarse = vec2<i32>(bh.coarseSize);\n    let slice = 12u + id.z;\n    let J = I + vec2<i32>(i32(slice) % 5 - 2, i32(slice) / 5 - 2);\n    var sum = 0.0;\n    if (all(J >= vec2<i32>(0)) && all(J < coarse)) {\n        let rangeX = prolongRange(I.x, size.x);\n        let rangeY = prolongRange(I.y, size.y);\n        let rangeJX = prolongRange(J.x, size.x);\n        let rangeJY = prolongRange(J.y, size.y);\n        for (var iy = rangeY.x; iy <= rangeY.y; iy++) {\n            for (var ix = rangeX.x; ix <= rangeX.y; ix++) {\n                let pi = prolongWeight(ix, I.x, coarse.x) * prolongWeight(iy, I.y, coarse.y);\n                let wi = textureLoad(bWeight, vec2<i32>(ix, iy), 0).r;\n                if (pi == 0.0 || wi >= 0.5) {\n                    continue;\n                }\n                let d = penalty(wi);\n                for (var jy = max(rangeJY.x, iy - 2); jy <= min(rangeJY.y, iy + 2); jy++) {\n                    for (var jx = max(rangeJX.x, ix - 2); jx <= min(rangeJX.y, ix + 2); jx++) {\n                        let pj = prolongWeight(jx, J.x, coarse.x) * prolongWeight(jy, J.y, coarse.y);\n                        if (pj == 0.0 || textureLoad(bWeight, vec2<i32>(jx, jy), 0).r >= 0.5) {\n                            continue;\n                        }\n                        sum += pi * ownEntry(vec2<i32>(ix, iy), vec2<i32>(jx, jy), size, d) * pj;\n                    }\n                }\n            }\n        }\n    }\n    writeCoarse(slice, I, 0.25 * sum);\n}\n\n@compute @workgroup_size(8, 8, 1)\nfn bhEntriesFromGalerkin(@builtin(global_invocation_id) id: vec3<u32>) {\n    let I = vec2<i32>(id.xy);\n    if (any(id.xy >= bh.coarseSize) || readCoarse(coefficientBackground, I) != 0.0) {\n        return;\n    }\n    let size = vec2<i32>(bh.size);\n    let coarse = vec2<i32>(bh.coarseSize);\n    let slice = 12u + id.z;\n    let J = I + vec2<i32>(i32(slice) % 5 - 2, i32(slice) / 5 - 2);\n    var sum = 0.0;\n    if (all(J >= vec2<i32>(0)) && all(J < coarse)) {\n        let rangeX = prolongRange(I.x, size.x);\n        let rangeY = prolongRange(I.y, size.y);\n        let rangeJX = prolongRange(J.x, size.x);\n        let rangeJY = prolongRange(J.y, size.y);\n        for (var iy = rangeY.x; iy <= rangeY.y; iy++) {\n            for (var ix = rangeX.x; ix <= rangeX.y; ix++) {\n                let pi = prolongWeight(ix, I.x, coarse.x) * prolongWeight(iy, I.y, coarse.y);\n                // Identity rows are left out of P; their columns are zero.\n                if (pi == 0.0 || coefficient(coefficientFree, vec2<i32>(ix, iy)) == 0.0) {\n                    continue;\n                }\n                for (var jy = max(rangeJY.x, iy - 2); jy <= min(rangeJY.y, iy + 2); jy++) {\n                    for (var jx = max(rangeJX.x, ix - 2); jx <= min(rangeJX.y, ix + 2); jx++) {\n                        let pj = prolongWeight(jx, J.x, coarse.x) * prolongWeight(jy, J.y, coarse.y);\n                        if (pj != 0.0) {\n                            sum += pi * coefficient(coefficientSlice(vec2<i32>(jx - ix, jy - iy)), vec2<i32>(ix, iy)) * pj;\n                        }\n                    }\n                }\n            }\n        }\n    }\n    writeCoarse(slice, I, 0.25 * sum);\n}\n\n// A row's entries before its diagonal, from its neighbors' after theirs, and\n// its sum and the rest.\nfn finishRow(I: vec2<i32>, rowSum: f32) {\n    let size = vec2<i32>(bh.coarseSize);\n    var row: array<f32, 25>;\n    for (var o = 0; o < 12; o++) {\n        let neighbor = I + vec2<i32>(o % 5 - 2, o / 5 - 2);\n        if (all(neighbor >= vec2<i32>(0)) && all(neighbor < size)) {\n            row[o] = readCoarse(u32(24 - o), neighbor);\n        }\n    }\n    for (var o = 12; o < 25; o++) {\n        row[o] = readCoarse(u32(o), I);\n    }\n    let free = row[12] > 0.0;\n    var offDiagonal = 0.0;\n    for (var o = 0; o < 25; o++) {\n        offDiagonal += select(row[o], 0.0, o == 12);\n    }\n    let diagonal = select(1.0, rowSum - offDiagonal, free);\n    var magnitude = abs(diagonal);\n    for (var o = 0; o < 25; o++) {\n        magnitude += select(0.0, abs(row[o]), free && o != 12);\n    }\n    for (var o = 0; o < 12; o++) {\n        writeCoarse(u32(o), I, select(0.0, row[o], free));\n    }\n    writeCoarse(12u, I, diagonal);\n    writeCoarse(coefficientFree, I, select(0.0, 1.0, free));\n    writeCoarse(coefficientMagnitude, I, magnitude);\n    writeCoarse(coefficientSum, I, select(1.0, rowSum, free));\n}\n\n@compute @workgroup_size(8, 8)\nfn bhRowsFromOwn(@builtin(global_invocation_id) id: vec3<u32>) {\n    let I = vec2<i32>(id.xy);\n    if (any(id.xy >= bh.coarseSize) || readCoarse(coefficientBackground, I) != 0.0) {\n        return;\n    }\n    let size = vec2<i32>(bh.size);\n    let coarse = vec2<i32>(bh.coarseSize);\n    let rangeX = prolongRange(I.x, size.x);\n    let rangeY = prolongRange(I.y, size.y);\n    var rowSum = 0.0;\n    for (var iy = rangeY.x; iy <= rangeY.y; iy++) {\n        for (var ix = rangeX.x; ix <= rangeX.y; ix++) {\n            let pi = prolongWeight(ix, I.x, coarse.x) * prolongWeight(iy, I.y, coarse.y);\n            let i = vec2<i32>(ix, iy);\n            let wi = textureLoad(bWeight, i, 0).r;\n            if (pi == 0.0 || wi >= 0.5) {\n                continue;\n            }\n            var iSum = penalty(wi);\n            for (var o = 0; o < 13; o++) {\n                if (textureLoad(bWeight, mirrored(i + biharmonicOffsets[o], size), 0).r >= 0.5) {\n                    iSum -= biharmonicCoefficients[o];\n                }\n            }\n            rowSum += pi * iSum;\n        }\n    }\n    finishRow(I, 0.25 * rowSum);\n}\n\n@compute @workgroup_size(8, 8)\nfn bhRowsFromGalerkin(@builtin(global_invocation_id) id: vec3<u32>) {\n    let I = vec2<i32>(id.xy);\n    if (any(id.xy >= bh.coarseSize) || readCoarse(coefficientBackground, I) != 0.0) {\n        return;\n    }\n    let size = vec2<i32>(bh.size);\n    let coarse = vec2<i32>(bh.coarseSize);\n    let rangeX = prolongRange(I.x, size.x);\n    let rangeY = prolongRange(I.y, size.y);\n    var rowSum = 0.0;\n    for (var iy = rangeY.x; iy <= rangeY.y; iy++) {\n        for (var ix = rangeX.x; ix <= rangeX.y; ix++) {\n            let pi = prolongWeight(ix, I.x, coarse.x) * prolongWeight(iy, I.y, coarse.y);\n            if (pi != 0.0 && coefficient(coefficientFree, vec2<i32>(ix, iy)) != 0.0) {\n                rowSum += pi * coefficient(coefficientSum, vec2<i32>(ix, iy));\n            }\n        }\n    }\n    finishRow(I, 0.25 * rowSum);\n}\n\n// One Chebyshev step of a level's own equation, held texels at their colors.\n@compute @workgroup_size(8, 8)\nfn bhChebyshevOwn(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.size)) {\n        return;\n    }\n    let p = vec2<i32>(id.xy);\n    let w = textureLoad(bWeight, p, 0).r;\n    if (w >= 1.0) {\n        textureStore(bOut, id.xy, textureLoad(bColor, p, 0));\n        return;\n    }\n    let r = ownResidual(p, vec2<i32>(bh.size));\n    let center = textureLoad(bX, p, 0);\n    let last = textureLoad(bPrevious, p, 0);\n    textureStore(bOut, id.xy, last + bh.stepOmega * (bh.stepGamma * r / (penalty(w) + 64.0) + center - last));\n}\n\n// One Chebyshev step of a Galerkin level's correction toward its right-hand side.\n@compute @workgroup_size(8, 8)\nfn bhChebyshevGalerkin(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.size)) {\n        return;\n    }\n    let p = vec2<i32>(id.xy);\n    let r = textureLoad(bRightHandSide, p, 0) - galerkinApply(p, vec2<i32>(bh.size));\n    let magnitude = coefficient(coefficientMagnitude, p);\n    let center = textureLoad(bX, p, 0);\n    let last = textureLoad(bPrevious, p, 0);\n    textureStore(bOut, id.xy, last + bh.stepOmega * (bh.stepGamma * r / magnitude + center - last));\n}\n\n@compute @workgroup_size(8, 8)\nfn bhResidualOwn(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.size)) {\n        return;\n    }\n    textureStore(bOut, id.xy, ownResidual(vec2<i32>(id.xy), vec2<i32>(bh.size)));\n}\n\n@compute @workgroup_size(8, 8)\nfn bhResidualGalerkin(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.size)) {\n        return;\n    }\n    let p = vec2<i32>(id.xy);\n    textureStore(bOut, id.xy, textureLoad(bRightHandSide, p, 0) - galerkinApply(p, vec2<i32>(bh.size)));\n}\n\n// A residual, bX, restricted by P\u1d40 / 4 as the right-hand side of the\n// correction below, bOut, and that correction, bOut2, started at zero; the\n// fine texels held at least half left out.\n@compute @workgroup_size(8, 8)\nfn bhRestrictOwn(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.coarseSize)) {\n        return;\n    }\n    let size = vec2<i32>(bh.size);\n    let coarse = vec2<i32>(bh.coarseSize);\n    let I = vec2<i32>(id.xy);\n    var sum = vec4<f32>(0.0);\n    for (var fy = 2 * I.y - 1; fy <= 2 * I.y + 2; fy++) {\n        var wy = 0.0;\n        if (fy >= 0 && fy < size.y) {\n            wy = prolongWeight(fy, I.y, coarse.y);\n        }\n        if (wy == 0.0) {\n            continue;\n        }\n        for (var fx = 2 * I.x - 1; fx <= 2 * I.x + 2; fx++) {\n            var wx = 0.0;\n            if (fx >= 0 && fx < size.x) {\n                wx = prolongWeight(fx, I.x, coarse.x);\n            }\n            let i = vec2<i32>(fx, fy);\n            if (wx == 0.0 || textureLoad(bWeight, i, 0).r >= 0.5) {\n                continue;\n            }\n            sum += wx * wy * textureLoad(bX, i, 0);\n        }\n    }\n    textureStore(bOut, id.xy, 0.25 * sum);\n    textureStore(bOut2, id.xy, vec4<f32>(0.0));\n}\n\n// As bhRestrictOwn, below a Galerkin level: its identity rows left out.\n@compute @workgroup_size(8, 8)\nfn bhRestrictGalerkin(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.coarseSize)) {\n        return;\n    }\n    let size = vec2<i32>(bh.size);\n    let coarse = vec2<i32>(bh.coarseSize);\n    let I = vec2<i32>(id.xy);\n    var sum = vec4<f32>(0.0);\n    for (var fy = 2 * I.y - 1; fy <= 2 * I.y + 2; fy++) {\n        var wy = 0.0;\n        if (fy >= 0 && fy < size.y) {\n            wy = prolongWeight(fy, I.y, coarse.y);\n        }\n        if (wy == 0.0) {\n            continue;\n        }\n        for (var fx = 2 * I.x - 1; fx <= 2 * I.x + 2; fx++) {\n            var wx = 0.0;\n            if (fx >= 0 && fx < size.x) {\n                wx = prolongWeight(fx, I.x, coarse.x);\n            }\n            let i = vec2<i32>(fx, fy);\n            if (wx == 0.0 || coefficient(coefficientFree, i) == 0.0) {\n                continue;\n            }\n            sum += wx * wy * textureLoad(bX, i, 0);\n        }\n    }\n    textureStore(bOut, id.xy, 0.25 * sum);\n    textureStore(bOut2, id.xy, vec4<f32>(0.0));\n}\n\n// Adds the correction from the level below, bY, interpolated by P, except\n// where a texel is held at least half.\n@compute @workgroup_size(8, 8)\nfn bhCorrectOwn(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.size)) {\n        return;\n    }\n    let p = vec2<i32>(id.xy);\n    var correction = vec4<f32>(0.0);\n    if (textureLoad(bWeight, p, 0).r < 0.5) {\n        correction = prolongRead(p);\n    }\n    textureStore(bOut, id.xy, textureLoad(bX, p, 0) + correction);\n}\n\n@compute @workgroup_size(8, 8)\nfn bhCorrectGalerkin(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.size)) {\n        return;\n    }\n    let p = vec2<i32>(id.xy);\n    var correction = vec4<f32>(0.0);\n    if (coefficient(coefficientFree, p) != 0.0) {\n        correction = prolongRead(p);\n    }\n    textureStore(bOut, id.xy, textureLoad(bX, p, 0) + correction);\n}\n\n// The coarsest level's matrix, inverted by Gauss\u2013Jordan elimination, without\n// pivoting, since it is symmetric positive definite. One workgroup, each\n// thread keeping the same entries throughout, every 256th; the result the\n// same whatever the number of threads.\nconst coarsestTexels = 64;\nconst inverseThreads = 256;\nconst inversePerThread = 16;\n\nvar<workgroup> inverseMatrix: array<f32, 4096>;\n\n@compute @workgroup_size(256)\nfn bhCoarsestInverse(@builtin(local_invocation_index) lane: u32) {\n    let width = i32(bh.size.x);\n    let n = width * i32(bh.size.y);\n    let scales = u32(coarsestTexels * coarsestTexels);\n\n    for (var t = 0; t < inversePerThread; t++) {\n        let e = i32(lane) + inverseThreads * t;\n        let i = e / coarsestTexels;\n        let j = e % coarsestTexels;\n        if (i < n && j < n) {\n            let p = vec2<i32>(i % width, i / width);\n            let offset = vec2<i32>(j % width, j / width) - p;\n            var value = 0.0;\n            if (all(abs(offset) <= vec2<i32>(2))) {\n                value = coefficient(coefficientSlice(offset), p);\n            }\n            inverseMatrix[i * coarsestTexels + j] = value;\n        }\n    }\n    workgroupBarrier();\n    if (i32(lane) < n) {\n        bInverse[scales + lane] = inverseSqrt(inverseMatrix[i32(lane) * coarsestTexels + i32(lane)]);\n    }\n    storageBarrier();\n    workgroupBarrier();\n\n    // Scaled by its diagonal on both sides first: rows held to a point by a\n    // penalty can be ten million times the others, more than 32 bits hold.\n    for (var t = 0; t < inversePerThread; t++) {\n        let e = i32(lane) + inverseThreads * t;\n        let i = e / coarsestTexels;\n        let j = e % coarsestTexels;\n        if (i < n && j < n) {\n            inverseMatrix[i * coarsestTexels + j] *= bInverse[scales + u32(i)] * bInverse[scales + u32(j)];\n        }\n    }\n    workgroupBarrier();\n\n    for (var k = 0; k < n; k++) {\n        let reciprocal = 1.0 / inverseMatrix[k * coarsestTexels + k];\n        var values: array<f32, inversePerThread>;\n        for (var t = 0; t < inversePerThread; t++) {\n            let e = i32(lane) + inverseThreads * t;\n            let i = e / coarsestTexels;\n            let j = e % coarsestTexels;\n            values[t] = 0.0;\n            if (i < n && j < n) {\n                let factor = inverseMatrix[i * coarsestTexels + k];\n                let pivotEntry = inverseMatrix[k * coarsestTexels + j];\n                if (i == k) {\n                    values[t] = select(pivotEntry * reciprocal, reciprocal, j == k);\n                } else {\n                    values[t] = select(inverseMatrix[i * coarsestTexels + j] - factor * pivotEntry * reciprocal,\n                                       -factor * reciprocal, j == k);\n                }\n            }\n        }\n        workgroupBarrier();\n        for (var t = 0; t < inversePerThread; t++) {\n            let e = i32(lane) + inverseThreads * t;\n            let i = e / coarsestTexels;\n            let j = e % coarsestTexels;\n            if (i < n && j < n) {\n                inverseMatrix[i * coarsestTexels + j] = values[t];\n            }\n        }\n        workgroupBarrier();\n    }\n\n    for (var t = 0; t < inversePerThread; t++) {\n        let e = i32(lane) + inverseThreads * t;\n        let i = e / coarsestTexels;\n        let j = e % coarsestTexels;\n        if (i < n && j < n) {\n            bInverse[i * n + j] = inverseMatrix[i * coarsestTexels + j] * bInverse[scales + u32(i)] * bInverse[scales + u32(j)];\n        }\n    }\n}\n\nvar<workgroup> coarsestValues: array<vec4<f32>, 64>;\n\n// The coarsest correction, solved outright: x = K\u207b\u00b9 b. A thread a texel.\n@compute @workgroup_size(8, 8)\nfn bhCoarsestSolve(@builtin(local_invocation_id) lid: vec3<u32>) {\n    let size = vec2<i32>(bh.size);\n    let g = vec2<i32>(lid.xy);\n    let n = size.x * size.y;\n    let inside = all(g < size);\n    let row = g.y * size.x + g.x;\n    if (inside) {\n        coarsestValues[row] = textureLoad(bRightHandSide, g, 0);\n    }\n    workgroupBarrier();\n    if (!inside) {\n        return;\n    }\n    var sum = vec4<f32>(0.0);\n    for (var column = 0; column < n; column++) {\n        sum += bInverse[row * n + column] * coarsestValues[column];\n    }\n    textureStore(bOut, lid.xy, sum);\n}\n\n// The coarsest level's own equation solved outright, from x: x + K\u207b\u00b9 r.\n@compute @workgroup_size(8, 8)\nfn bhCoarsestSolveOwn(@builtin(local_invocation_id) lid: vec3<u32>) {\n    let size = vec2<i32>(bh.size);\n    let g = vec2<i32>(lid.xy);\n    let n = size.x * size.y;\n    let inside = all(g < size);\n    let row = g.y * size.x + g.x;\n    if (inside) {\n        coarsestValues[row] = ownResidual(g, size);\n    }\n    workgroupBarrier();\n    if (!inside) {\n        return;\n    }\n    var sum = vec4<f32>(0.0);\n    for (var column = 0; column < n; column++) {\n        sum += bInverse[row * n + column] * coarsestValues[column];\n    }\n    let w = textureLoad(bWeight, g, 0).r;\n    textureStore(bOut, lid.xy, select(textureLoad(bX, g, 0) + sum, textureLoad(bColor, g, 0), w >= 1.0));\n}\n\n// One Chebyshev step of a correction e, bX, of the level's own equation\n// toward K e = b, held texels at zero.\n@compute @workgroup_size(8, 8)\nfn bhChebyshevOwnCorrection(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.size)) {\n        return;\n    }\n    let p = vec2<i32>(id.xy);\n    let w = textureLoad(bWeight, p, 0).r;\n    if (w >= 1.0) {\n        textureStore(bOut, id.xy, vec4<f32>(0.0));\n        return;\n    }\n    let r = textureLoad(bRightHandSide, p, 0) - ownProduct(p, vec2<i32>(bh.size), w);\n    let center = textureLoad(bX, p, 0);\n    let last = textureLoad(bPrevious, p, 0);\n    textureStore(bOut, id.xy, last + bh.stepOmega * (bh.stepGamma * r / (penalty(w) + 64.0) + center - last));\n}\n\n// b - K e, or with the flag, K e; zero where held.\n@compute @workgroup_size(8, 8)\nfn bhResidualOwnCorrection(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.size)) {\n        return;\n    }\n    let p = vec2<i32>(id.xy);\n    let w = textureLoad(bWeight, p, 0).r;\n    if (w >= 1.0) {\n        textureStore(bOut, id.xy, vec4<f32>(0.0));\n        return;\n    }\n    let ke = ownProduct(p, vec2<i32>(bh.size), w);\n    if (bh.flag != 0u) {\n        textureStore(bOut, id.xy, ke);\n    } else {\n        textureStore(bOut, id.xy, textureLoad(bRightHandSide, p, 0) - ke);\n    }\n}\n\n@compute @workgroup_size(8, 8)\nfn bhClear(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.size)) {\n        return;\n    }\n    textureStore(bOut, id.xy, vec4<f32>(0.0));\n}\n\nvar<workgroup> dotSums: array<vec4<f32>, 256>;\n\n// bX \u00b7 bY over each workgroup of 16\u00d716 texels, one sum a channel.\n@compute @workgroup_size(16, 16)\nfn bhDot(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invocation_index) lane: u32,\n         @builtin(workgroup_id) group: vec3<u32>, @builtin(num_workgroups) groups: vec3<u32>) {\n    let inside = all(gid.xy < textureDimensions(bX));\n    var product = vec4<f32>(0.0);\n    if (inside) {\n        product = textureLoad(bX, gid.xy, 0) * textureLoad(bY, gid.xy, 0);\n    }\n    dotSums[lane] = product;\n    workgroupBarrier();\n    for (var stride = 128u; stride > 0u; stride /= 2u) {\n        if (lane < stride) {\n            dotSums[lane] += dotSums[lane + stride];\n        }\n        workgroupBarrier();\n    }\n    if (lane == 0u) {\n        bPartials[group.y * groups.x + group.x] = dotSums[0];\n    }\n}\n\n// The partial sums added up, and from them: without the flag, r \u00b7 z, and\n// beta, the ratio to the last r \u00b7 z, zero on the first step; with it, alpha,\n// r \u00b7 z over p \u00b7 K p.\n@compute @workgroup_size(256)\nfn bhScalars(@builtin(local_invocation_index) lane: u32) {\n    var sum = vec4<f32>(0.0);\n    for (var i = lane; i < bh.count; i += 256u) {\n        sum += bPartials[i];\n    }\n    dotSums[lane] = sum;\n    workgroupBarrier();\n    for (var stride = 128u; stride > 0u; stride /= 2u) {\n        if (lane < stride) {\n            dotSums[lane] += dotSums[lane + stride];\n        }\n        workgroupBarrier();\n    }\n    if (lane != 0u) {\n        return;\n    }\n    let total = dotSums[0];\n    // A channel with nothing left to solve \u2014 alpha, say, which is 1\n    // everywhere \u2014 has sums of zero, and takes no step.\n    if (bh.flag != 0u) {\n        bState.alpha = select(vec4<f32>(0.0), bState.rz / total, total > vec4<f32>(1e-30));\n    } else {\n        let beta = select(vec4<f32>(0.0), total / bState.rz, bState.rz > vec4<f32>(1e-30));\n        bState.beta = select(beta, vec4<f32>(0.0), bState.first != 0u);\n        bState.rz = total;\n        bState.first = 0u;\n    }\n}\n\n@compute @workgroup_size(1)\nfn bhReset() {\n    bState.rz = vec4<f32>(0.0);\n    bState.alpha = vec4<f32>(0.0);\n    bState.beta = vec4<f32>(0.0);\n    bState.first = 1u;\n}\n\n// The held texels at their colors: from the last solution, a point or line\n// that moved holds texels the solution has other colors in.\n@compute @workgroup_size(8, 8)\nfn bhHoldColors(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.size)) {\n        return;\n    }\n    let p = vec2<i32>(id.xy);\n    textureStore(bOut, id.xy, select(textureLoad(bX, p, 0), textureLoad(bColor, p, 0), textureLoad(bWeight, p, 0).r >= 1.0));\n}\n\n// p = z + beta p: z bX, the last p bY.\n@compute @workgroup_size(8, 8)\nfn bhDirection(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.size)) {\n        return;\n    }\n    // On the first step beta is zero, and p holds whatever it did, perhaps\n    // not a number, which zero times would keep.\n    let direction = textureLoad(bX, id.xy, 0);\n    let beta = bState.beta;\n    textureStore(bOut, id.xy, select(direction + beta * textureLoad(bY, id.xy, 0), direction, beta == vec4<f32>(0.0)));\n}\n\n// x += alpha p, r -= alpha K p: p bX, K p bY, x bZ and r bRightHandSide, the\n// new ones bOut and bOut2.\n@compute @workgroup_size(8, 8)\nfn bhStep(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.size)) {\n        return;\n    }\n    let alpha = bState.alpha;\n    textureStore(bOut, id.xy, textureLoad(bZ, id.xy, 0) + alpha * textureLoad(bX, id.xy, 0));\n    textureStore(bOut2, id.xy, textureLoad(bRightHandSide, id.xy, 0) - alpha * textureLoad(bY, id.xy, 0));\n}\n\n// Starts a level from the one below, bY, as freeformProlong does, with its\n// held texels at their colors.\n@compute @workgroup_size(8, 8)\nfn bhProlongHeld(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.size)) {\n        return;\n    }\n    let p = vec2<i32>(id.xy);\n    let coarseSize = vec2<f32>(textureDimensions(bY));\n    let position = (vec2<f32>(id.xy) + 0.5) * coarseSize / vec2<f32>(bh.size) - 0.5;\n    textureStore(bOut, id.xy, select(bilinearRead(bY, position), textureLoad(bColor, p, 0), textureLoad(bWeight, p, 0).r >= 1.0));\n}\n\n// Starts the coarsest level from one color, with its held texels at theirs.\n@compute @workgroup_size(8, 8)\nfn bhFillHeld(@builtin(global_invocation_id) id: vec3<u32>) {\n    if (any(id.xy >= bh.size)) {\n        return;\n    }\n    let p = vec2<i32>(id.xy);\n    textureStore(bOut, id.xy, select(bh.fill, textureLoad(bColor, p, 0), textureLoad(bWeight, p, 0).r >= 1.0));\n}\n";
+
+// MARK: - State
+
+// A curve is a chain of Bézier nodes, open or closed, with a color on each side. Positions are fractions of the box,
+// 0 to 1 across and down; a node's `in` and `out` handles are offsets from it, in the same units, and zero for none.
+// An open curve's colors are `left` and `right`, as seen going from its first node to its last with y down. A closed
+// curve's are `inside` and `outside`.
+let state = null;
+
+const node = (x, y, inX = 0, inY = 0, outX = -inX, outY = -inY) => ({ p: [x, y], in: [inX, inY], out: [outX, outY] });
+
+// An ellipse as four nodes, going clockwise on screen. Its center and radii are fractions of the box, so it's an
+// ellipse in the box's own proportions; `angle` turns it, in degrees.
+function ellipse(cx, cy, rx, ry, angle = 0) {
+    const k = 0.5523;
+    const turn = angle * Math.PI / 180, cos = Math.cos(turn), sin = Math.sin(turn);
+    const rotate = ([x, y]) => [x * cos - y * sin, x * sin + y * cos];
+    return [0, 1, 2, 3].map(i => {
+        const phi = i * Math.PI / 2;
+        const [px, py] = rotate([rx * Math.cos(phi), ry * Math.sin(phi)]);
+        const [tx, ty] = rotate([-rx * Math.sin(phi) * k, ry * Math.cos(phi) * k]);
+        return node(cx + px, cy + py, -tx, -ty, tx, ty);
+    });
+}
+
+const PRESETS = [
+    {
+        name: "A line between two colors",
+        state: {
+            width: 600, height: 400,
+            curves: [{ closed: false, nodes: [node(0.15, 0.5), node(0.85, 0.5)], left: "#ff6b3d", right: "#3d7bff" }],
+        },
+    },
+    {
+        name: "A circle",
+        state: {
+            width: 600, height: 400,
+            curves: [{ closed: true, nodes: ellipse(0.5, 0.5, 0.2, 0.3), inside: "#d93a2b", outside: "#1e88ff" }],
+        },
+    },
+    {
+        name: "Overlapping shapes",
+        state: {
+            width: 500, height: 500,
+            curves: [
+                { closed: true, nodes: ellipse(0.45, 0.4, 0.12, 0.12), inside: "#d33b2c", outside: "#1e88ff" },
+                { closed: true, nodes: ellipse(0.36, 0.45, 0.08, 0.36, 18), inside: "#d7f20a", outside: "#ebebeb" },
+                { closed: false, nodes: [node(0.28, 0.78, 0, 0, 0.08, 0.16), node(0.52, 0.86, -0.08, 0.02, 0.06, -0.02), node(0.52, 0.62, 0, 0.1, 0.06, -0.08), node(0.66, 0.56)], left: "#ebebeb", right: "#ebebeb" },
+                { closed: false, nodes: [node(0.64, 0.38, 0, 0, 0.14, 0.02), node(0.74, 0.62, 0.04, -0.12)], left: "#ebebeb", right: "#ebebeb" },
+            ],
+        },
+    },
+];
+
+function presetState(index) {
+    return {
+        space: state?.space ?? 2,
+        resolution: state?.resolution ?? 512,
+        models: state?.models ?? ["biharmonic", "harmonic"],
+        showCurves: state?.showCurves ?? true,
+        ...structuredClone(PRESETS[index].state),
+    };
+}
+
+// MARK: - Curves to segments
+
+const boxScale = () => {
+    const shorter = Math.min(state.width, state.height);
+    return [state.width / shorter, state.height / shorter];
+};
+
+// Each stretch of a curve, as its four Bézier points.
+function stretches(curve) {
+    const { nodes } = curve;
+    const count = curve.closed && nodes.length > 2 ? nodes.length : nodes.length - 1;
+    const result = [];
+    for (let i = 0; i < count; ++i) {
+        const a = nodes[i], b = nodes[(i + 1) % nodes.length];
+        result.push([a.p, [a.p[0] + a.out[0], a.p[1] + a.out[1]], [b.p[0] + b.in[0], b.p[1] + b.in[1]], b.p]);
+    }
+    return result;
+}
+
+function bezier([p0, p1, p2, p3], t) {
+    const u = 1 - t;
+    return [0, 1].map(k => u * u * u * p0[k] + 3 * u * u * t * p1[k] + 3 * u * t * t * p2[k] + t * t * t * p3[k]);
+}
+
+// A curve flattened into straight pieces, [x0, y0, x1, y1] in fractions of the box. As MeshShader2 does, a curved
+// stretch takes a piece for each 0.01 of its control polygon's length, in units of the box's shorter side, from 4 to 64.
+function pieces(curve) {
+    const [sx, sy] = boxScale();
+    const length = (a, b) => Math.hypot((b[0] - a[0]) * sx, (b[1] - a[1]) * sy);
+    const result = [];
+    for (const stretch of stretches(curve)) {
+        const [p0, p1, p2, p3] = stretch;
+        const straight = p1[0] === p0[0] && p1[1] === p0[1] && p2[0] === p3[0] && p2[1] === p3[1];
+        const count = straight ? 1 : Math.min(64, Math.max(4, Math.ceil((length(p0, p1) + length(p1, p2) + length(p2, p3)) / 0.01)));
+        let previous = p0;
+        for (let i = 1; i <= count; ++i) {
+            const next = bezier(stretch, i / count);
+            result.push([previous[0], previous[1], next[0], next[1]]);
+            previous = next;
+        }
+    }
+    return result;
+}
+
+// A closed curve's inside is on its right when it goes clockwise on screen, which is a positive signed area with y
+// down.
+function sideColors(curve, flat) {
+    if (!curve.closed)
+        return [curve.left, curve.right];
+    const [sx, sy] = boxScale();
+    const area = flat.reduce((sum, [x0, y0, x1, y1]) => sum + (x0 * sx) * (y1 * sy) - (x1 * sx) * (y0 * sy), 0);
+    return area > 0 ? [curve.outside, curve.inside] : [curve.inside, curve.outside];
+}
+
+// The interpolation spaces the renderer's shader knows.
+const SHADER_SPACES = ["srgb", "srgb-linear", "oklab"];
+
+// A color's components in the interpolation space, premultiplied, as the renderer takes them.
+function premultiplied(text) {
+    const color = parseColor(text) ?? parseColor("black");
+    const alpha = Number.isNaN(color.alpha) ? 0 : color.alpha;
+    const c = fromXYZ(SHADER_SPACES[state.space], toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
+    return [c[0] * alpha, c[1] * alpha, c[2] * alpha, alpha];
+}
+
+// How far either side of a curve its colors are held, in units of the box's shorter side: MeshShader2's default
+// point radius. The renderer would hold a two-sided line across at least 1.5 texels, but a band that thin stops the
+// biharmonic solve from settling, more so the finer the grid: a circle red inside and blue outside comes out
+// overshooting far past both colors.
+const CURVE_RADIUS = 0.01;
+
+// The gradient as MeshShader2's renderer takes it: each piece of each curve a segment with its two sides' colors,
+// and each curve's own pieces, so it knows where open ends are.
+function gradientData(model) {
+    const segments = [], lines = [], colors = [];
+    for (const curve of state.curves) {
+        const flat = pieces(curve);
+        if (!flat.length)
+            continue;
+        const [left, right] = sideColors(curve, flat).map(premultiplied);
+        colors.push(left, right);
+        for (const [x0, y0, x1, y1] of flat)
+            segments.push(...left, ...left, ...right, ...right, x0, y0, x1, y1, CURVE_RADIUS, CURVE_RADIUS, 1);
+        lines.push({ ends: flat.flat(), closed: curve.closed });
+    }
+    const average = [0, 1, 2, 3].map(k => colors.length ? colors.reduce((sum, c) => sum + c[k], 0) / colors.length : 0);
+    return {
+        space: state.space, resolution: state.resolution, model, isEmpty: !segments.length, average,
+        points: [], segments, lines, hasTwoSidedLines: segments.length > 0, isOpaque: colors.every(c => c[3] >= 1),
+    };
+}
+
+// MARK: - Page
+
+const $ = id => document.getElementById(id);
+const views = [...document.querySelectorAll(".view")].map(figure => ({
+    model: figure.dataset.model,
+    figure,
+    stage: figure.querySelector(".stage"),
+    gpu: figure.querySelector(".gpu"),
+    overlay: figure.querySelector(".overlay"),
+    context: null,
+    renderer: null,
+    gradientKey: null,
+}));
+
+let device = null;
+let gpuError = null;
+
+async function setUpGPU() {
+    if (!navigator.gpu)
+        throw new Error("WebGPU isn't available in this browser.");
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter)
+        throw new Error("No WebGPU adapter.");
+    // The adapter's own limits, rather than the defaults, which are too small for the solver's workgroups and the
+    // biharmonic's coefficients.
+    const requiredLimits = {};
+    for (const name of ["maxComputeInvocationsPerWorkgroup", "maxComputeWorkgroupSizeX", "maxComputeWorkgroupStorageSize", "maxStorageBufferBindingSize", "maxBufferSize"])
+        requiredLimits[name] = adapter.limits[name];
+    device = await adapter.requestDevice({ requiredLimits });
+    device.addEventListener("uncapturederror", event => {
+        gpuError = event.error.message;
+        console.error(gpuError);
+        scheduleRender();
+    });
+    device.lost.then(info => {
+        gpuError = `The GPU device was lost: ${info.message}`;
+        scheduleRender();
+    });
+    // The renderer writes encoded sRGB into a unorm format.
+    const format = navigator.gpu.getPreferredCanvasFormat();
+    for (const view of views) {
+        view.context = view.gpu.getContext("webgpu");
+        view.context.configure({ device, format, alphaMode: "premultiplied" });
+        view.renderer = new WebGPUFreeformGradientRenderer(device, { shader: SHADER, format });
+    }
+}
+
+let renderScheduled = false;
+function scheduleRender() {
+    if (renderScheduled)
+        return;
+    renderScheduled = true;
+    requestAnimationFrame(() => {
+        renderScheduled = false;
+        render();
+    });
+}
+
+function changed() {
+    scheduleRender();
+    scheduleHashWrite();
+}
+
+function render() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    for (const view of views) {
+        view.figure.hidden = !state.models.includes(view.model);
+        if (view.figure.hidden)
+            continue;
+        view.stage.style.aspectRatio = `${state.width} / ${state.height}`;
+        const width = Math.max(1, Math.round(view.stage.clientWidth * dpr)), height = Math.max(1, Math.round(view.stage.clientHeight * dpr));
+        for (const canvas of [view.gpu, view.overlay]) {
+            if (canvas.width !== width || canvas.height !== height) {
+                canvas.width = width;
+                canvas.height = height;
+            }
+        }
+        if (view.renderer && !gpuError) {
+            const data = gradientData(view.model);
+            const key = JSON.stringify(data);
+            if (key !== view.gradientKey) {
+                view.renderer.setGradient(data);
+                view.gradientKey = key;
+            }
+            const encoder = device.createCommandEncoder();
+            view.renderer.encode(encoder, view.context.getCurrentTexture().createView(), width, height);
+            device.queue.submit([encoder.finish()]);
+        }
+        drawOverlay(view, dpr);
+    }
+    $("gpuStatus").hidden = !!device && !gpuError;
+    $("gpuStatus").textContent = gpuError ? `WebGPU: ${gpuError}` : "WebGPU: starting…";
+    $("gpuStatus").className = gpuError ? "status error" : "status";
+    updateControls();
+}
+
+// MARK: - Overlay
+
+// The curves, and a pair of swatches on each showing its two sides' colors.
+function drawOverlay(view, dpr) {
+    const canvas = view.overlay;
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!state.showCurves)
+        return;
+    const toCanvas = ([x, y]) => [x * canvas.width, y * canvas.height];
+    for (const curve of state.curves) {
+        ctx.beginPath();
+        stretches(curve).forEach(([p0, p1, p2, p3], i) => {
+            if (i === 0)
+                ctx.moveTo(...toCanvas(p0));
+            ctx.bezierCurveTo(...toCanvas(p1), ...toCanvas(p2), ...toCanvas(p3));
+        });
+        if (curve.closed)
+            ctx.closePath();
+        for (const [style, width] of [["rgba(0, 0, 0, 0.45)", 3 * dpr], ["rgba(255, 255, 255, 0.9)", 1.25 * dpr]]) {
+            ctx.strokeStyle = style;
+            ctx.lineWidth = width;
+            ctx.stroke();
+        }
+        // The swatches sit either side of the middle of the first stretch.
+        const stretch = stretches(curve)[0];
+        if (!stretch)
+            continue;
+        const middle = toCanvas(bezier(stretch, 0.5));
+        const ahead = toCanvas(bezier(stretch, 0.51)), behind = toCanvas(bezier(stretch, 0.49));
+        const tangent = [ahead[0] - behind[0], ahead[1] - behind[1]];
+        const length = Math.hypot(...tangent) || 1;
+        // Left of the direction of travel, with y down.
+        const leftward = [tangent[1] / length, -tangent[0] / length];
+        const [left, right] = sideColors(curve, pieces(curve));
+        for (const [color, sign] of [[left, 1], [right, -1]]) {
+            const size = 9 * dpr, offset = 11 * dpr;
+            const x = middle[0] + leftward[0] * offset * sign, y = middle[1] + leftward[1] * offset * sign;
+            ctx.fillStyle = color;
+            ctx.fillRect(x - size / 2, y - size / 2, size, size);
+            ctx.lineWidth = 1.5 * dpr;
+            ctx.strokeStyle = "#fff";
+            ctx.strokeRect(x - size / 2, y - size / 2, size, size);
+            ctx.lineWidth = 0.75 * dpr;
+            ctx.strokeStyle = "rgba(0, 0, 0, 0.6)";
+            ctx.strokeRect(x - size / 2 - 1.2 * dpr, y - size / 2 - 1.2 * dpr, size + 2.4 * dpr, size + 2.4 * dpr);
+        }
+    }
+}
+
+// MARK: - Controls
+
+$("preset").add(new Option("Custom", ""));
+PRESETS.forEach((preset, index) => $("preset").add(new Option(preset.name, String(index))));
+
+function matchingPreset() {
+    const describe = ({ width, height, curves }) => JSON.stringify([width, height, curves]);
+    const current = describe(state);
+    return PRESETS.findIndex(preset => describe(preset.state) === current);
+}
+
+function updateControls() {
+    const preset = matchingPreset();
+    $("preset").value = preset < 0 ? "" : String(preset);
+    for (const id of ["width", "height"]) {
+        if (document.activeElement !== $(id))
+            $(id).value = state[id];
+    }
+    $("space").value = String(state.space);
+    $("resolution").value = String(state.resolution);
+    $("showCurves").checked = state.showCurves;
+    for (const button of document.querySelectorAll("#modelBar button"))
+        button.setAttribute("aria-pressed", String(state.models.includes(button.dataset.model)));
+
+    const list = $("curveList");
+    if (list.children.length !== state.curves.length)
+        list.replaceChildren(...state.curves.map(curveRow));
+    state.curves.forEach((curve, i) => {
+        const [first, second] = curve.closed ? ["inside", "outside"] : ["left", "right"];
+        const row = list.children[i];
+        row.querySelector("span").textContent = `${curve.closed ? "Closed" : "Open"} curve ${i + 1}`;
+        for (const [input, side] of [[row.querySelector(".first"), first], [row.querySelector(".second"), second]]) {
+            input.title = side[0].toUpperCase() + side.slice(1);
+            if (document.activeElement !== input)
+                input.value = curve[side];
+        }
+    });
+}
+
+function curveRow(_, index) {
+    const row = document.createElement("div");
+    row.className = "curve";
+    row.append(document.createElement("span"));
+    for (const which of ["first", "second"]) {
+        const input = Object.assign(document.createElement("input"), { type: "color", className: which });
+        input.addEventListener("input", () => {
+            const curve = state.curves[index];
+            const sides = curve.closed ? ["inside", "outside"] : ["left", "right"];
+            curve[sides[which === "first" ? 0 : 1]] = input.value;
+            changed();
+        });
+        row.append(input);
+    }
+    return row;
+}
+
+$("preset").addEventListener("change", () => {
+    if ($("preset").value === "")
+        return updateControls();
+    state = presetState(Number($("preset").value));
+    changed();
+});
+for (const id of ["width", "height"]) {
+    $(id).addEventListener("change", () => {
+        const value = parseInt($(id).value, 10);
+        if (Number.isFinite(value))
+            state[id] = clamp(value, 100, 2000);
+        changed();
+    });
+}
+$("space").addEventListener("change", () => {
+    state.space = Number($("space").value);
+    changed();
+});
+$("resolution").addEventListener("change", () => {
+    state.resolution = Number($("resolution").value);
+    changed();
+});
+$("showCurves").addEventListener("change", () => {
+    state.showCurves = $("showCurves").checked;
+    changed();
+});
+// Either model, or both side by side, but at least one.
+for (const button of document.querySelectorAll("#modelBar button")) {
+    button.addEventListener("click", () => {
+        const model = button.dataset.model;
+        const on = state.models.includes(model);
+        if (on && state.models.length === 1)
+            return;
+        state.models = ["biharmonic", "harmonic"].filter(other => other === model ? !on : state.models.includes(other));
+        changed();
+    });
+}
+
+// MARK: - URL fragment
+
+function encodeState() {
+    const json = JSON.stringify({ v: 1, ...state });
+    const bytes = new TextEncoder().encode(json);
+    let binary = "";
+    for (const byte of bytes)
+        binary += String.fromCharCode(byte);
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function decodeState(text) {
+    try {
+        const binary = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
+        const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(binary, ch => ch.charCodeAt(0))));
+        if (data.v !== 1 || !Array.isArray(data.curves))
+            return null;
+        delete data.v;
+        return { ...presetState(0), ...data };
+    } catch {
+        return null;
+    }
+}
+
+// WebKit throws after 100 replaceState() calls in 10 seconds, so writes are throttled.
+let hashTimer = null;
+let lastWrittenHash = "";
+function writeHash() {
+    clearTimeout(hashTimer);
+    hashTimer = null;
+    const hash = "#" + encodeState();
+    if (hash === lastWrittenHash)
+        return;
+    try {
+        history.replaceState(null, "", hash);
+        lastWrittenHash = hash;
+    } catch {
+        hashTimer = setTimeout(writeHash, 1000);
+    }
+}
+function scheduleHashWrite() {
+    if (hashTimer === null)
+        hashTimer = setTimeout(writeHash, 250);
+}
+
+// MARK: - Start
+
+new ResizeObserver(() => scheduleRender()).observe($("views"));
+state = decodeState(location.hash.slice(1)) ?? presetState(2);
+render();
+setUpGPU().then(() => scheduleRender(), error => {
+    gpuError = error.message;
+    scheduleRender();
+});
+</script>
+</body>
+</html>

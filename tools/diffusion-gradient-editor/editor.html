@@ -1,0 +1,69 @@
+<body>
+<main>
+    <div id="stageScroller">
+        <div id="topBar">
+            <div id="modelBar" role="group" aria-label="Models">
+                <button data-model="biharmonic">Biharmonic</button>
+                <button data-model="harmonic">Harmonic</button>
+            </div>
+        </div>
+        <div id="views">
+            <figure class="view" data-model="biharmonic">
+                <div class="stage">
+                    <canvas class="gpu"></canvas>
+                    <canvas class="overlay"></canvas>
+                </div>
+                <figcaption><b>Biharmonic</b><span class="note">A stiff sheet held along the curves: smooth everywhere, as in Finch et al.'s freeform vector graphics.</span></figcaption>
+            </figure>
+            <figure class="view" data-model="harmonic">
+                <div class="stage">
+                    <canvas class="gpu"></canvas>
+                    <canvas class="overlay"></canvas>
+                </div>
+                <figcaption><b>Harmonic</b><span class="note">A stretched membrane held along the curves: never overshoots, as in Orzan et al.'s diffusion curves.</span></figcaption>
+            </figure>
+        </div>
+    </div>
+    <aside>
+        <section>
+            <h1>Diffusion Gradient Editor</h1>
+            <div class="row">
+                <label for="preset">Preset</label>
+                <select id="preset"></select>
+            </div>
+            <div class="row">
+                <label>Box</label>
+                <input id="width" type="number" min="100" max="2000" step="10" title="Width"> ×
+                <input id="height" type="number" min="100" max="2000" step="10" title="Height"> px
+            </div>
+            <div class="row">
+                <label for="space">Interpolate in</label>
+                <select id="space">
+                    <option value="0">srgb</option>
+                    <option value="1">srgb-linear</option>
+                    <option value="2">oklab</option>
+                </select>
+            </div>
+            <div class="row" title="How many texels the grid has along its longer side, at most. The grid is never finer than the box's pixels.">
+                <label for="resolution">Grid</label>
+                <select id="resolution">
+                    <option value="128">128</option>
+                    <option value="256">256</option>
+                    <option value="512">512</option>
+                    <option value="1024">1024</option>
+                </select>
+                <span class="note">texels on the longer side</span>
+            </div>
+            <div class="row">
+                <label><input type="checkbox" id="showCurves" checked> Show the curves</label>
+            </div>
+            <p id="gpuStatus" class="status"></p>
+        </section>
+
+        <section>
+            <h2>Curves</h2>
+            <p class="note">Each curve holds a color on each side. For a closed curve, that's inside and outside.</p>
+            <div id="curveList"></div>
+        </section>
+    </aside>
+</main>
