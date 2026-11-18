@@ -42,6 +42,12 @@ function updateCommonControls() {
         $(id + "Note").hidden = !state[id];
     }
     $("sheetRow").hidden = !state.sheet;
+    $("sectionKindRow").hidden = !state.crossSection;
+    $("sectionKind").value = state.sectionKind;
+    $("sectionRowRow").hidden = !state.crossSection || state.sectionKind !== "row";
+    $("sectionRow").value = String(Math.round(state.sectionRow * 100));
+    $("sectionRowValue").textContent = `${Math.round(state.sectionRow * 100)}%`;
+    $("sectionDrag").textContent = state.sectionKind === "row" ? "Drag the row up and down in either box." : "Drag A and B in either box.";
     $("gamut").value = state.gamut;
     $("sample").checked = state.sample;
     $("otherCurves").checked = state.otherCurves;
@@ -173,6 +179,14 @@ for (const id of ["crossSection", "sheet", "numbers"]) {
         changed();
     });
 }
+$("sectionKind").addEventListener("change", () => {
+    state.sectionKind = $("sectionKind").value;
+    changed();
+});
+$("sectionRow").addEventListener("input", () => {
+    state.sectionRow = Number($("sectionRow").value) / 100;
+    changed();
+});
 $("gamut").addEventListener("change", () => {
     state.gamut = $("gamut").value;
     changed();

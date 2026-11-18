@@ -508,10 +508,22 @@ input.percent { width: 72px; }
                 <label><input type="checkbox" id="sheet"> 3D</label>
                 <label><input type="checkbox" id="numbers"> Numbers</label>
             </div>
+            <div id="sectionKindRow" class="row">
+                <label for="sectionKind">Along</label>
+                <select id="sectionKind">
+                    <option value="line">A line from A to B</option>
+                    <option value="row">A row across the box</option>
+                </select>
+            </div>
+            <div id="sectionRowRow" class="row">
+                <label for="sectionRow">Row</label>
+                <input id="sectionRow" type="range" min="0" max="100" step="1">
+                <output id="sectionRowValue"></output>
+            </div>
             <div id="otherCurvesRow" class="row">
                 <label><input type="checkbox" id="otherCurves"> Also the other model's curves, dashed</label>
             </div>
-            <p id="crossSectionNote" class="note">The color's red, green and blue along the dashed line from A to B, as encoded sRGB before it's clipped. Where they go past 0 or 1, in the shaded bands, the color is clipped. The bars along the bottom show how firmly the stops hold each point. Drag A and B in either box.</p>
+            <p id="crossSectionNote" class="note">The color's red, green and blue along the dashed line from A to B, as encoded sRGB before it's clipped. Where they go past 0 or 1, in the shaded bands, the color is clipped. The bars along the bottom show how firmly the stops hold each point. <span id="sectionDrag"></span></p>
             <div id="sheetRow" class="row">
                 <label for="sheetHeight">Height</label>
                 <select id="sheetHeight" title="One of the components the solve works in, in the space it interpolates in"></select>
@@ -3453,7 +3465,7 @@ function drawPlot(view) {
         return;
     }
     const count = 240;
-    const [a, b] = state.section;
+    const [a, b] = sectionEnds();
     const samples = [];
     for (let i = 0; i <= count; ++i) {
         const t = i / count, p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
@@ -3637,7 +3649,7 @@ function drawSheet(view) {
     }
     if (state.crossSection) {
         // Where the cross-section cuts the surface: the lines the plot draws.
-        const [a, b] = state.section;
+        const [a, b] = sectionEnds();
         const points = [];
         for (let i = 0; i <= 80; ++i) {
             const t = i / 80, p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
@@ -3724,9 +3736,42 @@ function numbersText(view) {
         ` Oklab L from ${darkest.toFixed(3)} to ${lightest.toFixed(3)}.`;
 }
 
+// MARK: - Cross-section
+
+// The cross-section is a line from A to B, each end dragged anywhere, or a row across the whole box, dragged up and
+// down.
+const SECTION_KINDS = ["line", "row"];
+
+// The cross-section's ends, 0 to 1 across and down the box.
+const sectionEnds = () => state.sectionKind === "row" ? [[0, state.sectionRow], [1, state.sectionRow]] : state.section;
+
+// Which part of the cross-section is under `point`, in pixels: an end, "row" for anywhere on the row, or null.
+function sectionHit(point, toPixels) {
+    if (!state.crossSection)
+        return null;
+    if (state.sectionKind === "row") {
+        const [, y] = toPixels([0, state.sectionRow]);
+        return Math.abs(point[1] - y) <= 6 ? { kind: "section", end: "row" } : null;
+    }
+    for (const end of [1, 0]) {
+        const at = toPixels(state.section[end]);
+        if (Math.hypot(at[0] - point[0], at[1] - point[1]) <= 9)
+            return { kind: "section", end };
+    }
+    return null;
+}
+
+// Moves the cross-section's dragged part to `at`, 0 to 1 across and down the box.
+function dragSection(end, at) {
+    if (end === "row")
+        state.sectionRow = clamp(at[1], 0, 1);
+    else
+        state.section[end] = [clamp(at[0], 0, 1), clamp(at[1], 0, 1)];
+}
+
 // The cross-section's line, dashed, with its ends A and B.
 function drawSection(ctx, toPixels) {
-    const ends = state.section.map(toPixels);
+    const ends = sectionEnds().map(toPixels);
     for (const [style, width] of [["rgba(0, 0, 0, 0.55)", 3], ["#fff", 1.5]]) {
         ctx.strokeStyle = style;
         ctx.lineWidth = width;
@@ -3740,7 +3785,10 @@ function drawSection(ctx, toPixels) {
     ctx.font = "600 10px -apple-system, system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ends.forEach((at, i) => {
+    // A row's ends are at the box's sides, so they're drawn just inside it.
+    const inset = state.sectionKind === "row" ? 9 : 0;
+    ends.forEach(([x, y], i) => {
+        const at = [x + (i ? -inset : inset), y];
         ctx.beginPath();
         ctx.arc(...at, 7, 0, 2 * Math.PI);
         ctx.fillStyle = "rgba(29, 29, 31, 0.85)";
@@ -3766,6 +3814,8 @@ function commonState() {
         steps: state?.steps ?? 6,
         crossSection: state?.crossSection ?? false,
         section: state?.section ?? [[0.1, 0.5], [0.9, 0.5]],
+        sectionKind: state?.sectionKind ?? "line",
+        sectionRow: state?.sectionRow ?? 0.5,
         sheet: state?.sheet ?? false,
         sheetHeight: state?.sheetHeight ?? "L",
         numbers: state?.numbers ?? false,
@@ -3942,12 +3992,10 @@ function hitTest(view, point) {
     const size = [view.overlay.clientWidth, view.overlay.clientHeight];
     const toPixels = ([x, y]) => [x * size[0], y * size[1]];
     const distance = at => Math.hypot(at[0] - point[0], at[1] - point[1]);
-    if (state.crossSection) {
-        for (const end of [1, 0]) {
-            if (distance(toPixels(state.section[end])) <= 9)
-                return { kind: "section", end };
-        }
-    }
+    // A row lies under everything else, so it's tried last.
+    const end = state.sectionKind === "line" ? sectionHit(point, toPixels) : null;
+    if (end)
+        return end;
     for (let i = state.stops.length - 1; i >= 0; --i) {
         if (distance(toPixels(state.stops[i].p)) <= 9)
             return { kind: "stop", index: i };
@@ -3973,7 +4021,7 @@ function hitTest(view, point) {
             }
         }
     }
-    return null;
+    return sectionHit(point, toPixels);
 }
 
 // The color a new stop takes: the stops' colors around it, weighted by the inverse square of how far each is.
@@ -4124,11 +4172,11 @@ for (const view of views) {
         const at = fraction(event);
         if (!drag) {
             const hit = hitTest(view, point(event));
-            overlay.style.cursor = !hit ? "crosshair" : hit.kind === "section" ? "move" : hit.kind === "spread" ? "ew-resize" : hit.kind === "stop" ? "grab" : mode === "lines" ? "copy" : "crosshair";
+            overlay.style.cursor = !hit ? "crosshair" : hit.kind === "section" ? (hit.end === "row" ? "ns-resize" : "move") : hit.kind === "spread" ? "ew-resize" : hit.kind === "stop" ? "grab" : mode === "lines" ? "copy" : "crosshair";
             return;
         }
         if (drag.kind === "section") {
-            state.section[drag.end] = [clamp(at[0], 0, 1), clamp(at[1], 0, 1)];
+            dragSection(drag.end, at);
             changed();
             return;
         }
@@ -4403,6 +4451,12 @@ function updateCommonControls() {
         $(id + "Note").hidden = !state[id];
     }
     $("sheetRow").hidden = !state.sheet;
+    $("sectionKindRow").hidden = !state.crossSection;
+    $("sectionKind").value = state.sectionKind;
+    $("sectionRowRow").hidden = !state.crossSection || state.sectionKind !== "row";
+    $("sectionRow").value = String(Math.round(state.sectionRow * 100));
+    $("sectionRowValue").textContent = `${Math.round(state.sectionRow * 100)}%`;
+    $("sectionDrag").textContent = state.sectionKind === "row" ? "Drag the row up and down in either box." : "Drag A and B in either box.";
     $("gamut").value = state.gamut;
     $("sample").checked = state.sample;
     $("otherCurves").checked = state.otherCurves;
@@ -4534,6 +4588,14 @@ for (const id of ["crossSection", "sheet", "numbers"]) {
         changed();
     });
 }
+$("sectionKind").addEventListener("change", () => {
+    state.sectionKind = $("sectionKind").value;
+    changed();
+});
+$("sectionRow").addEventListener("input", () => {
+    state.sectionRow = Number($("sectionRow").value) / 100;
+    changed();
+});
 $("gamut").addEventListener("change", () => {
     state.gamut = $("gamut").value;
     changed();
@@ -4713,6 +4775,9 @@ function soundState(data) {
     const point = p => Array.isArray(p) && p.length === 2 && p.every(finite);
     data.section = Array.isArray(data.section) && data.section.length === 2 && data.section.every(point)
         ? data.section.map(p => p.map(v => clamp(v, 0, 1))) : defaults.section;
+    if (!SECTION_KINDS.includes(data.sectionKind))
+        data.sectionKind = defaults.sectionKind;
+    data.sectionRow = finite(data.sectionRow) ? clamp(data.sectionRow, 0, 1) : defaults.sectionRow;
     if (typeof data.sheetHeight !== "string")
         data.sheetHeight = defaults.sheetHeight;
     for (const key of ["crossSection", "sheet", "numbers", "about", "sample", "otherCurves"])

@@ -683,12 +683,10 @@ function hitTest(view, point) {
     const size = [view.overlay.clientWidth, view.overlay.clientHeight];
     const toPixels = ([x, y]) => [x * size[0], y * size[1]];
     const near = (at, radius) => Math.hypot(at[0] - point[0], at[1] - point[1]) <= radius;
-    if (state.crossSection) {
-        for (const end of [1, 0]) {
-            if (near(toPixels(state.section[end]), 9))
-                return { kind: "section", end };
-        }
-    }
+    // A row lies under everything else, so it's tried last.
+    const end = state.sectionKind === "line" ? sectionHit(point, toPixels) : null;
+    if (end)
+        return end;
     if (selection && !isPath(state.curves[selection.curve])) {
         for (const handle of shapeHandles(state.curves[selection.curve], size).reverse()) {
             if (near(handle.at, 8))
@@ -723,7 +721,7 @@ function hitTest(view, point) {
                 return { kind: "curve", curve: index };
         }
     }
-    return null;
+    return sectionHit(point, toPixels);
 }
 
 // A new curve with the new-curve colors, selected.
@@ -892,14 +890,14 @@ for (const view of views) {
         if (!drag) {
             if (tool === "select") {
                 const hit = hitTest(view, point(event));
-                overlay.style.cursor = !hit ? "default" : hit.kind === "swatch" ? "pointer" : hit.kind === "curve" ? "move" : "grab";
+                overlay.style.cursor = !hit ? "default" : hit.kind === "swatch" ? "pointer" : hit.kind === "curve" ? "move" : hit.end === "row" ? "ns-resize" : "grab";
             } else {
                 overlay.style.cursor = "crosshair";
             }
             return;
         }
         if (drag.kind === "section") {
-            state.section[drag.end] = [clamp(at[0], 0, 1), clamp(at[1], 0, 1)];
+            dragSection(drag.end, at);
             changed();
             return;
         }

@@ -46,10 +46,22 @@
                 <label><input type="checkbox" id="sheet"> 3D</label>
                 <label><input type="checkbox" id="numbers"> Numbers</label>
             </div>
+            <div id="sectionKindRow" class="row">
+                <label for="sectionKind">Along</label>
+                <select id="sectionKind">
+                    <option value="line">A line from A to B</option>
+                    <option value="row">A row across the box</option>
+                </select>
+            </div>
+            <div id="sectionRowRow" class="row">
+                <label for="sectionRow">Row</label>
+                <input id="sectionRow" type="range" min="0" max="100" step="1">
+                <output id="sectionRowValue"></output>
+            </div>
             <div id="otherCurvesRow" class="row">
                 <label><input type="checkbox" id="otherCurves"> Also the other model's curves, dashed</label>
             </div>
-            <p id="crossSectionNote" class="note">The color's red, green and blue along the dashed line from A to B, as encoded sRGB before it's clipped. Where they go past 0 or 1, in the shaded bands, the color is clipped. The bars along the bottom show how firmly the {{HOLDERS}} hold each point. Drag A and B in either box.</p>
+            <p id="crossSectionNote" class="note">The color's red, green and blue along the dashed line from A to B, as encoded sRGB before it's clipped. Where they go past 0 or 1, in the shaded bands, the color is clipped. The bars along the bottom show how firmly the {{HOLDERS}} hold each point. <span id="sectionDrag"></span></p>
             <div id="sheetRow" class="row">
                 <label for="sheetHeight">Height</label>
                 <select id="sheetHeight" title="One of the components the solve works in, in the space it interpolates in"></select>

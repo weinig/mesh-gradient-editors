@@ -261,6 +261,13 @@
             </div>
             <div id="crossSectionPanel">
                 <div class="row">
+                    <label for="sectionKind">Along</label>
+                    <select id="sectionKind">
+                        <option value="row">A row across the box</option>
+                        <option value="line">A line from A to B</option>
+                    </select>
+                </div>
+                <div class="row">
                     <label for="row">Row</label>
                     <input id="row" type="range" min="0" max="100" step="1">
                     <span id="rowValue" class="note"></span>

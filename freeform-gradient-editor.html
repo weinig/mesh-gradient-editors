@@ -554,6 +554,13 @@ h3.subhead + .row { margin-top: 4px; }
             </div>
             <div id="crossSectionPanel">
                 <div class="row">
+                    <label for="sectionKind">Along</label>
+                    <select id="sectionKind">
+                        <option value="row">A row across the box</option>
+                        <option value="line">A line from A to B</option>
+                    </select>
+                </div>
+                <div class="row">
                     <label for="row">Row</label>
                     <input id="row" type="range" min="0" max="100" step="1">
                     <span id="rowValue" class="note"></span>
@@ -1143,6 +1150,8 @@ function encodeState() {
         n: state.normalization ? 1 : 0,
         x: state.crossSection ? 1 : 0,
         r: state.row,
+        xk: state.sectionKind === "line" ? 1 : 0,
+        xs: state.section.flat(),
         m: state.sample ? 1 : 0,
         d: state.sheet ? 1 : 0,
         dc: state.sheetComponent,
@@ -1204,6 +1213,10 @@ function decodeState(text) {
             normalization: data.n === 1,
             crossSection: data.x === 1,
             row: clamp(Math.round(number(data.r) ?? 50), 0, 100),
+            sectionKind: data.xk === 1 ? "line" : "row",
+            section: Array.isArray(data.xs) && data.xs.length === 4 && data.xs.every(v => number(v) !== null)
+                ? [[data.xs[0], data.xs[1]], [data.xs[2], data.xs[3]]].map(p => p.map(v => clamp(number(v), 0, 100)))
+                : [[10, 50], [90, 50]],
             sample: data.m === 1,
             sheet: data.d === 1,
             sheetComponent: clamp(Math.round(number(data.dc) ?? 0), 0, 4),
@@ -1380,6 +1393,8 @@ function presetState(index) {
         normalization: state?.normalization ?? false,
         crossSection: state?.crossSection ?? false,
         row: state?.row ?? 50,
+        sectionKind: state?.sectionKind ?? "row",
+        section: state?.section ?? [[10, 50], [90, 50]],
         sample: state?.sample ?? false,
         sheet: state?.sheet ?? false,
         sheetComponent: state?.sheetComponent ?? 0,
@@ -2951,6 +2966,20 @@ function hitTest(x, y, slop = 1) {
 }
 
 let drag = null;
+// The cross-section's end being dragged, apart from `drag`, since moving it doesn't change the gradient.
+let sectionDrag = null;
+
+// The cross-section line's end at (x, y), 0 for A or 1 for B, or -1.
+function sectionEndAt(x, y, slop = 1) {
+    if (!state.crossSection || state.sectionKind !== "line")
+        return -1;
+    for (const end of [1, 0]) {
+        const [sx, sy] = toOverlay(state.section[end]);
+        if (Math.hypot(sx - x, sy - y) <= 10 * slop)
+            return end;
+    }
+    return -1;
+}
 
 // The pointer's position on the overlay, in the stage's own coordinates.
 function overlayPosition(event) {
@@ -2964,6 +2993,15 @@ const hitSlop = event => (event.pointerType === "mouse" ? 1 : 2.5) / viewScale;
 // Starts dragging the stop under the pointer, if there is one.
 function beginDrag(event) {
     const [x, y] = overlayPosition(event);
+    const end = sectionEndAt(x, y, hitSlop(event));
+    if (end >= 0) {
+        event.preventDefault();
+        try {
+            event.currentTarget.setPointerCapture(event.pointerId);
+        } catch { }
+        sectionDrag = { pointerId: event.pointerId, end };
+        return true;
+    }
     const hit = hitTest(x, y, hitSlop(event));
     if (hit < 0)
         return false;
@@ -2993,11 +3031,17 @@ for (const { overlay } of views) {
 overlay.addEventListener("pointerdown", beginDrag);
 
 overlay.addEventListener("pointermove", event => {
-    if (!drag && event.pointerType === "mouse" && (event.buttons & 1) && !(lastMouseButtons & 1) && beginDrag(event))
+    if (!drag && !sectionDrag && event.pointerType === "mouse" && (event.buttons & 1) && !(lastMouseButtons & 1) && beginDrag(event))
         return;
     const [x, y] = overlayPosition(event);
+    if (sectionDrag && sectionDrag.pointerId === event.pointerId) {
+        const p = fromOverlay(x, y);
+        state.section[sectionDrag.end] = p.map(v => Math.round(clamp(v, 0, 100) * 10) / 10);
+        changed({ dragging: true });
+        return;
+    }
     if (!drag || drag.pointerId !== event.pointerId) {
-        event.currentTarget.style.cursor = hitTest(x, y, hitSlop(event)) >= 0 ? "grab" : "default";
+        event.currentTarget.style.cursor = sectionEndAt(x, y, hitSlop(event)) >= 0 ? "move" : hitTest(x, y, hitSlop(event)) >= 0 ? "grab" : "default";
         return;
     }
     event.currentTarget.style.cursor = "grabbing";
@@ -3008,6 +3052,10 @@ overlay.addEventListener("pointermove", event => {
 });
 
 function endDrag(event) {
+    if (sectionDrag && sectionDrag.pointerId === event.pointerId) {
+        sectionDrag = null;
+        writeHash();
+    }
     if (drag && drag.pointerId === event.pointerId) {
         drag = null;
         event.currentTarget.style.cursor = "grab";
@@ -3337,7 +3385,30 @@ function drawVisualization(ctx, width, height) {
     const toCanvas = ([px, py]) => [margin.x + px, margin.y + py];
     const fromNormalized = ([x, y]) => toCanvas([spline.origin[0] + x * spline.scale, spline.origin[1] + y * spline.scale]);
 
-    if (state.crossSection) {
+    if (state.crossSection && state.sectionKind === "line") {
+        const ends = state.section.map(end => toCanvas([end[0] / 100 * width, end[1] / 100 * height]));
+        strokeTwice(ctx, () => {
+            ctx.beginPath();
+            ctx.moveTo(...ends[0]);
+            ctx.lineTo(...ends[1]);
+        }, [6, 4]);
+        // The boxes may be scaled down to fit side by side; the ends stay big enough to see and grab, as the stops do.
+        const markerScale = Math.min(2, 1 / viewScale);
+        ctx.font = `600 ${10 * markerScale}px -apple-system, system-ui, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ends.forEach((at, i) => {
+            ctx.beginPath();
+            ctx.arc(...at, 7 * markerScale, 0, 2 * Math.PI);
+            ctx.fillStyle = "rgba(29, 29, 31, 0.85)";
+            ctx.fill();
+            ctx.strokeStyle = "#fff";
+            ctx.lineWidth = 1.5 * markerScale;
+            ctx.stroke();
+            ctx.fillStyle = "#fff";
+            ctx.fillText(i ? "B" : "A", at[0], at[1] + 0.5);
+        });
+    } else if (state.crossSection) {
         const y = margin.y + state.row / 100 * height;
         strokeTwice(ctx, () => {
             ctx.beginPath();
@@ -3465,11 +3536,15 @@ function updateVisualizationControls() {
     $("preset").value = preset < 0 ? "" : String(preset);
     $("presetNote").textContent = preset < 0 ? "" : PRESETS[preset].note ?? "";
     $("presetNote").hidden = !$("presetNote").textContent;
-    $("crossSectionNote").textContent = state.view === "influence"
-        ? "The selected stop's influence along the row. Dots are the stops on the row."
+    const sectionName = state.sectionKind === "line" ? "line" : "row";
+    $("crossSectionNote").textContent = (state.view === "influence"
+        ? `The selected stop's influence along the ${sectionName}. Dots are the stops on the ${sectionName}.`
         : state.view === "basis"
-        ? "U(r) along the row under the thin-plate spline's box. The other boxes show their components."
-        : "Each component along the row, premultiplied. The dashed lines mark the ends of each component's range. Dots are the stops on the row.";
+        ? `U(r) along the ${sectionName} under the thin-plate spline's box. The other boxes show their components.`
+        : `Each component along the ${sectionName}, premultiplied. The dashed lines mark the ends of each component's range. Dots are the stops on the ${sectionName}.`)
+        + (state.sectionKind === "line" ? " Drag A and B in any box." : "");
+    $("sectionKind").value = state.sectionKind;
+    $("row").closest(".row").hidden = state.sectionKind === "line";
     $("row").value = state.row;
     $("rowValue").textContent = `${state.row}%`;
     $("tilt").value = Math.round(sheetTilt * 180 / Math.PI);
@@ -3496,6 +3571,31 @@ function updateVisualizationControls() {
 
 // MARK: Cross-section
 
+// The cross-section is a row across the whole box, or a line from A to B, each end dragged anywhere in a box. Its
+// ends, as percentages of the box.
+const sectionEnds = () => state.sectionKind === "line" ? state.section : [[0, state.row], [100, state.row]];
+
+// The point a fraction `t` of the way along the cross-section, in the box's pixels.
+function sectionPoint(t) {
+    const [a, b] = sectionEnds();
+    return [(a[0] + (b[0] - a[0]) * t) / 100 * state.width, (a[1] + (b[1] - a[1]) * t) / 100 * state.height];
+}
+
+// Where a position, as percentages of the box, is along the cross-section, from 0 at A to 1 at B, and how far it is
+// from it: in percentages of the box's height for a row, as before, and of its shorter side for a line.
+function sectionNear(pos) {
+    if (state.sectionKind !== "line")
+        return { t: pos[0] / 100, distance: Math.abs(pos[1] - state.row) };
+    const toPixels = p => [p[0] / 100 * state.width, p[1] / 100 * state.height];
+    const [a, b] = state.section.map(toPixels), p = toPixels(pos);
+    const along = [b[0] - a[0], b[1] - a[1]], offset = [p[0] - a[0], p[1] - a[1]];
+    const lengthSquared = along[0] ** 2 + along[1] ** 2;
+    const t = lengthSquared ? (offset[0] * along[0] + offset[1] * along[1]) / lengthSquared : 0;
+    const closest = [a[0] + along[0] * clamp(t, 0, 1), a[1] + along[1] * clamp(t, 0, 1)];
+    const distance = Math.hypot(p[0] - closest[0], p[1] - closest[1]) / (Math.min(state.width, state.height) / 100);
+    return { t, distance: t < 0 || t > 1 ? Infinity : distance };
+}
+
 function sizeCanvas(canvas) {
     const dpr = window.devicePixelRatio || 1;
     const width = canvas.clientWidth, height = canvas.clientHeight;
@@ -3520,44 +3620,44 @@ function drawPlot() {
     const { ctx, width, height } = sizeCanvas(canvas);
     const spline = viewSpline(currentSpline);
     const ink = isDark() ? "255, 255, 255" : "0, 0, 0";
-    const rowY = state.row / 100 * state.height;
     const left = 4, right = width - 4, top = 18, bottom = height - 6;
     const samples = Math.max(2, Math.round((right - left) / 2));
-    const xAt = i => i / samples * state.width;
+    const xAt = i => i / samples;
+    const at = i => sectionPoint(xAt(i));
     const info = components();
 
     let curves, low, high;
     if (state.view === "influence") {
-        curves = [{ color: `rgb(${ink})`, values: Array.from({ length: samples + 1 }, (_, i) => interpolatedColor(spline, [xAt(i), rowY])[0]) }];
+        curves = [{ color: `rgb(${ink})`, values: Array.from({ length: samples + 1 }, (_, i) => interpolatedColor(spline, at(i))[0]) }];
         low = -0.15;
         high = 1.15;
         activeView.plotNote.innerHTML = `<span><b style="background: currentColor"></b>Stop ${selected + 1}'s influence, with dashed lines at 0 and 1</span>`;
     } else if (state.view === "basis") {
         const center = selectedCenter(currentSpline);
-        curves = center ? [{ color: `rgb(${ink})`, values: Array.from({ length: samples + 1 }, (_, i) => radialBasisAt(spline, center, [xAt(i), rowY])) }] : [];
+        curves = center ? [{ color: `rgb(${ink})`, values: Array.from({ length: samples + 1 }, (_, i) => radialBasisAt(spline, center, at(i))) }] : [];
         low = -0.25;
         high = 1;
-        activeView.plotNote.innerHTML = "<span><b style=\"background: currentColor\"></b>U(r) along the row. The dashed line is 0.</span>";
+        activeView.plotNote.innerHTML = "<span><b style=\"background: currentColor\"></b>U(r) along the cross-section. The dashed line is 0.</span>";
     } else {
         curves = info.map(({ range }, k) => ({
             color: COMPONENT_COLORS[k],
-            values: Array.from({ length: samples + 1 }, (_, i) => normalizedComponent(interpolatedColor(spline, [xAt(i), rowY])[k], range)),
+            values: Array.from({ length: samples + 1 }, (_, i) => normalizedComponent(interpolatedColor(spline, at(i))[k], range)),
         }));
         low = -0.15;
         high = 1.15;
         activeView.plotNote.innerHTML = info.map(({ label, range }, k) => `<span><b style="background: ${COMPONENT_COLORS[k]}"></b>${escapeHTML(label)} ${range[0]}…${range[1]}</span>`).join("");
     }
-    // The other models' curves, dashed, from the same row.
+    // The other models' curves, dashed, from the same cross-section.
     const others = state.otherCurves && ["gradient", "influence"].includes(state.view) ? state.models.filter(model => model !== state.model) : [];
     for (const model of others) {
         if (state.view === "influence") {
-            curves.push({ color: `rgb(${ink})`, dash: CURVE_DASHES[model], values: Array.from({ length: samples + 1 }, (_, i) => interpolatedColor(influences[model], [xAt(i), rowY])[0]) });
+            curves.push({ color: `rgb(${ink})`, dash: CURVE_DASHES[model], values: Array.from({ length: samples + 1 }, (_, i) => interpolatedColor(influences[model], at(i))[0]) });
             continue;
         }
         info.forEach(({ range }, k) => curves.push({
             color: COMPONENT_COLORS[k],
             dash: CURVE_DASHES[model],
-            values: Array.from({ length: samples + 1 }, (_, i) => normalizedComponent(interpolatedColor(splines[model], [xAt(i), rowY])[k], range)),
+            values: Array.from({ length: samples + 1 }, (_, i) => normalizedComponent(interpolatedColor(splines[model], at(i))[k], range)),
         }));
     }
     if (others.length) {
@@ -3573,7 +3673,7 @@ function drawPlot() {
     low = Math.max(low, -2);
     high = Math.min(high, 3);
     const y = value => bottom - (value - low) / (high - low) * (bottom - top);
-    const x = px => left + px / state.width * (right - left);
+    const x = t => left + t * (right - left);
 
     ctx.strokeStyle = `rgba(${ink}, 0.3)`;
     ctx.lineWidth = 1;
@@ -3586,13 +3686,12 @@ function drawPlot() {
     }
     ctx.setLineDash([]);
 
-    // Stops near the row.
+    // Stops near the cross-section.
     for (const center of currentSpline.centers) {
         const stop = state.stops[center.stop];
-        const distance = Math.abs(stop.pos[1] - state.row);
+        const { t: px, distance } = sectionNear(stop.pos);
         if (distance > 10)
             continue;
-        const px = stop.pos[0] / 100 * state.width;
         ctx.globalAlpha = 1 - distance / 10;
         ctx.strokeStyle = `rgba(${ink}, 0.25)`;
         ctx.beginPath();
@@ -3802,10 +3901,10 @@ function computeSheet() {
     const vertexValues = sampleGrid(SHEET_GRID + 1, 0);
     const faceValues = sampleGrid(SHEET_GRID, 0.5);
 
-    // Samples along the cross-section's row, where its plane cuts each surface.
+    // Samples along the cross-section, where its plane cuts each surface.
     const SECTION_SAMPLES = SHEET_GRID * 4;
     const sectionValues = !state.crossSection ? null : Array.from({ length: SECTION_SAMPLES + 1 }, (_, i) => {
-        const position = [i / SECTION_SAMPLES * state.width, state.row / 100 * state.height];
+        const position = sectionPoint(i / SECTION_SAMPLES);
         if (state.view === "basis")
             return center ? radialBasisAt(spline, center, position) : 0;
         return interpolatedColor(spline, position);
@@ -3922,13 +4021,14 @@ function drawSheet({ recompute = false } = { }) {
         }
     }
     if (state.crossSection) {
-        // The cross-section's plane, standing on its row, cut into strips so it sorts among the surface's cells.
-        const v = state.row / 100;
+        // The cross-section's plane, standing on its line, cut into strips so it sorts among the surface's cells.
+        const [sectionA, sectionB] = sectionEnds().map(end => end.map(v => v / 100));
+        const along = t => [sectionA[0] + (sectionB[0] - sectionA[0]) * t, sectionA[1] + (sectionB[1] - sectionA[1]) * t];
         const zLow = Math.min(0, ...sheets.flatMap(({ vertices }) => vertices.flat()));
         const zHigh = Math.max(1, ...sheets.flatMap(({ vertices }) => vertices.flat()));
         for (let i = 0; i < SHEET_GRID; ++i) {
             const u0 = i / SHEET_GRID, u1 = (i + 1) / SHEET_GRID;
-            const quad = [project(u0, v, zLow), project(u1, v, zLow), project(u1, v, zHigh), project(u0, v, zHigh)];
+            const quad = [project(...along(u0), zLow), project(...along(u1), zLow), project(...along(u1), zHigh), project(...along(u0), zHigh)];
             const depth = quad.reduce((sum, p) => sum + p[2], 0) / 4;
             items.push({ depth, draw: () => {
                 ctx.beginPath();
@@ -3949,7 +4049,7 @@ function drawSheet({ recompute = false } = { }) {
             } });
         }
         for (const edge of [0, 1]) {
-            const ends = [project(edge, v, zLow), project(edge, v, zHigh)];
+            const ends = [project(...along(edge), zLow), project(...along(edge), zHigh)];
             items.push({ depth: (ends[0][2] + ends[1][2]) / 2, draw: () => {
                 ctx.strokeStyle = `rgba(${ink}, 0.5)`;
                 ctx.lineWidth = 1;
@@ -3963,7 +4063,7 @@ function drawSheet({ recompute = false } = { }) {
         }
         // Where the plane cuts each surface: the curves the cross-section plot draws.
         for (const { section, sectionColor } of sheets) {
-            const points = section.map((z, i) => project(i / (section.length - 1), v, z));
+            const points = section.map((z, i) => project(...along(i / (section.length - 1)), z));
             for (let i = 0; i + 1 < points.length; ++i) {
                 const [a, b] = [points[i], points[i + 1]];
                 items.push({ depth: (a[2] + b[2]) / 2 - 0.01, draw: () => {
@@ -4099,6 +4199,10 @@ $("row").addEventListener("input", () => {
     changed({ dragging: true });
 });
 $("row").addEventListener("change", writeHash);
+$("sectionKind").addEventListener("change", () => {
+    state.sectionKind = $("sectionKind").value;
+    changed();
+});
 $("sheetComponent").addEventListener("change", () => {
     state.sheetComponent = Number($("sheetComponent").value);
     changed();

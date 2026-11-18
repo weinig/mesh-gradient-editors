@@ -28,6 +28,9 @@ function soundState(data) {
     const point = p => Array.isArray(p) && p.length === 2 && p.every(finite);
     data.section = Array.isArray(data.section) && data.section.length === 2 && data.section.every(point)
         ? data.section.map(p => p.map(v => clamp(v, 0, 1))) : defaults.section;
+    if (!SECTION_KINDS.includes(data.sectionKind))
+        data.sectionKind = defaults.sectionKind;
+    data.sectionRow = finite(data.sectionRow) ? clamp(data.sectionRow, 0, 1) : defaults.sectionRow;
     if (typeof data.sheetHeight !== "string")
         data.sheetHeight = defaults.sheetHeight;
     for (const key of ["crossSection", "sheet", "numbers", "about", "sample", "otherCurves"])

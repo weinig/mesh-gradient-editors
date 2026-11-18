@@ -406,12 +406,10 @@ function hitTest(view, point) {
     const size = [view.overlay.clientWidth, view.overlay.clientHeight];
     const toPixels = ([x, y]) => [x * size[0], y * size[1]];
     const distance = at => Math.hypot(at[0] - point[0], at[1] - point[1]);
-    if (state.crossSection) {
-        for (const end of [1, 0]) {
-            if (distance(toPixels(state.section[end])) <= 9)
-                return { kind: "section", end };
-        }
-    }
+    // A row lies under everything else, so it's tried last.
+    const end = state.sectionKind === "line" ? sectionHit(point, toPixels) : null;
+    if (end)
+        return end;
     for (let i = state.stops.length - 1; i >= 0; --i) {
         if (distance(toPixels(state.stops[i].p)) <= 9)
             return { kind: "stop", index: i };
@@ -437,7 +435,7 @@ function hitTest(view, point) {
             }
         }
     }
-    return null;
+    return sectionHit(point, toPixels);
 }
 
 // The color a new stop takes: the stops' colors around it, weighted by the inverse square of how far each is.
@@ -588,11 +586,11 @@ for (const view of views) {
         const at = fraction(event);
         if (!drag) {
             const hit = hitTest(view, point(event));
-            overlay.style.cursor = !hit ? "crosshair" : hit.kind === "section" ? "move" : hit.kind === "spread" ? "ew-resize" : hit.kind === "stop" ? "grab" : mode === "lines" ? "copy" : "crosshair";
+            overlay.style.cursor = !hit ? "crosshair" : hit.kind === "section" ? (hit.end === "row" ? "ns-resize" : "move") : hit.kind === "spread" ? "ew-resize" : hit.kind === "stop" ? "grab" : mode === "lines" ? "copy" : "crosshair";
             return;
         }
         if (drag.kind === "section") {
-            state.section[drag.end] = [clamp(at[0], 0, 1), clamp(at[1], 0, 1)];
+            dragSection(drag.end, at);
             changed();
             return;
         }

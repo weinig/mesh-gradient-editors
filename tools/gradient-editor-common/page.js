@@ -767,7 +767,7 @@ function drawPlot(view) {
         return;
     }
     const count = 240;
-    const [a, b] = state.section;
+    const [a, b] = sectionEnds();
     const samples = [];
     for (let i = 0; i <= count; ++i) {
         const t = i / count, p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
@@ -951,7 +951,7 @@ function drawSheet(view) {
     }
     if (state.crossSection) {
         // Where the cross-section cuts the surface: the lines the plot draws.
-        const [a, b] = state.section;
+        const [a, b] = sectionEnds();
         const points = [];
         for (let i = 0; i <= 80; ++i) {
             const t = i / 80, p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
@@ -1038,9 +1038,42 @@ function numbersText(view) {
         ` Oklab L from ${darkest.toFixed(3)} to ${lightest.toFixed(3)}.`;
 }
 
+// MARK: - Cross-section
+
+// The cross-section is a line from A to B, each end dragged anywhere, or a row across the whole box, dragged up and
+// down.
+const SECTION_KINDS = ["line", "row"];
+
+// The cross-section's ends, 0 to 1 across and down the box.
+const sectionEnds = () => state.sectionKind === "row" ? [[0, state.sectionRow], [1, state.sectionRow]] : state.section;
+
+// Which part of the cross-section is under `point`, in pixels: an end, "row" for anywhere on the row, or null.
+function sectionHit(point, toPixels) {
+    if (!state.crossSection)
+        return null;
+    if (state.sectionKind === "row") {
+        const [, y] = toPixels([0, state.sectionRow]);
+        return Math.abs(point[1] - y) <= 6 ? { kind: "section", end: "row" } : null;
+    }
+    for (const end of [1, 0]) {
+        const at = toPixels(state.section[end]);
+        if (Math.hypot(at[0] - point[0], at[1] - point[1]) <= 9)
+            return { kind: "section", end };
+    }
+    return null;
+}
+
+// Moves the cross-section's dragged part to `at`, 0 to 1 across and down the box.
+function dragSection(end, at) {
+    if (end === "row")
+        state.sectionRow = clamp(at[1], 0, 1);
+    else
+        state.section[end] = [clamp(at[0], 0, 1), clamp(at[1], 0, 1)];
+}
+
 // The cross-section's line, dashed, with its ends A and B.
 function drawSection(ctx, toPixels) {
-    const ends = state.section.map(toPixels);
+    const ends = sectionEnds().map(toPixels);
     for (const [style, width] of [["rgba(0, 0, 0, 0.55)", 3], ["#fff", 1.5]]) {
         ctx.strokeStyle = style;
         ctx.lineWidth = width;
@@ -1054,7 +1087,10 @@ function drawSection(ctx, toPixels) {
     ctx.font = "600 10px -apple-system, system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ends.forEach((at, i) => {
+    // A row's ends are at the box's sides, so they're drawn just inside it.
+    const inset = state.sectionKind === "row" ? 9 : 0;
+    ends.forEach(([x, y], i) => {
+        const at = [x + (i ? -inset : inset), y];
         ctx.beginPath();
         ctx.arc(...at, 7, 0, 2 * Math.PI);
         ctx.fillStyle = "rgba(29, 29, 31, 0.85)";
@@ -1080,6 +1116,8 @@ function commonState() {
         steps: state?.steps ?? 6,
         crossSection: state?.crossSection ?? false,
         section: state?.section ?? [[0.1, 0.5], [0.9, 0.5]],
+        sectionKind: state?.sectionKind ?? "line",
+        sectionRow: state?.sectionRow ?? 0.5,
         sheet: state?.sheet ?? false,
         sheetHeight: state?.sheetHeight ?? "L",
         numbers: state?.numbers ?? false,
