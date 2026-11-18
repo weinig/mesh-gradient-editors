@@ -44,6 +44,7 @@ def build(parts, output_path, source_path):
     html = fill(read(os.path.join(parts, "editor.html")), {
         "{{PAGE}}": read(os.path.join(common, "page.html")),
         "{{VISUALIZE}}": read(os.path.join(common, "visualize.html")),
+        "{{CSS}}": read(os.path.join(common, "css.html")),
     })
     html = fill(html, {"{{" + key + "}}": value for key, value in words.items()})
     leftover = re.findall(r"\{\{\w+\}\}", html)
@@ -55,11 +56,32 @@ def build(parts, output_path, source_path):
     assert renderer.count("export class WebGPUFreeformGradientRenderer") == 1
     renderer = renderer.replace("export class WebGPUFreeformGradientRenderer", "class WebGPUFreeformGradientRenderer")
 
+    # The mesh editor's backdrop, behind every box rather than its one.
+    backdrop = between("// MARK: - Backdrop", "// MARK: - Start")
+    backdrop_stage = """    stage.classList.toggle("checkerboard", state.backdrop === "checkerboard");
+    stage.classList.toggle("image", !!url);
+    const backgroundImage = url ? `url("${url}")` : "";
+    if (stage.style.backgroundImage !== backgroundImage)
+        stage.style.backgroundImage = backgroundImage;
+"""
+    assert backdrop.count(backdrop_stage) == 1
+    backdrop = backdrop.replace(backdrop_stage, """    const backgroundImage = url ? `url("${url}")` : "";
+    for (const { stage } of views) {
+        stage.classList.toggle("checkerboard", state.backdrop === "checkerboard");
+        stage.classList.toggle("image", !!url);
+        if (stage.style.backgroundImage !== backgroundImage)
+            stage.style.backgroundImage = backgroundImage;
+    }
+""")
     script = fill(read(os.path.join(parts, "editor.js")), {
         "__COMMON_HEAD__": read(os.path.join(common, "head.js")).rstrip("\n"),
         "__COMMON_PAGE__": read(os.path.join(common, "page.js")).rstrip("\n") + "\n",
         "__COMMON_CONTROLS__": read(os.path.join(common, "controls.js")).rstrip("\n"),
         "__COMMON_FRAGMENT__": read(os.path.join(common, "fragment.js")).rstrip("\n") + "\n</script>\n</body>\n</html>",
+    })
+    script = fill(script, {
+        "__PUPPY__": lines[index_of("const PUPPY_IMAGE = ")],
+        "__BACKDROP__": backdrop.rstrip("\n"),
     })
     # The WGSL color conversions: the matrices, and the functions from transform() through toPremultipliedColor(), as
     # the freeform-gradient() editor takes them. srgbToLinear() is renamed, since the renderer's shader has its own.

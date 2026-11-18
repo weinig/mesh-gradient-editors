@@ -29,10 +29,15 @@
     position: relative;
     width: 100%;
     outline: 1px solid var(--border);
+}
+.stage.checkerboard {
     background-color: #fff;
     background-image: conic-gradient(#ddd 0 25%, #fff 0 50%, #ddd 0 75%, #fff 0);
     background-size: 16px 16px;
 }
+.stage.image { background-position: center; background-size: cover; }
+#stageScroller.dropTarget { outline: 2px dashed var(--accent); outline-offset: -2px; }
+#backdropImageName[hidden], #chooseBackdropImage[hidden] { display: none; }
 .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .stage .overlay { touch-action: none; }
 .view figcaption { font-size: 12px; margin-top: 6px; }
@@ -82,4 +87,42 @@ aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transf
     #toolbar { flex-direction: row; flex-wrap: wrap; position: static; flex: 1 1 100%; }
     #views { flex-direction: column; }
     .view { flex: none; width: 100%; }
+}
+#output { min-height: 160px; white-space: pre; }
+#aboutButton {
+    font: inherit;
+    padding: 5px 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--fg);
+    cursor: pointer;
+}
+#aboutButton[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.view .modelAbout { margin-top: 6px; }
+.view .modelAbout[hidden] { display: none; }
+.view .modelAbout h4 { font-size: 12px; margin: 10px 0 2px; }
+.view .modelAbout ul { margin: 0; padding-left: 18px; }
+.view .modelAbout li { margin: 1px 0; }
+#sampleReadout {
+    position: fixed;
+    z-index: 10;
+    pointer-events: none;
+    padding: 6px 8px 6px 34px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+#sampleReadout[hidden] { display: none; }
+#sampleReadout .sampleSwatch {
+    position: absolute;
+    left: 6px;
+    top: 6px;
+    width: 20px;
+    height: 20px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
 }

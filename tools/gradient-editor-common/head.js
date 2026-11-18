@@ -1,5 +1,7 @@
 "use strict";
 
+__PUPPY__
+
 __COLORS__
 
 // MARK: - Renderer
@@ -15,6 +17,7 @@ __SHADER_HELPERS__
 // name.space, name.outputIsDisplayP3 and name.gamutMapping.
 const COLOR_SHADER = uniforms => `
 __SHADER_MATRICES__
+${wgslMatrix("xyzToLinRec2020", M.xyzToLinRec2020)}
 
 // Which component is the hue, in a polar space, or -1.
 fn hueComponent(space: u32) -> i32 {

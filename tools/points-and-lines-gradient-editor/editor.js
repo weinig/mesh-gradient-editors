@@ -124,6 +124,8 @@ const PRESETS = [
     },
 ];
 
+const influenceAvailable = () => selection !== null && !!state.stops[selection];
+
 // What the shared code needs from this editor: which state a preset sets, which preset to start from, what to reset
 // when a preset is chosen, and which links it can read.
 const PRESET_KEYS = ["stops", "lines"];
@@ -216,9 +218,10 @@ const spreadRadius = stop => STOP_RADIUS + (FULL_SPREAD - STOP_RADIUS) * stop.sp
 
 // The gradient as MeshShader2's renderer takes it: each stop on no line a point, held out to its spread, and each
 // line's pieces one-sided segments, their colors blended from stop to stop.
-function gradientData(model) {
+function gradientData(model, influence = false) {
     // A stop's opacity scales its color's own alpha.
-    const colors = rendererColors(state.stops.map(stop => {
+    // For the influence, the selected stop is 1 and the others 0, in srgb-linear.
+    const colors = influence ? state.stops.map((_, i) => [...Array(3).fill(i === selection ? 1 : 0), 1]) : rendererColors(state.stops.map(stop => {
         const components = interpolationComponents(stop.color);
         components[3] *= stop.opacity / 100;
         return components;
@@ -243,20 +246,40 @@ function gradientData(model) {
     }
     const average = [0, 1, 2, 3].map(k => colors.length ? colors.reduce((sum, c) => sum + c[k], 0) / colors.length : 0);
     return {
-        space: spaceIndex(state.space), resolution: (drag && drag.kind !== "section") || adjusting ? Math.min(state.resolution, 256) : state.resolution, model,
+        space: influence ? spaceIndex("srgb-linear") : spaceIndex(state.space), resolution: (drag && drag.kind !== "section") || adjusting ? Math.min(state.resolution, 256) : state.resolution, model,
         isEmpty: !points.length && !segments.length, average, points, segments, lines, hasTwoSidedLines: false,
         isOpaque: colors.every(c => c[3] >= 1),
     };
 }
 
 __COMMON_PAGE__
+// MARK: - About the models
+
+const MODEL_ABOUT = {
+    biharmonic: {
+        note: "A stiff sheet (∆²u = 0) held at the stops. Each point holds its color across a disc out to its spread, each line along a thin band, and between them the sheet bends as little as it can. It's solved on a grid, coarse to fine, by MeshShader2's solver.",
+        pros: ["Smooth everywhere, its slope too", "Close to the thin-plate spline freeform-gradient() draws, but it stops at the box's edges", "Single points are enough to hold it"],
+        cons: ["Overshoots between and past the stops, most of all near the box's edges", "Needs a solver, so engines would only match approximately", "Solves again whenever a stop moves or the box changes size"],
+        source: "Finch, Snyder and Hoppe, <a href=\"https://hhoppe.com/proj/freeform/\" target=\"_blank\" rel=\"noopener\">“Freeform Vector Graphics with Controlled Thin-Plate Splines”</a> (2011, <a href=\"https://doi.org/10.1145/2070781.2024200\" target=\"_blank\" rel=\"noopener\">DOI</a>). They hold the sheet at points and along curves in the same way.",
+        spec: "A spec would define how big a point is and what its spread does, how wide a line is, what happens at the box's edges, and how accurate the solve has to be.",
+    },
+    harmonic: {
+        note: "A stretched membrane (∆u = 0) held at the stops. It forms a tent at each point and a ridge along each line, and never goes past the stops' colors. It's solved on a grid, coarse to fine, by MeshShader2's solver.",
+        pros: ["Never overshoots", "Each stop's influence stays between 0 and 1", "A line reads clearly as a ridge of color"],
+        cons: ["Peaks at every point and creases along every line", "A point needs a size: without one, its color shrinks to a dot as the grid gets finer", "Can look flat between stops"],
+        source: "Orzan et al., <a href=\"https://inria.hal.science/inria-00274768\" target=\"_blank\" rel=\"noopener\">“Diffusion Curves: A Vector Representation for Smooth-Shaded Images”</a> (2008, <a href=\"https://doi.org/10.1145/1399504.1360691\" target=\"_blank\" rel=\"noopener\">DOI</a>), which spreads colors out from curves the same way.",
+        spec: "As for the biharmonic model, and a size for every stop, which it can't do without.",
+    },
+};
+
 // MARK: - View notes
 
 const VIEW_NOTES = {
     gradient: "The gradient each model draws from the same stops.",
     holds: "Every texel of the grid is worked out from the texels the stops hold, shown here in the colors they're held to, over the faded gradient. A point holds a disc out to its spread, at least 1% of the box's shorter side; a line holds a band 1% either side of it, its color running from stop to stop. Set Grid to 128 to see the texels.",
-    gamut: "Hatching marks where the solved colors fall outside sRGB, so they're clipped to draw them. The harmonic model makes each texel the average of its neighbors, so it can't go past the colors it's held to. The biharmonic model keeps the slope smooth through each stop, so past a stop it keeps going, and overshoots, most of all near the box's edges. In oklab, a mix of two colors inside sRGB can also fall outside it, in either model.",
+    gamut: "Hatching marks where the solved colors fall outside the chosen gamut, where they're clipped or gamut mapped to draw them. The harmonic model makes each texel the average of its neighbors, so it can't go past the colors it's held to. The biharmonic model keeps the slope smooth through each stop, so past a stop it keeps going, and overshoots, most of all near the box's edges. In oklab, a mix of two colors inside sRGB can also fall outside it, in either model.",
     isolines: "Lines of equal lightness, every 0.025 of Oklab L. The harmonic model is a membrane: its lines ring each point tightly and kink around it, since it's continuous there but not smooth. The biharmonic model is a stiff sheet: its lines bend smoothly through and around the stops, since its slope is continuous too.",
+    influence: "Each model mixes the stops' colors in fixed proportions, so each point's color is a weighted sum of them. This shows the selected stop's weight: orange where it adds its color, white where it adds none, blue where it takes color away, and dark red above 1. The harmonic model's stays between 0 and 1. The biharmonic model's has negative patches and can go above 1, but it ends at the box's edges. A stop on a line shares its weight along the line with its neighbors.",
     difference: "White where the two models agree, purple where they differ, darkest at a difference of 0.15 in Oklab (ΔE OK) or more. Both boxes show the same difference.",
     level: "The solve runs on a pyramid of grids, each half the size of the one above it. The coarsest is solved outright, and each finer level starts from the one below, scaled up, so it only has to fix the detail. This shows one level's texels as they are, unfiltered, with the texels the stops hold marked. Level 0 is the finest, the one that's drawn.",
     relaxation: "The harmonic model's finest grid, started from the stops' average color and relaxed without the pyramid: each step moves every texel toward the average of its four neighbors. The colors creep out from the stops a texel or two a step, so a fine grid would take hundreds of thousands of steps to settle. That's why the solve starts coarse. The biharmonic box shows its gradient.",
@@ -753,5 +776,34 @@ $("showStops").addEventListener("change", () => {
 });
 
 __COMMON_CONTROLS__
+
+// MARK: - CSS
+
+// A made-up freeform-gradient() with lines:
+//
+//   freeform-gradient( [ harmonic || in <space> ]? , [ <stop> | line( <stop># [ , close ]? ) ]# )
+//   <stop> = <color> <position> [ spread <percentage> ]? [ opacity <percentage> ]?
+
+const number = v => String(Math.round(v * 100) / 100 || 0);
+const percent = v => `${number(v * 100)}%`;
+
+function stopText(stop, withSpread) {
+    const parts = [stop.color.trim(), percent(stop.p[0]), percent(stop.p[1])];
+    if (withSpread && stop.spread)
+        parts.push(`spread ${stop.spread}%`);
+    if (stop.opacity !== 100)
+        parts.push(`opacity ${stop.opacity}%`);
+    return parts.join(" ");
+}
+
+function cssText() {
+    const prelude = [state.models.length === 1 && state.models[0] === "harmonic" ? "harmonic" : "", `in ${state.space}`].filter(Boolean).join(" ");
+    const points = state.stops.filter((_, i) => !linesThrough(i).length).map(stop => stopText(stop, true));
+    const lines = state.lines.map(line => {
+        const stops = line.stops.map(i => stopText(state.stops[i], false));
+        return `line(${[...stops, ...(line.closed && line.stops.length > 2 ? ["close"] : [])].join(", ")})`;
+    });
+    return `background-image: freeform-gradient(${[prelude, ...points, ...lines].join(",\n    ")});`;
+}
 
 __COMMON_FRAGMENT__

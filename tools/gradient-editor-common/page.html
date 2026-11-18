@@ -4,10 +4,11 @@
                 <button data-model="biharmonic">Biharmonic</button>
                 <button data-model="harmonic">Harmonic</button>
             </div>
+            <button id="aboutButton" title="Show how each model works, its pros and cons, where it comes from, and what a spec would need, under each box.">About the models</button>
         </div>
         <div id="views">
             <figure class="view" data-model="biharmonic">
-                <div class="stage">
+                <div class="stage checkerboard">
                     <canvas class="gpu"></canvas>
                     <canvas class="overlay"></canvas>
                 </div>
@@ -15,9 +16,21 @@
                 <p class="numbers note" hidden></p>
                 <canvas class="plot" hidden></canvas>
                 <canvas class="sheet" hidden></canvas>
+                <div class="modelAbout" hidden>
+                    <h4>How it works</h4>
+                    <p class="note modelNote"></p>
+                    <h4>Pros</h4>
+                    <ul class="note modelPros"></ul>
+                    <h4>Cons</h4>
+                    <ul class="note modelCons"></ul>
+                    <h4>Where it comes from</h4>
+                    <p class="note modelSource"></p>
+                    <h4>What a spec would need</h4>
+                    <p class="note modelSpec"></p>
+                </div>
             </figure>
             <figure class="view" data-model="harmonic">
-                <div class="stage">
+                <div class="stage checkerboard">
                     <canvas class="gpu"></canvas>
                     <canvas class="overlay"></canvas>
                 </div>
@@ -25,6 +38,18 @@
                 <p class="numbers note" hidden></p>
                 <canvas class="plot" hidden></canvas>
                 <canvas class="sheet" hidden></canvas>
+                <div class="modelAbout" hidden>
+                    <h4>How it works</h4>
+                    <p class="note modelNote"></p>
+                    <h4>Pros</h4>
+                    <ul class="note modelPros"></ul>
+                    <h4>Cons</h4>
+                    <ul class="note modelCons"></ul>
+                    <h4>Where it comes from</h4>
+                    <p class="note modelSource"></p>
+                    <h4>What a spec would need</h4>
+                    <p class="note modelSpec"></p>
+                </div>
             </figure>
         </div>
     </div>
@@ -54,6 +79,25 @@
                     <option value="1024">1024</option>
                 </select>
                 <span class="note">texels on the longer side</span>
+            </div>
+            <div class="row" title="Colors outside the screen's gamut are clipped, as WebKit does, or gamut mapped as CSS Color 4 says.">
+                <label for="gamutMapping">Out of gamut</label>
+                <select id="gamutMapping">
+                    <option value="clip">Clip</option>
+                    <option value="map">Gamut map (CSS Color 4)</option>
+                </select>
+            </div>
+            <div class="row" title="What is drawn behind the boxes, showing through wherever the gradient is transparent. It isn't part of the gradient.">
+                <label for="backdrop">Backdrop</label>
+                <select id="backdrop">
+                    <option value="checkerboard">Checkerboard</option>
+                    <option value="none">None</option>
+                    <option value="puppy">Puppy</option>
+                    <option value="image">Image</option>
+                </select>
+                <span id="backdropImageName" class="note"></span>
+                <button id="chooseBackdropImage" class="small" title="Choose an image, or drop one on a box">Choose…</button>
+                <input id="backdropFile" type="file" accept="image/*" hidden>
             </div>
             <div class="row">
                 <label><input type="checkbox" id="{{SHOW_ID}}" checked> {{SHOW_LABEL}}</label>

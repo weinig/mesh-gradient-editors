@@ -78,6 +78,9 @@ const views = [...document.querySelectorAll(".view")].map(figure => ({
     // The texture drawn into this frame, and the visualization's uniforms.
     target: null,
     uniforms: null,
+    // A second renderer, which solves the selected curve's or stop's influence.
+    influence: null,
+    influenceKey: null,
 }));
 
 let device = null;
@@ -110,7 +113,8 @@ async function setUpGPU() {
         view.context = view.gpu.getContext("webgpu");
         view.context.configure({ device, format, alphaMode: "premultiplied" });
         view.renderer = new WebGPUFreeformGradientRenderer(device, { shader: SHADER, format });
-        view.uniforms = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        view.influence = new WebGPUFreeformGradientRenderer(device, { shader: SHADER, format });
+        view.uniforms = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     }
     const module = device.createShaderModule({ code: VISUALIZE_SHADER });
     visualizePipeline = device.createRenderPipeline({
@@ -176,7 +180,7 @@ function render() {
 
 // Solves the view's gradient if it changed, or relaxes it for the relaxation view, and draws it.
 function encodeView(view, encoder, width, height) {
-    const data = gradientData(view.model);
+    const data = { ...gradientData(view.model), gamutMapping: state.gamutMapping === "map" ? 1 : 0 };
     const relaxing = state.view === "relaxation" && view.model === "harmonic";
     const key = JSON.stringify(data) + (relaxing ? `:relaxed ${2 ** state.steps}` : "");
     if (key !== view.gradientKey) {
@@ -194,6 +198,16 @@ function encodeView(view, encoder, width, height) {
     view.target = view.context.getCurrentTexture().createView();
     view.renderer.encode(encoder, view.target, width, height);
     view.solveKey = `${key} ${width}x${height}`;
+    // The influence is solved as a gradient of its own, drawn over by the visualization.
+    if (state.view === "influence" && influenceAvailable()) {
+        const influence = gradientData(view.model, true);
+        const influenceKey = JSON.stringify(influence);
+        if (influenceKey !== view.influenceKey) {
+            view.influence.setGradient(influence);
+            view.influenceKey = influenceKey;
+        }
+        view.influence.encode(encoder, view.target, width, height);
+    }
 }
 
 // MARK: - Visualizations
@@ -208,6 +222,11 @@ struct Visualize {
     // Read by toPremultipliedColor(), which the visualizations don't call, but which reads them.
     outputIsDisplayP3: u32,
     gamutMapping: u32,
+    // The gamut the hatching measures against: 0 sRGB, 1 Display P3, 2 Rec. 2020.
+    gamut: u32,
+    padding0: u32,
+    padding1: u32,
+    padding2: u32,
 }
 
 @group(0) @binding(0) var<uniform> visualize: Visualize;
@@ -293,11 +312,31 @@ fn shown(c: vec4<f32>) -> vec4<f32> {
     return vec4<f32>(encodeSigned(saturate(c.rgb)), saturate(c.a));
 }
 
-// How far a color's encoded components, or its alpha, go past 0 to 1.
+// How far a color's encoded components in the chosen gamut, or its alpha, go past 0 to 1, from linear sRGB.
 fn excess(c: vec4<f32>) -> f32 {
-    let e = encodeSigned(c.rgb);
+    var e: vec3<f32>;
+    switch (visualize.gamut) {
+        case 1u: { e = encodeSigned(transform(xyzToLinP3, transform(linSRGBToXYZ, c.rgb))); }
+        case 2u: {
+            let linear = transform(xyzToLinRec2020, transform(linSRGBToXYZ, c.rgb));
+            e = sign(linear) * pow(abs(linear), vec3<f32>(1.0 / 2.4));
+        }
+        default: { e = encodeSigned(c.rgb); }
+    }
     let over = max(-e, e - 1.0);
     return max(max(max(over.r, over.g), over.b), max(max(-c.a, c.a - 1.0), 0.0));
+}
+
+// An influence, solved in srgb-linear as a gray from 0 to 1: white at 0, orange at 1, dark red past it, and blue
+// below 0, as the freeform-gradient() editor shows it.
+fn influenceColor(value: f32) -> vec4<f32> {
+    if (value < 0.0) {
+        return vec4<f32>(mix(vec3<f32>(1.0), vec3<f32>(0.16, 0.42, 0.95), saturate(-value * 4.0)), 1.0);
+    }
+    if (value <= 1.0) {
+        return vec4<f32>(mix(vec3<f32>(1.0), vec3<f32>(0.95, 0.45, 0.1), value), 1.0);
+    }
+    return vec4<f32>(mix(vec3<f32>(0.95, 0.45, 0.1), vec3<f32>(0.45, 0.05, 0.05), saturate((value - 1.0) * 4.0)), 1.0);
 }
 
 // Black on light colors, white on dark ones.
@@ -309,8 +348,8 @@ fn dither(position: vec2<f32>) -> f32 {
     return fract(52.9829189 * fract(dot(position, vec2<f32>(0.06711056, 0.00583715))));
 }
 
-// Modes: 1 what the curves or stops hold, 2 where it leaves sRGB, 3 lines of equal lightness, 4 the difference from the other
-// box, 5 one level's texels.
+// Modes: 1 what the curves or stops hold, 2 where it leaves the gamut, 3 lines of equal lightness, 4 the difference from
+// the other box, 5 one level's texels, 6 the selected curve's or stop's influence.
 @fragment
 fn visualizeFragment(input: VisualizeVertex) -> @location(0) vec4<f32> {
     let size = vec2<f32>(textureDimensions(solution));
@@ -353,6 +392,9 @@ fn visualizeFragment(input: VisualizeVertex) -> @location(0) vec4<f32> {
             let difference = length(vec4<f32>(a - b, color.a - other.a));
             color = vec4<f32>(mix(vec3<f32>(1.0), vec3<f32>(0.42, 0.1, 0.62), saturate(difference / 0.15)), 1.0);
         }
+        case 6u: {
+            color = influenceColor(bilinear(solution, texelPosition - 0.5).r);
+        }
         default: {
             let nearest = shown(linearOf(textureLoad(solution, texel, 0)));
             var rgb = nearest.rgb;
@@ -393,9 +435,11 @@ fn readSolution(@builtin(global_invocation_id) id: vec3<u32>) {
 let visualizePipeline = null;
 let readPipeline = null;
 
-const VIEW_MODES = { holds: 1, gamut: 2, isolines: 3, difference: 4, level: 5 };
+const VIEW_MODES = { holds: 1, gamut: 2, isolines: 3, difference: 4, level: 5, influence: 6 };
 
 function viewAvailable(name) {
+    if (name === "influence")
+        return influenceAvailable();
     if (name === "difference")
         return state.models.length > 1;
     if (name === "relaxation")
@@ -407,8 +451,11 @@ const shownLevel = view => Math.min(state.level, view.renderer.levels.length - 1
 
 function encodeVisualization(view, encoder) {
     const mode = VIEW_MODES[state.view];
-    const levels = view.renderer.levels;
-    if (!mode || !levels.length || !view.renderer.gradient)
+    if (!mode || !viewAvailable(state.view))
+        return;
+    const renderer = state.view === "influence" ? view.influence : view.renderer;
+    const levels = renderer.levels;
+    if (!levels.length || !renderer.gradient)
         return;
     const level = levels[state.view === "level" ? shownLevel(view) : 0];
     let other = level.values.texture;
@@ -418,7 +465,7 @@ function encodeVisualization(view, encoder) {
             return;
         other = pair.renderer.levels[0].values.texture;
     }
-    device.queue.writeBuffer(view.uniforms, 0, new Uint32Array([mode, spaceIndex(state.space), 0, 0]));
+    device.queue.writeBuffer(view.uniforms, 0, new Uint32Array([mode, spaceIndex(state.space), 0, 0, GAMUTS.indexOf(state.gamut), 0, 0, 0]));
     const bindGroup = device.createBindGroup({
         layout: visualizePipeline.getBindGroupLayout(0),
         entries: [
@@ -466,7 +513,7 @@ function encodeRelaxation(renderer, encoder, steps) {
 
 // Reads back what each box shows, when something under the boxes needs it and it's changed since it was last read.
 function requestReadbacks() {
-    if (!device || gpuError || !(state.crossSection || state.sheet || state.numbers))
+    if (!device || gpuError || !(state.crossSection || state.sheet || state.numbers || state.sample))
         return;
     for (const view of views) {
         if (view.figure.hidden || !view.renderer?.levels.length || !view.solveKey)
@@ -557,14 +604,22 @@ function oklabLightness([r, g, b]) {
 function appearance(p, space) {
     const alpha = p[3];
     if (alpha <= 1e-6)
-        return { rgb: [0, 0, 0], alpha: 0, L: 0 };
+        return { rgb: [0, 0, 0], linear: [0, 0, 0], alpha: 0, L: 0 };
     const hue = HUE_INDEX[space];
     const c = [0, 1, 2].map(k => k === hue ? ((p[k] % 360) + 360) % 360 : p[k] / alpha);
     const linear = fromXYZ("srgb-linear", toXYZ(space, c));
-    return { rgb: linear.map(encodeSigned), alpha, L: oklabLightness(linear) };
+    return { rgb: linear.map(encodeSigned), linear, alpha, L: oklabLightness(linear) };
 }
 
-const excessOf = ({ rgb, alpha }) => Math.max(0, ...rgb.map(v => Math.max(-v, v - 1)), -alpha, alpha - 1);
+// The gamuts the hatching, the numbers and the sample measure against.
+const GAMUTS = ["srgb", "display-p3", "rec2020"];
+const GAMUT_NAMES = { srgb: "sRGB", "display-p3": "Display P3", rec2020: "Rec. 2020" };
+
+// How far a color's encoded components in the chosen gamut, or its alpha, go past 0 to 1.
+function excessOf({ linear, alpha }) {
+    const encoded = fromXYZ(state.gamut, toXYZ("srgb-linear", linear));
+    return Math.max(0, ...encoded.map(v => Math.max(-v, v - 1)), -alpha, alpha - 1);
+}
 
 // The readout's premultiplied color at a point, 0 to 1 across and down the box, filtered as the gradient is.
 function sampleReadout({ width, height, values }, [u, v]) {
@@ -856,7 +911,7 @@ function numbersText(view) {
     const readout = view.readout;
     if (!readout)
         return "Reading the solve…";
-    if (!readout.stats) {
+    if (readout.stats?.gamut !== state.gamut) {
         let held = 0, outside = 0, furthest = 0, darkest = Infinity, lightest = -Infinity;
         const count = readout.width * readout.height;
         for (let i = 0; i < count; ++i) {
@@ -870,7 +925,7 @@ function numbersText(view) {
             darkest = Math.min(darkest, color.L);
             lightest = Math.max(lightest, color.L);
         }
-        readout.stats = { count, held, outside, furthest, darkest, lightest };
+        readout.stats = { count, held, outside, furthest, darkest, lightest, gamut: state.gamut };
     }
     const { count, held, outside, furthest, darkest, lightest } = readout.stats;
     const levels = view.renderer.levels;
@@ -879,7 +934,7 @@ function numbersText(view) {
         ? `Grid ${readout.width} × ${readout.height} texels, in ${levels.length} levels down to ${coarsest.width} × ${coarsest.height}.`
         : `Level ${readout.level}: ${readout.width} × ${readout.height} texels.`;
     const percent = value => `${(100 * value / count).toFixed(value && value < count / 1000 ? 2 : 1)}%`;
-    return `${grid} ${held.toLocaleString()} held (${percent(held)}). ${percent(outside)} outside sRGB` +
+    return `${grid} ${held.toLocaleString()} held (${percent(held)}). ${percent(outside)} outside ${GAMUT_NAMES[state.gamut]}` +
         (outside ? `, up to ${furthest.toFixed(3)} past 0 to 1.` : ".") +
         ` Oklab L from ${darkest.toFixed(3)} to ${lightest.toFixed(3)}.`;
 }
@@ -917,6 +972,8 @@ function drawSection(ctx, toPixels) {
 function commonState() {
     return {
         space: state?.space ?? "oklab",
+        gamutMapping: state?.gamutMapping ?? "clip",
+        backdrop: state?.backdrop ?? "checkerboard",
         resolution: state?.resolution ?? 512,
         models: state?.models ?? ["biharmonic", "harmonic"],
         view: state?.view ?? "gradient",
@@ -927,6 +984,50 @@ function commonState() {
         sheet: state?.sheet ?? false,
         sheetHeight: state?.sheetHeight ?? "L",
         numbers: state?.numbers ?? false,
+        about: state?.about ?? false,
+        gamut: state?.gamut ?? "srgb",
+        sample: state?.sample ?? false,
     };
 }
 
+// MARK: - Sample
+
+// The solved color under the pointer, read back from the solve: its components in the interpolation space, as encoded
+// sRGB, and how far it's outside the chosen gamut.
+const sample = Object.assign(document.createElement("div"), { id: "sampleReadout", hidden: true });
+document.body.append(sample);
+
+function showSample(view, event) {
+    const readout = view.readout;
+    if (!state.sample || !readout) {
+        sample.hidden = true;
+        return;
+    }
+    const rect = view.overlay.getBoundingClientRect();
+    const p = [(event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height];
+    if (p[0] < 0 || p[0] > 1 || p[1] < 0 || p[1] > 1) {
+        sample.hidden = true;
+        return;
+    }
+    const color = sampleReadout(readout, p);
+    const shown = appearance(color, readout.space);
+    const hue = HUE_INDEX[readout.space];
+    const components = [0, 1, 2].map(k => k === hue ? color[k] : color[3] > 1e-6 ? color[k] / color[3] : 0);
+    const excess = excessOf(shown);
+    const lines = [
+        `${readout.space} ${components.map(v => v.toFixed(3)).join(" ")} / ${shown.alpha.toFixed(3)}`,
+        `sRGB ${shown.rgb.map(v => v.toFixed(3)).join(" ")}`,
+        excess > 1 / 512 ? `${excess.toFixed(3)} outside ${GAMUT_NAMES[state.gamut]}` : `Inside ${GAMUT_NAMES[state.gamut]}`,
+    ];
+    const swatch = Object.assign(document.createElement("span"), { className: "sampleSwatch" });
+    swatch.style.background = `rgb(${shown.rgb.map(v => Math.round(clamp(v, 0, 1) * 255)).join(" ")} / ${clamp(shown.alpha, 0, 1)})`;
+    sample.replaceChildren(swatch, ...lines.map(text => Object.assign(document.createElement("div"), { textContent: text })));
+    sample.hidden = false;
+    sample.style.left = `${event.clientX + 14}px`;
+    sample.style.top = `${event.clientY + 14}px`;
+}
+
+for (const view of views) {
+    view.overlay.addEventListener("pointermove", event => showSample(view, event));
+    view.overlay.addEventListener("pointerleave", () => sample.hidden = true);
+}

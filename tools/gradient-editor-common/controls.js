@@ -1,7 +1,9 @@
 // MARK: - Shared controls
 
 // The editor gives PRESETS, PRESET_KEYS (the state a preset sets besides the box), presetState(index), resetEditing()
-// for when a preset replaces the state, and VIEW_NOTES.
+// for when a preset replaces the state, influenceAvailable(), whether something is selected to show the influence of,
+// gradientData(model, influence), VIEW_NOTES, cssText(), the gradient as its made-up CSS, and MODEL_ABOUT, for
+// each model how it works, its pros and cons, where it comes from (HTML, for its links) and what a spec would need.
 
 for (const space of SPACES)
     $("space").add(new Option(space, space));
@@ -40,6 +42,8 @@ function updateCommonControls() {
         $(id + "Note").hidden = !state[id];
     }
     $("sheetRow").hidden = !state.sheet;
+    $("gamut").value = state.gamut;
+    $("sample").checked = state.sample;
     const heights = sheetHeights(state.space);
     if ($("sheetHeight").dataset.space !== String(state.space)) {
         $("sheetHeight").replaceChildren(...heights.map(height => new Option(height.label, height.value)));
@@ -51,10 +55,49 @@ function updateCommonControls() {
             $(id).value = state[id];
     }
     $("space").value = state.space;
+    $("gamutMapping").value = state.gamutMapping;
+    renderBackdrop();
     $("resolution").value = String(state.resolution);
     for (const button of document.querySelectorAll("#modelBar button"))
         button.setAttribute("aria-pressed", String(state.models.includes(button.dataset.model)));
+    $("aboutButton").setAttribute("aria-pressed", String(state.about));
+    for (const view of views) {
+        const about = MODEL_ABOUT[view.model];
+        const element = view.figure.querySelector(".modelAbout");
+        element.hidden = !state.about;
+        element.querySelector(".modelNote").textContent = about.note;
+        element.querySelector(".modelSource").innerHTML = about.source;
+        element.querySelector(".modelSpec").textContent = about.spec;
+        for (const [selector, list] of [[".modelPros", about.pros], [".modelCons", about.cons]]) {
+            const items = element.querySelector(selector);
+            if (items.children.length !== list.length)
+                items.replaceChildren(...list.map(text => Object.assign(document.createElement("li"), { textContent: text })));
+        }
+    }
+    const css = cssText();
+    if ($("output").value !== css)
+        $("output").value = css;
 }
+
+async function copy(text, label) {
+    try {
+        await navigator.clipboard.writeText(text);
+        $("copyStatus").textContent = `Copied ${label}.`;
+    } catch {
+        $("output").select();
+        $("copyStatus").textContent = document.execCommand("copy") ? `Copied ${label}.` : "Couldn't copy.";
+    }
+    setTimeout(() => $("copyStatus").textContent = "", 1500);
+}
+$("aboutButton").addEventListener("click", () => {
+    state.about = !state.about;
+    changed();
+});
+$("copyCSS").addEventListener("click", () => copy($("output").value, "the CSS"));
+$("copyLink").addEventListener("click", () => {
+    writeHash();
+    copy(location.href, "the link");
+});
 
 $("preset").addEventListener("change", () => {
     if ($("preset").value === "")
@@ -73,6 +116,10 @@ for (const id of ["width", "height"]) {
 }
 $("space").addEventListener("change", () => {
     state.space = $("space").value;
+    changed();
+});
+$("gamutMapping").addEventListener("change", () => {
+    state.gamutMapping = $("gamutMapping").value;
     changed();
 });
 $("resolution").addEventListener("change", () => {
@@ -112,6 +159,14 @@ for (const id of ["crossSection", "sheet", "numbers"]) {
         changed();
     });
 }
+$("gamut").addEventListener("change", () => {
+    state.gamut = $("gamut").value;
+    changed();
+});
+$("sample").addEventListener("change", () => {
+    state.sample = $("sample").checked;
+    changed();
+});
 $("sheetHeight").addEventListener("change", () => {
     state.sheetHeight = $("sheetHeight").value;
     changed();
@@ -150,3 +205,4 @@ $("playSteps").addEventListener("click", () => {
     playing.frame = requestAnimationFrame(tick);
 });
 
+__BACKDROP__

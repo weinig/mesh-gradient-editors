@@ -125,6 +125,8 @@ const PRESETS = [
     },
 ];
 
+const influenceAvailable = () => !!(selection && state.curves[selection.curve]);
+
 // What the shared code needs from this editor: which state a preset sets, which preset to start from, what to reset
 // when a preset is chosen, and which links it can read.
 const PRESET_KEYS = ["curves"];
@@ -323,7 +325,7 @@ function offsetPieces(flat, distance, closed) {
 //
 // A blurred curve is two one-sided copies of it
 // instead, each holding one side's color, moved apart by the blur, so the solve fills the band between them.
-function gradientData(model) {
+function gradientData(model, influence = false) {
     const segments = [], strengths = [], lines = [], colors = [];
     const add = (flat, left, right, twoSided, strength, closed) => {
         for (const [x0, y0, x1, y1] of flat) {
@@ -334,7 +336,10 @@ function gradientData(model) {
     };
     // Every curve's colors are taken to the renderer at once, so a polar space's hues are moved together.
     const drawn = state.curves.map(curve => ({ curve, flat: pieces(curve) })).filter(({ flat }) => flat.length);
-    const prepared = rendererColors(drawn.flatMap(({ curve, flat }) => sideColors(curve, flat).map(interpolationComponents)));
+    // For the influence, the selected curve is 1 on both sides and the others 0, in srgb-linear.
+    const prepared = influence
+        ? drawn.flatMap(({ curve }) => Array(2).fill(Array(3).fill(curve === state.curves[selection?.curve] ? 1 : 0).concat(1)))
+        : rendererColors(drawn.flatMap(({ curve, flat }) => sideColors(curve, flat).map(interpolationComponents)));
     for (const [i, { curve, flat }] of drawn.entries()) {
         const left = prepared[2 * i], right = prepared[2 * i + 1];
         colors.push(left, right);
@@ -350,20 +355,40 @@ function gradientData(model) {
     }
     const average = [0, 1, 2, 3].map(k => colors.length ? colors.reduce((sum, c) => sum + c[k], 0) / colors.length : 0);
     return {
-        space: spaceIndex(state.space), resolution: (drag && drag.kind !== "section") || adjusting ? Math.min(state.resolution, 256) : state.resolution, model,
+        space: influence ? spaceIndex("srgb-linear") : spaceIndex(state.space), resolution: (drag && drag.kind !== "section") || adjusting ? Math.min(state.resolution, 256) : state.resolution, model,
         isEmpty: !segments.length, average, points: [], segments, strengths, lines,
         hasTwoSidedLines: segments.some((_, i) => i % 23 === 22 && segments[i] !== 0), isOpaque: colors.every(c => c[3] >= 1),
     };
 }
 
 __COMMON_PAGE__
+// MARK: - About the models
+
+const MODEL_ABOUT = {
+    biharmonic: {
+        note: "A stiff sheet (∆²u = 0) held along the curves. Each side of a curve holds its color across a thin band, and between the curves the sheet bends as little as it can. It's solved on a grid, coarse to fine, by MeshShader2's solver.",
+        pros: ["Smooth everywhere, its slope too", "Shading rolls off away from a curve, like light on a surface", "A few curves go a long way"],
+        cons: ["Overshoots past a curve's colors, out of gamut beside sharp jumps", "A partly held curve overshoots badly, so Strength is for the harmonic model only for now", "Needs a solver, so engines would only match approximately", "Solves again whenever a curve moves or the box changes size"],
+        source: "Finch, Snyder and Hoppe, <a href=\"https://hhoppe.com/proj/freeform/\" target=\"_blank\" rel=\"noopener\">“Freeform Vector Graphics with Controlled Thin-Plate Splines”</a> (2011, <a href=\"https://doi.org/10.1145/2070781.2024200\" target=\"_blank\" rel=\"noopener\">DOI</a>). They hold curves the same way, and add controls for tension and for where the slope may break.",
+        spec: "A spec would define how wide a curve's bands are, what happens at the box's edges, what strength and blur do, and how accurate the solve has to be.",
+    },
+    harmonic: {
+        note: "A stretched membrane (∆u = 0) held along the curves. Each texel is the average of its neighbors, so the colors spread out from the curves and meet between them. It's solved on a grid, coarse to fine, by MeshShader2's solver.",
+        pros: ["Never overshoots: every color is a mix of the curves' colors", "Strength and blur behave predictably", "Simple, with fast solvers that suit the GPU"],
+        cons: ["Creased along the curves, and peaked at their ends", "Can look flat between curves", "Depends on how wide the bands are, the grid and the edges"],
+        source: "Orzan et al., <a href=\"https://inria.hal.science/inria-00274768\" target=\"_blank\" rel=\"noopener\">“Diffusion Curves: A Vector Representation for Smooth-Shaded Images”</a> (2008, <a href=\"https://doi.org/10.1145/1399504.1360691\" target=\"_blank\" rel=\"noopener\">DOI</a>). Colors spread out from curves, each side its own color, and are blurred across them where they ask for it.",
+        spec: "As for the biharmonic model. A membrane can't be held by a curve of no width, so a spec would have to give curves one.",
+    },
+};
+
 // MARK: - View notes
 
 const VIEW_NOTES = {
     gradient: "The gradient each model draws from the same curves.",
     holds: "Every texel of the grid is worked out from the texels the curves hold, shown here in the colors they're held to, over the faded gradient. A curve holds a band 1% of the box's shorter side either side of it, each side its own color. Below 100% strength, its texels are held only in part, so the colors around them bleed in. A blurred curve is held as two one-sided copies, moved apart by the blur, and the solve fills the band between them. Set Grid to 128 to see the texels.",
-    gamut: "Hatching marks where the solved colors fall outside sRGB, so they're clipped to draw them. The harmonic model makes each texel the average of its neighbors, so it can't go past the colors it's held to. The biharmonic model keeps the slope smooth through each curve, so past a jump it keeps going, and overshoots. In oklab, a mix of two colors inside sRGB can also fall outside it, in either model.",
+    gamut: "Hatching marks where the solved colors fall outside the chosen gamut, where they're clipped or gamut mapped to draw them. The harmonic model makes each texel the average of its neighbors, so it can't go past the colors it's held to. The biharmonic model keeps the slope smooth through each curve, so past a jump it keeps going, and overshoots. In oklab, a mix of two colors inside sRGB can also fall outside it, in either model.",
     isolines: "Lines of equal lightness, every 0.025 of Oklab L. The harmonic model is a membrane: its lines bunch up at the curves and kink where they end, since it's continuous there but not smooth. The biharmonic model is a stiff sheet: its lines bend smoothly around a curve's end, since its slope is continuous too.",
+    influence: "Each model mixes the curves' colors in fixed proportions, so each point's color is a weighted sum of them. This shows the selected curve's weight, both its sides together: orange where it adds its color, white where it adds none, blue where it takes color away, and dark red above 1. The harmonic model's stays between 0 and 1. The biharmonic model's goes past them beside the curve, where it overshoots.",
     difference: "White where the two models agree, purple where they differ, darkest at a difference of 0.15 in Oklab (ΔE OK) or more. Both boxes show the same difference.",
     level: "The solve runs on a pyramid of grids, each half the size of the one above it. The coarsest is solved outright, and each finer level starts from the one below, scaled up, so it only has to fix the detail. This shows one level's texels as they are, unfiltered, with the texels the curves hold marked. Level 0 is the finest, the one that's drawn.",
     relaxation: "The harmonic model's finest grid, started from the curves' average color and relaxed without the pyramid: each step moves every texel toward the average of its four neighbors. The colors creep out from the curves a texel or two a step, so a fine grid would take hundreds of thousands of steps to settle. That's why the solve starts coarse. The biharmonic box shows its gradient.",
@@ -996,9 +1021,6 @@ function updateControls() {
         }
     });
     $("emptyNote").hidden = state.curves.length > 0;
-    const css = cssText();
-    if ($("output").value !== css)
-        $("output").value = css;
 
     const selected = selection && state.curves[selection.curve];
     $("curvesTitle").textContent = selected ? curveName(selected, selection.curve) : "Curves";
@@ -1245,21 +1267,5 @@ function cssText() {
     const lines = [prelude, ...state.curves.map(curveText)];
     return `background-image: diffusion-gradient(${lines.join(",\n    ")});`;
 }
-
-async function copy(text, label) {
-    try {
-        await navigator.clipboard.writeText(text);
-        $("copyStatus").textContent = `Copied ${label}.`;
-    } catch {
-        $("output").select();
-        $("copyStatus").textContent = document.execCommand("copy") ? `Copied ${label}.` : "Couldn't copy.";
-    }
-    setTimeout(() => $("copyStatus").textContent = "", 1500);
-}
-$("copyCSS").addEventListener("click", () => copy($("output").value, "the CSS"));
-$("copyLink").addEventListener("click", () => {
-    writeHash();
-    copy(location.href, "the link");
-});
 
 __COMMON_FRAGMENT__
