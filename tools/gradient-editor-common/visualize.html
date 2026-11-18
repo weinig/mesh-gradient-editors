@@ -37,11 +37,17 @@
             <div class="row">
                 <label><input type="checkbox" id="sample"> Sample the color under the pointer</label>
             </div>
+            <div id="edgeStripsRow" class="row" title="A two-sided curve's jump is held across a couple of texels, which filtering up to the screen would blur. Strips along it, drawn over the gradient at the screen's resolution, keep it sharp. Turn them off to see the solve alone.">
+                <label><input type="checkbox" id="edgeStrips"> Draw the edge strips that keep a curve's jump sharp</label>
+            </div>
             <h3>Under each box</h3>
             <div class="row">
                 <label><input type="checkbox" id="crossSection"> Cross-section</label>
                 <label><input type="checkbox" id="sheet"> 3D</label>
                 <label><input type="checkbox" id="numbers"> Numbers</label>
+            </div>
+            <div id="otherCurvesRow" class="row">
+                <label><input type="checkbox" id="otherCurves"> Also the other model's curves, dashed</label>
             </div>
             <p id="crossSectionNote" class="note">The color's red, green and blue along the dashed line from A to B, as encoded sRGB before it's clipped. Where they go past 0 or 1, in the shaded bands, the color is clipped. The bars along the bottom show how firmly the {{HOLDERS}} hold each point. Drag A and B in either box.</p>
             <div id="sheetRow" class="row">

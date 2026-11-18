@@ -1,7 +1,7 @@
 // MARK: - Shared controls
 
 // The editor gives PRESETS, PRESET_KEYS (the state a preset sets besides the box), presetState(index), resetEditing()
-// for when a preset replaces the state, influenceAvailable(), whether something is selected to show the influence of,
+// for when a preset replaces the state, TWO_SIDED_LINES, whether its lines can hold a different color each side, influenceAvailable(), whether something is selected to show the influence of,
 // gradientData(model, influence), VIEW_NOTES, cssText(), the gradient as its made-up CSS, and MODEL_ABOUT, for
 // each model how it works, its pros and cons, where it comes from (HTML, for its links) and what a spec would need.
 
@@ -44,6 +44,10 @@ function updateCommonControls() {
     $("sheetRow").hidden = !state.sheet;
     $("gamut").value = state.gamut;
     $("sample").checked = state.sample;
+    $("otherCurves").checked = state.otherCurves;
+    $("otherCurvesRow").hidden = !state.crossSection || state.models.length < 2;
+    $("edgeStrips").checked = state.edgeStrips;
+    $("edgeStripsRow").hidden = !TWO_SIDED_LINES;
     const heights = sheetHeights(state.space);
     if ($("sheetHeight").dataset.space !== String(state.space)) {
         $("sheetHeight").replaceChildren(...heights.map(height => new Option(height.label, height.value)));
@@ -168,6 +172,12 @@ $("gamut").addEventListener("change", () => {
     state.gamut = $("gamut").value;
     changed();
 });
+for (const id of ["otherCurves", "edgeStrips"]) {
+    $(id).addEventListener("change", () => {
+        state[id] = $(id).checked;
+        changed();
+    });
+}
 $("sample").addEventListener("change", () => {
     state.sample = $("sample").checked;
     changed();
@@ -193,7 +203,7 @@ $("playSteps").addEventListener("click", () => {
     }
     playing = { start: performance.now(), frame: 0 };
     const tick = now => {
-        const steps = Math.min(12, Math.floor((now - playing.start) / 500));
+        const steps = clamp(Math.floor((now - playing.start) / 500), 0, 12);
         if (steps !== state.steps) {
             state.steps = steps;
             changed();

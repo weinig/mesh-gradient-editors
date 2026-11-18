@@ -210,7 +210,7 @@ button.small { font-size: 12px; }
 #toolbar > button:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
 #toolbar > button[aria-pressed=true] { background: var(--accent); color: #fff; }
 #toolbar svg { width: 24px; height: 24px; display: block; }
-#presetNote[hidden], #levelRow[hidden], #stepsRow[hidden], #sheetRow[hidden], aside .note[hidden] { display: none; }
+#presetNote[hidden], #otherCurvesRow[hidden], #edgeStripsRow[hidden], #levelRow[hidden], #stepsRow[hidden], #sheetRow[hidden], aside .note[hidden] { display: none; }
 #levelRow input[type=range], #stepsRow input[type=range] { flex: 1; }
 #levelValue, #stepsValue { min-width: 5.5em; text-align: right; font-variant-numeric: tabular-nums; }
 aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -491,11 +491,17 @@ input.percent { width: 72px; }
             <div class="row">
                 <label><input type="checkbox" id="sample"> Sample the color under the pointer</label>
             </div>
+            <div id="edgeStripsRow" class="row" title="A two-sided curve's jump is held across a couple of texels, which filtering up to the screen would blur. Strips along it, drawn over the gradient at the screen's resolution, keep it sharp. Turn them off to see the solve alone.">
+                <label><input type="checkbox" id="edgeStrips"> Draw the edge strips that keep a curve's jump sharp</label>
+            </div>
             <h3>Under each box</h3>
             <div class="row">
                 <label><input type="checkbox" id="crossSection"> Cross-section</label>
                 <label><input type="checkbox" id="sheet"> 3D</label>
                 <label><input type="checkbox" id="numbers"> Numbers</label>
+            </div>
+            <div id="otherCurvesRow" class="row">
+                <label><input type="checkbox" id="otherCurves"> Also the other model's curves, dashed</label>
             </div>
             <p id="crossSectionNote" class="note">The color's red, green and blue along the dashed line from A to B, as encoded sRGB before it's clipped. Where they go past 0 or 1, in the shaded bands, the color is clipped. The bars along the bottom show how firmly the stops hold each point. Drag A and B in either box.</p>
             <div id="sheetRow" class="row">
@@ -1185,7 +1191,7 @@ class WebGPUFreeformGradientRenderer {
       { binding: 1, resource: this.view(this.levels[0].values.texture) },
     ]));
     render.draw(3);
-    if (this.edgeVertexCount > 0) {
+    if (this.edgeVertexCount > 0 && this.gradient.edgeStrips !== false) {
       // Over the gradient, the strips either side of its two-sided lines.
       render.setPipeline(this.edgePipeline);
       render.setBindGroup(0, this.bindGroup(this.edgePipeline, [
@@ -2472,6 +2478,7 @@ const influenceAvailable = () => selection !== null && !!state.stops[selection];
 // What the shared code needs from this editor: which state a preset sets, which preset to start from, what to reset
 // when a preset is chosen, and which links it can read.
 const PRESET_KEYS = ["stops", "lines"];
+const TWO_SIDED_LINES = false;
 const DEFAULT_PRESET = 0;
 
 function resetEditing() {
@@ -2479,8 +2486,26 @@ function resetEditing() {
     drawing = null;
 }
 
+// A link's stops and lines, made sound: stops with a position and a color, and lines of two stops or more that are in
+// range.
 function acceptsState(data) {
-    return Array.isArray(data.stops) && Array.isArray(data.lines);
+    if (!Array.isArray(data.stops) || !Array.isArray(data.lines))
+        return false;
+    const finite = v => typeof v === "number" && Number.isFinite(v);
+    const kept = data.stops.map(stop => !!stop && Array.isArray(stop.p) && finite(stop.p[0]) && finite(stop.p[1]) && typeof stop.color === "string");
+    const index = [];
+    let next = 0;
+    kept.forEach((keep, i) => index[i] = keep ? next++ : -1);
+    data.stops = data.stops.filter((_, i) => kept[i]).map(stop => ({
+        p: stop.p.slice(0, 2), color: stop.color,
+        opacity: finite(stop.opacity) ? clamp(stop.opacity, 0, 100) : 100,
+        spread: finite(stop.spread) ? clamp(stop.spread, 0, 100) : 0,
+    }));
+    data.lines = data.lines.filter(line => line && Array.isArray(line.stops)).map(line => {
+        const stops = line.stops.filter(i => Number.isInteger(i) && index[i] >= 0).map(i => index[i]);
+        return { stops, closed: !!line.closed && stops.length > 2 };
+    }).filter(line => line.stops.length > 1);
+    return true;
 }
 
 function presetState(index) {
@@ -2499,8 +2524,20 @@ const boxScale = () => {
 };
 
 // The lines each stop is on.
+// The lines each stop is on. A line being drawn isn't one until it has two stops, so its first stop is still a point.
 function linesThrough(index) {
-    return state.lines.filter(line => line.stops.includes(index));
+    return state.lines.filter(line => line.stops.length > 1 && line.stops.includes(index));
+}
+
+// Drops the lines left with fewer than two stops, but for the one being drawn.
+function pruneLines() {
+    const drawn = drawing !== null ? state.lines[drawing] : null;
+    state.lines = state.lines.filter(line => line.stops.length > 1 || line === drawn);
+    for (const line of state.lines) {
+        if (line.stops.length < 3)
+            line.closed = false;
+    }
+    drawing = drawn ? state.lines.indexOf(drawn) : null;
 }
 
 // A line's stretches from stop to stop, as their four Bézier points and the stops at either end. Two stops make a
@@ -2810,7 +2847,7 @@ function render() {
 
 // Solves the view's gradient if it changed, or relaxes it for the relaxation view, and draws it.
 function encodeView(view, encoder, viewWidth, viewHeight) {
-    const data = { ...windowed(gradientData(view.model)), gamutMapping: state.gamutMapping === "map" ? 1 : 0 };
+    const data = { ...windowed(gradientData(view.model)), gamutMapping: state.gamutMapping === "map" ? 1 : 0, edgeStrips: state.edgeStrips };
     // The box the renderer solves: the view's, or twice it for open edges.
     const width = openEdges() ? 2 * viewWidth : viewWidth, height = openEdges() ? 2 * viewHeight : viewHeight;
     const relaxing = state.view === "relaxation" && view.model === "harmonic";
@@ -2830,6 +2867,9 @@ function encodeView(view, encoder, viewWidth, viewHeight) {
     view.target = view.context.getCurrentTexture().createView();
     view.renderer.encode(encoder, view.target, width, height);
     view.solveKey = `${key} ${width}x${height}`;
+    // What a readback of this solve decodes it with.
+    view.solveSpace = state.space;
+    view.solveWindow = viewWindow();
     // The influence is solved as a gradient of its own, drawn over by the visualization.
     if (state.view === "influence" && influenceAvailable()) {
         const influence = windowed(gradientData(view.model, true));
@@ -2929,11 +2969,12 @@ fn linearToOklab(c: vec3<f32>) -> vec3<f32> {
 
 // A premultiplied color in the interpolation space as linear sRGB, unclamped, with straight alpha. In a polar space
 // the hue isn't premultiplied.
+// Alpha is clamped before unpremultiplying, as the display does, but returned as it is, so overshoot can be measured.
 fn linearOf(premultiplied: vec4<f32>) -> vec4<f32> {
     if (premultiplied.a <= 1e-6) {
         return vec4<f32>(0.0);
     }
-    var c = premultiplied.rgb / premultiplied.a;
+    var c = premultiplied.rgb / min(premultiplied.a, 1.0);
     let hue = hueComponent(visualize.space);
     if (hue >= 0) {
         c[hue] = normalizeHue(premultiplied[hue]);
@@ -3194,11 +3235,11 @@ async function readBack(view, index) {
     encoder.copyBufferToBuffer(values, 0, valuesRead, 0, values.size);
     encoder.copyBufferToBuffer(weights, 0, weightsRead, 0, weights.size);
     device.queue.submit([encoder.finish()]);
-    const space = state.space;
+    const space = view.solveSpace, crop = view.solveWindow;
     try {
         await Promise.all([valuesRead.mapAsync(GPUMapMode.READ), weightsRead.mapAsync(GPUMapMode.READ)]);
         view.readout = {
-            width, height, space, level: index, stats: null, window: viewWindow(),
+            width, height, space, level: index, stats: null, window: crop,
             values: new Float32Array(valuesRead.getMappedRange()).slice(0, width * height * 4),
             weights: new Float32Array(weightsRead.getMappedRange()).slice(0, width * height),
         };
@@ -3237,6 +3278,19 @@ function oklabLightness([r, g, b]) {
     return 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s;
 }
 
+// A hue moved by whole turns to between 0 and 360. The solve's hues can be up to a turn either way of that.
+const normalizedHue = h => ((h % 360) + 360) % 360;
+
+// A component of a premultiplied color as the gradient shows it: alpha and a polar space's hue as the solve has them,
+// the hue normalized, and the others unpremultiplied by alpha clamped to 1, as the display does.
+function straightComponent(color, k, space) {
+    if (k === 3)
+        return color[3];
+    if (k === HUE_INDEX[space])
+        return normalizedHue(color[k]);
+    return color[3] > 1e-6 ? color[k] / Math.min(color[3], 1) : 0;
+}
+
 // A premultiplied color in the interpolation space as the gradient shows it before clipping: encoded sRGB with
 // straight alpha, and its Oklab lightness. In a polar space the hue isn't premultiplied.
 function appearance(p, space) {
@@ -3244,7 +3298,8 @@ function appearance(p, space) {
     if (alpha <= 1e-6)
         return { rgb: [0, 0, 0], linear: [0, 0, 0], alpha: 0, L: 0 };
     const hue = HUE_INDEX[space];
-    const c = [0, 1, 2].map(k => k === hue ? ((p[k] % 360) + 360) % 360 : p[k] / alpha);
+    // Alpha is clamped before unpremultiplying, as the display does.
+    const c = [0, 1, 2].map(k => k === hue ? normalizedHue(p[k]) : p[k] / Math.min(alpha, 1));
     const linear = fromXYZ("srgb-linear", toXYZ(space, c));
     return { rgb: linear.map(encodeSigned), linear, alpha, L: oklabLightness(linear) };
 }
@@ -3337,7 +3392,13 @@ function drawPlot(view) {
         const t = i / count, p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
         samples.push({ ...appearance(sampleReadout(readout, p), readout.space), weight: weightAt(readout, p) });
     }
-    const all = samples.flatMap(s => s.rgb);
+    // The other box's colors along the same line, to draw dashed.
+    const other = state.otherCurves ? views.find(other => other !== view && !other.figure.hidden && other.readout)?.readout : null;
+    const otherSamples = other ? samples.map((_, i) => {
+        const t = i / count, p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+        return appearance(sampleReadout(other, p), other.space);
+    }) : [];
+    const all = [...samples, ...otherSamples].flatMap(s => s.rgb);
     const lo = Math.min(0, ...all) - 0.05, hi = Math.max(1, ...all) + 0.05;
     const left = 24, right = 24, top = 24, bottom = 18;
     const plotWidth = width - left - right, plotHeight = height - top - bottom;
@@ -3387,6 +3448,11 @@ function drawPlot(view) {
         ctx.stroke();
         ctx.setLineDash([]);
     };
+    if (otherSamples.length) {
+        ctx.globalAlpha = 0.6;
+        [0, 1, 2].forEach(k => line(otherSamples.map(s => s.rgb[k]), PLOT_COLORS[k], [3, 3]));
+        ctx.globalAlpha = 1;
+    }
     [0, 1, 2].forEach(k => line(samples.map(s => s.rgb[k]), PLOT_COLORS[k]));
     if (samples.some(s => s.alpha < 0.999))
         line(samples.map(s => s.alpha), `rgba(${ink}, 0.6)`, [4, 3]);
@@ -3443,8 +3509,7 @@ function drawSheet(view) {
     const component = Number(shown.value.slice(1));
     const heightAt = p => {
         const color = sampleReadout(readout, p);
-        // Alpha and a polar space's hue are as the solve has them; the others are premultiplied.
-        const value = component === 3 || component === HUE_INDEX[readout.space] ? color[component] : color[3] > 1e-6 ? color[component] / color[3] : 0;
+        const value = straightComponent(color, component, readout.space);
         return (value - low) / (high - low);
     };
     const heights = [];
@@ -3641,6 +3706,8 @@ function commonState() {
         edges: state?.edges ?? "mirrored",
         gamut: state?.gamut ?? "srgb",
         sample: state?.sample ?? false,
+        otherCurves: state?.otherCurves ?? false,
+        edgeStrips: state?.edgeStrips ?? true,
     };
 }
 
@@ -3665,8 +3732,7 @@ function showSample(view, event) {
     }
     const color = sampleReadout(readout, p);
     const shown = appearance(color, readout.space);
-    const hue = HUE_INDEX[readout.space];
-    const components = [0, 1, 2].map(k => k === hue ? color[k] : color[3] > 1e-6 ? color[k] / color[3] : 0);
+    const components = [0, 1, 2].map(k => straightComponent(color, k, readout.space));
     const excess = excessOf(shown);
     const lines = [
         `${readout.space} ${components.map(v => v.toFixed(3)).join(" ")} / ${shown.alpha.toFixed(3)}`,
@@ -3853,7 +3919,7 @@ function colorAt(p) {
     const sum = [0, 0, 0, 0];
     for (const stop of state.stops) {
         const weight = 1 / Math.max(((stop.p[0] - p[0]) * sx) ** 2 + ((stop.p[1] - p[1]) * sy) ** 2, 1e-8);
-        const color = parseColor(stop.color);
+        const color = parseColor(stop.color) ?? parseColor("black");
         const srgb = fromXYZ("srgb", toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
         srgb.forEach((v, k) => sum[k] += weight * v);
         sum[3] += weight * stop.opacity;
@@ -4035,14 +4101,31 @@ for (const view of views) {
 for (const button of document.querySelectorAll("#toolbar button[data-mode]"))
     button.addEventListener("click", () => setMode(button.dataset.mode));
 
-// Two colors mixed in sRGB, as a new stop on a line takes them.
+// Two colors mixed as the line between them mixes them: in the interpolation space, with straight components, a hue
+// the shorter way around, and alpha mixed too. The mix is written in that space's own CSS syntax.
 function colorMix(a, b, t) {
-    const toSRGB = text => {
-        const color = parseColor(text);
-        return fromXYZ("srgb", toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
-    };
-    const ca = toSRGB(a), cb = toSRGB(b);
-    return "#" + ca.map((v, k) => Math.round(clamp(v + (cb[k] - v) * t, 0, 1) * 255).toString(16).padStart(2, "0")).join("");
+    const [ca, cb] = [a, b].map(interpolationComponents);
+    const hue = HUE_INDEX[state.space];
+    if (hue !== undefined)
+        cb[hue] = ca[hue] + (((cb[hue] - ca[hue]) % 360 + 540) % 360 - 180);
+    const mixed = ca.map((v, k) => v + (cb[k] - v) * t);
+    if (hue !== undefined)
+        mixed[hue] = ((mixed[hue] % 360) + 360) % 360;
+    return cssColorIn(state.space, mixed.slice(0, 3), mixed[3]);
+}
+
+// Components in a space, as a CSS color in that space's syntax.
+function cssColorIn(space, c, alpha) {
+    const n = v => String(Math.round(v * 10000) / 10000);
+    const tail = alpha < 1 ? ` / ${n(clamp(alpha, 0, 1))}` : "";
+    switch (space) {
+    case "lab": case "oklab": case "lch": case "oklch":
+        return `${space}(${c.map(n).join(" ")}${tail})`;
+    case "hsl": case "hwb":
+        return `${space}(${n(c[0])} ${n(c[1])}% ${n(c[2])}%${tail})`;
+    default:
+        return `color(${space} ${c.map(n).join(" ")}${tail})`;
+    }
 }
 
 // MARK: - Controls
@@ -4095,7 +4178,7 @@ function updateStopList() {
     const list = $("stopList");
     const points = state.stops.map((_, i) => i).filter(i => !linesThrough(i).length);
     const groups = [
-        ...state.lines.map((line, l) => ({ label: `Line ${l + 1}`, stops: line.stops, closed: line.closed && line.stops.length > 2, line: l })),
+        ...state.lines.map((line, l) => ({ label: `Line ${l + 1}`, stops: line.stops, closed: line.closed && line.stops.length > 2, line: l })).filter(group => group.stops.length > 1),
         ...(points.length ? [{ label: "Points", stops: points, closed: false, line: null }] : []),
     ];
     const key = JSON.stringify(groups);
@@ -4126,10 +4209,12 @@ function updateStopList() {
                 const remove = Object.assign(document.createElement("button"), { className: "small", textContent: "×", title: "Delete this line and its stops" });
                 remove.addEventListener("click", () => {
                     // Its stops go too, but not one that joins it to another line.
+                    const drawn = drawing !== null ? state.lines[drawing] : null;
                     const [line] = state.lines.splice(group.line, 1);
-                    drawing = null;
-                    for (const index of line.stops.filter(i => !linesThrough(i).length).sort((a, b) => b - a))
+                    drawing = drawn && drawn !== line ? state.lines.indexOf(drawn) : null;
+                    for (const index of line.stops.filter(i => !state.lines.some(other => other.stops.includes(i))).sort((a, b) => b - a))
                         deleteStop(index);
+                    pruneLines();
                     changed();
                 });
                 row.append(remove);
@@ -4211,7 +4296,7 @@ $("showStops").addEventListener("change", () => {
 // MARK: - Shared controls
 
 // The editor gives PRESETS, PRESET_KEYS (the state a preset sets besides the box), presetState(index), resetEditing()
-// for when a preset replaces the state, influenceAvailable(), whether something is selected to show the influence of,
+// for when a preset replaces the state, TWO_SIDED_LINES, whether its lines can hold a different color each side, influenceAvailable(), whether something is selected to show the influence of,
 // gradientData(model, influence), VIEW_NOTES, cssText(), the gradient as its made-up CSS, and MODEL_ABOUT, for
 // each model how it works, its pros and cons, where it comes from (HTML, for its links) and what a spec would need.
 
@@ -4254,6 +4339,10 @@ function updateCommonControls() {
     $("sheetRow").hidden = !state.sheet;
     $("gamut").value = state.gamut;
     $("sample").checked = state.sample;
+    $("otherCurves").checked = state.otherCurves;
+    $("otherCurvesRow").hidden = !state.crossSection || state.models.length < 2;
+    $("edgeStrips").checked = state.edgeStrips;
+    $("edgeStripsRow").hidden = !TWO_SIDED_LINES;
     const heights = sheetHeights(state.space);
     if ($("sheetHeight").dataset.space !== String(state.space)) {
         $("sheetHeight").replaceChildren(...heights.map(height => new Option(height.label, height.value)));
@@ -4378,6 +4467,12 @@ $("gamut").addEventListener("change", () => {
     state.gamut = $("gamut").value;
     changed();
 });
+for (const id of ["otherCurves", "edgeStrips"]) {
+    $(id).addEventListener("change", () => {
+        state[id] = $(id).checked;
+        changed();
+    });
+}
 $("sample").addEventListener("change", () => {
     state.sample = $("sample").checked;
     changed();
@@ -4403,7 +4498,7 @@ $("playSteps").addEventListener("click", () => {
     }
     playing = { start: performance.now(), frame: 0 };
     const tick = now => {
-        const steps = Math.min(12, Math.floor((now - playing.start) / 500));
+        const steps = clamp(Math.floor((now - playing.start) / 500), 0, 12);
         if (steps !== state.steps) {
             state.steps = steps;
             changed();
@@ -4510,7 +4605,7 @@ function stopText(stop, withSpread) {
 function cssText() {
     const prelude = [state.models.length === 1 && state.models[0] === "harmonic" ? "harmonic" : "", `in ${state.space}`].filter(Boolean).join(" ");
     const points = state.stops.filter((_, i) => !linesThrough(i).length).map(stop => stopText(stop, true));
-    const lines = state.lines.map(line => {
+    const lines = state.lines.filter(line => line.stops.length > 1).map(line => {
         const stops = line.stops.map(i => stopText(state.stops[i], false));
         return `line(${[...stops, ...(line.closed && line.stops.length > 2 ? ["close"] : [])].join(", ")})`;
     });
@@ -4526,6 +4621,33 @@ function encodeState() {
     for (const byte of bytes)
         binary += String.fromCharCode(byte);
     return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+// The shared settings of a link, each kept to what the page can show, or its default.
+function soundState(data) {
+    const defaults = presetState(DEFAULT_PRESET);
+    const integer = (value, low, high, fallback) => Number.isInteger(value) ? clamp(value, low, high) : fallback;
+    const finite = v => typeof v === "number" && Number.isFinite(v);
+    data.width = finite(data.width) ? clamp(Math.round(data.width), 100, 2000) : defaults.width;
+    data.height = finite(data.height) ? clamp(Math.round(data.height), 100, 2000) : defaults.height;
+    data.steps = integer(data.steps, 0, 12, defaults.steps);
+    data.level = integer(data.level, 0, 16, defaults.level);
+    const resolutions = [...$("resolution").options].map(option => Number(option.value));
+    if (!resolutions.includes(data.resolution))
+        data.resolution = defaults.resolution;
+    const models = Array.isArray(data.models) ? ["biharmonic", "harmonic"].filter(model => data.models.includes(model)) : [];
+    data.models = models.length ? models : defaults.models;
+    if (![...$("view").options].some(option => option.value === data.view))
+        data.view = "gradient";
+    const point = p => Array.isArray(p) && p.length === 2 && p.every(finite);
+    data.section = Array.isArray(data.section) && data.section.length === 2 && data.section.every(point)
+        ? data.section.map(p => p.map(v => clamp(v, 0, 1))) : defaults.section;
+    if (typeof data.sheetHeight !== "string")
+        data.sheetHeight = defaults.sheetHeight;
+    for (const key of ["crossSection", "sheet", "numbers", "about", "sample", "otherCurves"])
+        data[key] = !!data[key];
+    data.edgeStrips = data.edgeStrips !== false;
+    return data;
 }
 
 function decodeState(text) {
@@ -4547,7 +4669,7 @@ function decodeState(text) {
         if (!EDGES.includes(data.edges))
             data.edges = "mirrored";
         delete data.v;
-        return { ...presetState(DEFAULT_PRESET), ...data };
+        return soundState({ ...presetState(DEFAULT_PRESET), ...data });
     } catch {
         return null;
     }

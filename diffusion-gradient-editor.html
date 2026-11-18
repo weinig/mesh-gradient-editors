@@ -210,7 +210,7 @@ button.small { font-size: 12px; }
 #toolbar > button:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
 #toolbar > button[aria-pressed=true] { background: var(--accent); color: #fff; }
 #toolbar svg { width: 24px; height: 24px; display: block; }
-#presetNote[hidden], #levelRow[hidden], #stepsRow[hidden], #sheetRow[hidden], aside .note[hidden] { display: none; }
+#presetNote[hidden], #otherCurvesRow[hidden], #edgeStripsRow[hidden], #levelRow[hidden], #stepsRow[hidden], #sheetRow[hidden], aside .note[hidden] { display: none; }
 #levelRow input[type=range], #stepsRow input[type=range] { flex: 1; }
 #levelValue, #stepsValue { min-width: 5.5em; text-align: right; font-variant-numeric: tabular-nums; }
 aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -495,11 +495,17 @@ aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transf
             <div class="row">
                 <label><input type="checkbox" id="sample"> Sample the color under the pointer</label>
             </div>
+            <div id="edgeStripsRow" class="row" title="A two-sided curve's jump is held across a couple of texels, which filtering up to the screen would blur. Strips along it, drawn over the gradient at the screen's resolution, keep it sharp. Turn them off to see the solve alone.">
+                <label><input type="checkbox" id="edgeStrips"> Draw the edge strips that keep a curve's jump sharp</label>
+            </div>
             <h3>Under each box</h3>
             <div class="row">
                 <label><input type="checkbox" id="crossSection"> Cross-section</label>
                 <label><input type="checkbox" id="sheet"> 3D</label>
                 <label><input type="checkbox" id="numbers"> Numbers</label>
+            </div>
+            <div id="otherCurvesRow" class="row">
+                <label><input type="checkbox" id="otherCurves"> Also the other model's curves, dashed</label>
             </div>
             <p id="crossSectionNote" class="note">The color's red, green and blue along the dashed line from A to B, as encoded sRGB before it's clipped. Where they go past 0 or 1, in the shaded bands, the color is clipped. The bars along the bottom show how firmly the curves hold each point. Drag A and B in either box.</p>
             <div id="sheetRow" class="row">
@@ -1189,7 +1195,7 @@ class WebGPUFreeformGradientRenderer {
       { binding: 1, resource: this.view(this.levels[0].values.texture) },
     ]));
     render.draw(3);
-    if (this.edgeVertexCount > 0) {
+    if (this.edgeVertexCount > 0 && this.gradient.edgeStrips !== false) {
       // Over the gradient, the strips either side of its two-sided lines.
       render.setPipeline(this.edgePipeline);
       render.setBindGroup(0, this.bindGroup(this.edgePipeline, [
@@ -2477,6 +2483,7 @@ const influenceAvailable = () => !!(selection && state.curves[selection.curve]);
 // What the shared code needs from this editor: which state a preset sets, which preset to start from, what to reset
 // when a preset is chosen, and which links it can read.
 const PRESET_KEYS = ["curves"];
+const TWO_SIDED_LINES = true;
 const DEFAULT_PRESET = 2;
 
 function resetEditing() {
@@ -2488,8 +2495,27 @@ function resetEditing() {
 function acceptsState(data) {
     if (!Array.isArray(data.curves))
         return false;
-    for (const curve of data.curves)
+    const point = p => Array.isArray(p) && p.length >= 2 && p.slice(0, 2).every(Number.isFinite);
+    const node = n => !!n && point(n.p) && point(n.in) && point(n.out);
+    const sound = curve => {
+        switch (curve.kind) {
+        case "ellipse": return point(curve.center) && point(curve.radii) && Number.isFinite(curve.angle);
+        case "line": return point(curve.from) && point(curve.to);
+        case "arc": return point(curve.from) && point(curve.to) && Number.isFinite(curve.bend);
+        case "path": return Array.isArray(curve.nodes) && curve.nodes.length > 1 && curve.nodes.every(node);
+        default: return false;
+        }
+    };
+    data.curves = data.curves.filter(curve => {
+        if (!curve || typeof curve !== "object")
+            return false;
         curve.kind ??= "path";
+        // A closed path needs three nodes to close.
+        if (curve.kind === "path" && curve.closed && curve.nodes?.length < 3)
+            return false;
+        const sides = curve.closed ? ["inside", "outside"] : ["left", "right"];
+        return sound(curve) && sides.every(side => typeof curve[side] === "string");
+    });
     return true;
 }
 
@@ -2646,9 +2672,16 @@ function offsetPieces(flat, distance, closed) {
     const [sx, sy] = boxScale();
     const normals = flat.map(([x0, y0, x1, y1]) => {
         const dx = (x1 - x0) * sx, dy = (y1 - y0) * sy;
-        const length = Math.hypot(dx, dy) || 1;
-        return [dy / length, -dx / length];
+        const length = Math.hypot(dx, dy);
+        return length > 1e-9 ? [dy / length, -dx / length] : null;
     });
+    // A piece of no length has no direction of its own, so it takes the nearest one's before it, or after it.
+    for (let i = 1; i < normals.length; ++i)
+        normals[i] ??= normals[i - 1];
+    for (let i = normals.length - 2; i >= 0; --i)
+        normals[i] ??= normals[i + 1];
+    if (!normals[0])
+        return flat;
     const count = flat.length;
     const joints = [];
     for (let i = 0; i <= count; ++i) {
@@ -2923,7 +2956,7 @@ function render() {
 
 // Solves the view's gradient if it changed, or relaxes it for the relaxation view, and draws it.
 function encodeView(view, encoder, viewWidth, viewHeight) {
-    const data = { ...windowed(gradientData(view.model)), gamutMapping: state.gamutMapping === "map" ? 1 : 0 };
+    const data = { ...windowed(gradientData(view.model)), gamutMapping: state.gamutMapping === "map" ? 1 : 0, edgeStrips: state.edgeStrips };
     // The box the renderer solves: the view's, or twice it for open edges.
     const width = openEdges() ? 2 * viewWidth : viewWidth, height = openEdges() ? 2 * viewHeight : viewHeight;
     const relaxing = state.view === "relaxation" && view.model === "harmonic";
@@ -2943,6 +2976,9 @@ function encodeView(view, encoder, viewWidth, viewHeight) {
     view.target = view.context.getCurrentTexture().createView();
     view.renderer.encode(encoder, view.target, width, height);
     view.solveKey = `${key} ${width}x${height}`;
+    // What a readback of this solve decodes it with.
+    view.solveSpace = state.space;
+    view.solveWindow = viewWindow();
     // The influence is solved as a gradient of its own, drawn over by the visualization.
     if (state.view === "influence" && influenceAvailable()) {
         const influence = windowed(gradientData(view.model, true));
@@ -3042,11 +3078,12 @@ fn linearToOklab(c: vec3<f32>) -> vec3<f32> {
 
 // A premultiplied color in the interpolation space as linear sRGB, unclamped, with straight alpha. In a polar space
 // the hue isn't premultiplied.
+// Alpha is clamped before unpremultiplying, as the display does, but returned as it is, so overshoot can be measured.
 fn linearOf(premultiplied: vec4<f32>) -> vec4<f32> {
     if (premultiplied.a <= 1e-6) {
         return vec4<f32>(0.0);
     }
-    var c = premultiplied.rgb / premultiplied.a;
+    var c = premultiplied.rgb / min(premultiplied.a, 1.0);
     let hue = hueComponent(visualize.space);
     if (hue >= 0) {
         c[hue] = normalizeHue(premultiplied[hue]);
@@ -3307,11 +3344,11 @@ async function readBack(view, index) {
     encoder.copyBufferToBuffer(values, 0, valuesRead, 0, values.size);
     encoder.copyBufferToBuffer(weights, 0, weightsRead, 0, weights.size);
     device.queue.submit([encoder.finish()]);
-    const space = state.space;
+    const space = view.solveSpace, crop = view.solveWindow;
     try {
         await Promise.all([valuesRead.mapAsync(GPUMapMode.READ), weightsRead.mapAsync(GPUMapMode.READ)]);
         view.readout = {
-            width, height, space, level: index, stats: null, window: viewWindow(),
+            width, height, space, level: index, stats: null, window: crop,
             values: new Float32Array(valuesRead.getMappedRange()).slice(0, width * height * 4),
             weights: new Float32Array(weightsRead.getMappedRange()).slice(0, width * height),
         };
@@ -3350,6 +3387,19 @@ function oklabLightness([r, g, b]) {
     return 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s;
 }
 
+// A hue moved by whole turns to between 0 and 360. The solve's hues can be up to a turn either way of that.
+const normalizedHue = h => ((h % 360) + 360) % 360;
+
+// A component of a premultiplied color as the gradient shows it: alpha and a polar space's hue as the solve has them,
+// the hue normalized, and the others unpremultiplied by alpha clamped to 1, as the display does.
+function straightComponent(color, k, space) {
+    if (k === 3)
+        return color[3];
+    if (k === HUE_INDEX[space])
+        return normalizedHue(color[k]);
+    return color[3] > 1e-6 ? color[k] / Math.min(color[3], 1) : 0;
+}
+
 // A premultiplied color in the interpolation space as the gradient shows it before clipping: encoded sRGB with
 // straight alpha, and its Oklab lightness. In a polar space the hue isn't premultiplied.
 function appearance(p, space) {
@@ -3357,7 +3407,8 @@ function appearance(p, space) {
     if (alpha <= 1e-6)
         return { rgb: [0, 0, 0], linear: [0, 0, 0], alpha: 0, L: 0 };
     const hue = HUE_INDEX[space];
-    const c = [0, 1, 2].map(k => k === hue ? ((p[k] % 360) + 360) % 360 : p[k] / alpha);
+    // Alpha is clamped before unpremultiplying, as the display does.
+    const c = [0, 1, 2].map(k => k === hue ? normalizedHue(p[k]) : p[k] / Math.min(alpha, 1));
     const linear = fromXYZ("srgb-linear", toXYZ(space, c));
     return { rgb: linear.map(encodeSigned), linear, alpha, L: oklabLightness(linear) };
 }
@@ -3450,7 +3501,13 @@ function drawPlot(view) {
         const t = i / count, p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
         samples.push({ ...appearance(sampleReadout(readout, p), readout.space), weight: weightAt(readout, p) });
     }
-    const all = samples.flatMap(s => s.rgb);
+    // The other box's colors along the same line, to draw dashed.
+    const other = state.otherCurves ? views.find(other => other !== view && !other.figure.hidden && other.readout)?.readout : null;
+    const otherSamples = other ? samples.map((_, i) => {
+        const t = i / count, p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+        return appearance(sampleReadout(other, p), other.space);
+    }) : [];
+    const all = [...samples, ...otherSamples].flatMap(s => s.rgb);
     const lo = Math.min(0, ...all) - 0.05, hi = Math.max(1, ...all) + 0.05;
     const left = 24, right = 24, top = 24, bottom = 18;
     const plotWidth = width - left - right, plotHeight = height - top - bottom;
@@ -3500,6 +3557,11 @@ function drawPlot(view) {
         ctx.stroke();
         ctx.setLineDash([]);
     };
+    if (otherSamples.length) {
+        ctx.globalAlpha = 0.6;
+        [0, 1, 2].forEach(k => line(otherSamples.map(s => s.rgb[k]), PLOT_COLORS[k], [3, 3]));
+        ctx.globalAlpha = 1;
+    }
     [0, 1, 2].forEach(k => line(samples.map(s => s.rgb[k]), PLOT_COLORS[k]));
     if (samples.some(s => s.alpha < 0.999))
         line(samples.map(s => s.alpha), `rgba(${ink}, 0.6)`, [4, 3]);
@@ -3556,8 +3618,7 @@ function drawSheet(view) {
     const component = Number(shown.value.slice(1));
     const heightAt = p => {
         const color = sampleReadout(readout, p);
-        // Alpha and a polar space's hue are as the solve has them; the others are premultiplied.
-        const value = component === 3 || component === HUE_INDEX[readout.space] ? color[component] : color[3] > 1e-6 ? color[component] / color[3] : 0;
+        const value = straightComponent(color, component, readout.space);
         return (value - low) / (high - low);
     };
     const heights = [];
@@ -3754,6 +3815,8 @@ function commonState() {
         edges: state?.edges ?? "mirrored",
         gamut: state?.gamut ?? "srgb",
         sample: state?.sample ?? false,
+        otherCurves: state?.otherCurves ?? false,
+        edgeStrips: state?.edgeStrips ?? true,
     };
 }
 
@@ -3778,8 +3841,7 @@ function showSample(view, event) {
     }
     const color = sampleReadout(readout, p);
     const shown = appearance(color, readout.space);
-    const hue = HUE_INDEX[readout.space];
-    const components = [0, 1, 2].map(k => k === hue ? color[k] : color[3] > 1e-6 ? color[k] / color[3] : 0);
+    const components = [0, 1, 2].map(k => straightComponent(color, k, readout.space));
     const excess = excessOf(shown);
     const lines = [
         `${readout.space} ${components.map(v => v.toFixed(3)).join(" ")} / ${shown.alpha.toFixed(3)}`,
@@ -4275,7 +4337,7 @@ for (const view of views) {
             const curve = penCurve === null ? null : state.curves[penCurve];
             const first = curve && curve.nodes[0];
             const size = [overlay.clientWidth, overlay.clientHeight];
-            if (curve && curve.nodes.length > 1 && Math.hypot((first.p[0] - at[0]) * size[0], (first.p[1] - at[1]) * size[1]) < 9) {
+            if (curve && curve.nodes.length > 2 && Math.hypot((first.p[0] - at[0]) * size[0], (first.p[1] - at[1]) * size[1]) < 9) {
                 closeCurve(penCurve);
                 selection = { curve: penCurve, node: 0 };
                 penCurve = null;
@@ -4350,9 +4412,15 @@ for (const view of views) {
         case "pen": {
             // Dragging out from a new node pulls its handles, making it smooth.
             const node = curve.nodes[drag.node];
-            node.out = delta;
-            node.in = [-delta[0], -delta[1]];
-            node.kind = "smooth";
+            if (Math.hypot(delta[0] * overlay.clientWidth, delta[1] * overlay.clientHeight) < 3) {
+                node.out = [0, 0];
+                node.in = [0, 0];
+                node.kind = "corner";
+            } else {
+                node.out = delta;
+                node.in = [-delta[0], -delta[1]];
+                node.kind = "smooth";
+            }
             break;
         }
         case "line":
@@ -4405,6 +4473,12 @@ for (const view of views) {
 
     overlay.addEventListener("dblclick", event => {
         if (tool === "pen") {
+            // Both clicks of a double-click added a node; nodes on top of the one before them go.
+            const curve = penCurve !== null ? state.curves[penCurve] : null;
+            const size = [overlay.clientWidth, overlay.clientHeight];
+            const near = (a, b) => Math.hypot((a[0] - b[0]) * size[0], (a[1] - b[1]) * size[1]) < 4;
+            while (curve && curve.nodes.length > 1 && near(curve.nodes.at(-1).p, curve.nodes.at(-2).p))
+                curve.nodes.pop();
             finishPen();
             return;
         }
@@ -4584,9 +4658,11 @@ function curveRow(_, index) {
     }
     const remove = Object.assign(document.createElement("button"), { className: "small", textContent: "×", title: "Delete this curve" });
     remove.addEventListener("click", () => {
+        const drawn = penCurve !== null ? state.curves[penCurve] : null;
         state.curves.splice(index, 1);
         selection = null;
-        penCurve = null;
+        penCurve = drawn && state.curves.includes(drawn) ? state.curves.indexOf(drawn) : null;
+        finishPen();
         changed();
     });
     row.append(remove);
@@ -4632,7 +4708,7 @@ $("clearCurves").addEventListener("click", () => {
 // MARK: - Shared controls
 
 // The editor gives PRESETS, PRESET_KEYS (the state a preset sets besides the box), presetState(index), resetEditing()
-// for when a preset replaces the state, influenceAvailable(), whether something is selected to show the influence of,
+// for when a preset replaces the state, TWO_SIDED_LINES, whether its lines can hold a different color each side, influenceAvailable(), whether something is selected to show the influence of,
 // gradientData(model, influence), VIEW_NOTES, cssText(), the gradient as its made-up CSS, and MODEL_ABOUT, for
 // each model how it works, its pros and cons, where it comes from (HTML, for its links) and what a spec would need.
 
@@ -4675,6 +4751,10 @@ function updateCommonControls() {
     $("sheetRow").hidden = !state.sheet;
     $("gamut").value = state.gamut;
     $("sample").checked = state.sample;
+    $("otherCurves").checked = state.otherCurves;
+    $("otherCurvesRow").hidden = !state.crossSection || state.models.length < 2;
+    $("edgeStrips").checked = state.edgeStrips;
+    $("edgeStripsRow").hidden = !TWO_SIDED_LINES;
     const heights = sheetHeights(state.space);
     if ($("sheetHeight").dataset.space !== String(state.space)) {
         $("sheetHeight").replaceChildren(...heights.map(height => new Option(height.label, height.value)));
@@ -4799,6 +4879,12 @@ $("gamut").addEventListener("change", () => {
     state.gamut = $("gamut").value;
     changed();
 });
+for (const id of ["otherCurves", "edgeStrips"]) {
+    $(id).addEventListener("change", () => {
+        state[id] = $(id).checked;
+        changed();
+    });
+}
 $("sample").addEventListener("change", () => {
     state.sample = $("sample").checked;
     changed();
@@ -4824,7 +4910,7 @@ $("playSteps").addEventListener("click", () => {
     }
     playing = { start: performance.now(), frame: 0 };
     const tick = now => {
-        const steps = Math.min(12, Math.floor((now - playing.start) / 500));
+        const steps = clamp(Math.floor((now - playing.start) / 500), 0, 12);
         if (steps !== state.steps) {
             state.steps = steps;
             changed();
@@ -4994,6 +5080,33 @@ function encodeState() {
     return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+// The shared settings of a link, each kept to what the page can show, or its default.
+function soundState(data) {
+    const defaults = presetState(DEFAULT_PRESET);
+    const integer = (value, low, high, fallback) => Number.isInteger(value) ? clamp(value, low, high) : fallback;
+    const finite = v => typeof v === "number" && Number.isFinite(v);
+    data.width = finite(data.width) ? clamp(Math.round(data.width), 100, 2000) : defaults.width;
+    data.height = finite(data.height) ? clamp(Math.round(data.height), 100, 2000) : defaults.height;
+    data.steps = integer(data.steps, 0, 12, defaults.steps);
+    data.level = integer(data.level, 0, 16, defaults.level);
+    const resolutions = [...$("resolution").options].map(option => Number(option.value));
+    if (!resolutions.includes(data.resolution))
+        data.resolution = defaults.resolution;
+    const models = Array.isArray(data.models) ? ["biharmonic", "harmonic"].filter(model => data.models.includes(model)) : [];
+    data.models = models.length ? models : defaults.models;
+    if (![...$("view").options].some(option => option.value === data.view))
+        data.view = "gradient";
+    const point = p => Array.isArray(p) && p.length === 2 && p.every(finite);
+    data.section = Array.isArray(data.section) && data.section.length === 2 && data.section.every(point)
+        ? data.section.map(p => p.map(v => clamp(v, 0, 1))) : defaults.section;
+    if (typeof data.sheetHeight !== "string")
+        data.sheetHeight = defaults.sheetHeight;
+    for (const key of ["crossSection", "sheet", "numbers", "about", "sample", "otherCurves"])
+        data[key] = !!data[key];
+    data.edgeStrips = data.edgeStrips !== false;
+    return data;
+}
+
 function decodeState(text) {
     try {
         const binary = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
@@ -5013,7 +5126,7 @@ function decodeState(text) {
         if (!EDGES.includes(data.edges))
             data.edges = "mirrored";
         delete data.v;
-        return { ...presetState(DEFAULT_PRESET), ...data };
+        return soundState({ ...presetState(DEFAULT_PRESET), ...data });
     } catch {
         return null;
     }

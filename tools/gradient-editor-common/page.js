@@ -213,7 +213,7 @@ function render() {
 
 // Solves the view's gradient if it changed, or relaxes it for the relaxation view, and draws it.
 function encodeView(view, encoder, viewWidth, viewHeight) {
-    const data = { ...windowed(gradientData(view.model)), gamutMapping: state.gamutMapping === "map" ? 1 : 0 };
+    const data = { ...windowed(gradientData(view.model)), gamutMapping: state.gamutMapping === "map" ? 1 : 0, edgeStrips: state.edgeStrips };
     // The box the renderer solves: the view's, or twice it for open edges.
     const width = openEdges() ? 2 * viewWidth : viewWidth, height = openEdges() ? 2 * viewHeight : viewHeight;
     const relaxing = state.view === "relaxation" && view.model === "harmonic";
@@ -233,6 +233,9 @@ function encodeView(view, encoder, viewWidth, viewHeight) {
     view.target = view.context.getCurrentTexture().createView();
     view.renderer.encode(encoder, view.target, width, height);
     view.solveKey = `${key} ${width}x${height}`;
+    // What a readback of this solve decodes it with.
+    view.solveSpace = state.space;
+    view.solveWindow = viewWindow();
     // The influence is solved as a gradient of its own, drawn over by the visualization.
     if (state.view === "influence" && influenceAvailable()) {
         const influence = windowed(gradientData(view.model, true));
@@ -332,11 +335,12 @@ fn linearToOklab(c: vec3<f32>) -> vec3<f32> {
 
 // A premultiplied color in the interpolation space as linear sRGB, unclamped, with straight alpha. In a polar space
 // the hue isn't premultiplied.
+// Alpha is clamped before unpremultiplying, as the display does, but returned as it is, so overshoot can be measured.
 fn linearOf(premultiplied: vec4<f32>) -> vec4<f32> {
     if (premultiplied.a <= 1e-6) {
         return vec4<f32>(0.0);
     }
-    var c = premultiplied.rgb / premultiplied.a;
+    var c = premultiplied.rgb / min(premultiplied.a, 1.0);
     let hue = hueComponent(visualize.space);
     if (hue >= 0) {
         c[hue] = normalizeHue(premultiplied[hue]);
@@ -597,11 +601,11 @@ async function readBack(view, index) {
     encoder.copyBufferToBuffer(values, 0, valuesRead, 0, values.size);
     encoder.copyBufferToBuffer(weights, 0, weightsRead, 0, weights.size);
     device.queue.submit([encoder.finish()]);
-    const space = state.space;
+    const space = view.solveSpace, crop = view.solveWindow;
     try {
         await Promise.all([valuesRead.mapAsync(GPUMapMode.READ), weightsRead.mapAsync(GPUMapMode.READ)]);
         view.readout = {
-            width, height, space, level: index, stats: null, window: viewWindow(),
+            width, height, space, level: index, stats: null, window: crop,
             values: new Float32Array(valuesRead.getMappedRange()).slice(0, width * height * 4),
             weights: new Float32Array(weightsRead.getMappedRange()).slice(0, width * height),
         };
@@ -640,6 +644,19 @@ function oklabLightness([r, g, b]) {
     return 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s;
 }
 
+// A hue moved by whole turns to between 0 and 360. The solve's hues can be up to a turn either way of that.
+const normalizedHue = h => ((h % 360) + 360) % 360;
+
+// A component of a premultiplied color as the gradient shows it: alpha and a polar space's hue as the solve has them,
+// the hue normalized, and the others unpremultiplied by alpha clamped to 1, as the display does.
+function straightComponent(color, k, space) {
+    if (k === 3)
+        return color[3];
+    if (k === HUE_INDEX[space])
+        return normalizedHue(color[k]);
+    return color[3] > 1e-6 ? color[k] / Math.min(color[3], 1) : 0;
+}
+
 // A premultiplied color in the interpolation space as the gradient shows it before clipping: encoded sRGB with
 // straight alpha, and its Oklab lightness. In a polar space the hue isn't premultiplied.
 function appearance(p, space) {
@@ -647,7 +664,8 @@ function appearance(p, space) {
     if (alpha <= 1e-6)
         return { rgb: [0, 0, 0], linear: [0, 0, 0], alpha: 0, L: 0 };
     const hue = HUE_INDEX[space];
-    const c = [0, 1, 2].map(k => k === hue ? ((p[k] % 360) + 360) % 360 : p[k] / alpha);
+    // Alpha is clamped before unpremultiplying, as the display does.
+    const c = [0, 1, 2].map(k => k === hue ? normalizedHue(p[k]) : p[k] / Math.min(alpha, 1));
     const linear = fromXYZ("srgb-linear", toXYZ(space, c));
     return { rgb: linear.map(encodeSigned), linear, alpha, L: oklabLightness(linear) };
 }
@@ -740,7 +758,13 @@ function drawPlot(view) {
         const t = i / count, p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
         samples.push({ ...appearance(sampleReadout(readout, p), readout.space), weight: weightAt(readout, p) });
     }
-    const all = samples.flatMap(s => s.rgb);
+    // The other box's colors along the same line, to draw dashed.
+    const other = state.otherCurves ? views.find(other => other !== view && !other.figure.hidden && other.readout)?.readout : null;
+    const otherSamples = other ? samples.map((_, i) => {
+        const t = i / count, p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+        return appearance(sampleReadout(other, p), other.space);
+    }) : [];
+    const all = [...samples, ...otherSamples].flatMap(s => s.rgb);
     const lo = Math.min(0, ...all) - 0.05, hi = Math.max(1, ...all) + 0.05;
     const left = 24, right = 24, top = 24, bottom = 18;
     const plotWidth = width - left - right, plotHeight = height - top - bottom;
@@ -790,6 +814,11 @@ function drawPlot(view) {
         ctx.stroke();
         ctx.setLineDash([]);
     };
+    if (otherSamples.length) {
+        ctx.globalAlpha = 0.6;
+        [0, 1, 2].forEach(k => line(otherSamples.map(s => s.rgb[k]), PLOT_COLORS[k], [3, 3]));
+        ctx.globalAlpha = 1;
+    }
     [0, 1, 2].forEach(k => line(samples.map(s => s.rgb[k]), PLOT_COLORS[k]));
     if (samples.some(s => s.alpha < 0.999))
         line(samples.map(s => s.alpha), `rgba(${ink}, 0.6)`, [4, 3]);
@@ -846,8 +875,7 @@ function drawSheet(view) {
     const component = Number(shown.value.slice(1));
     const heightAt = p => {
         const color = sampleReadout(readout, p);
-        // Alpha and a polar space's hue are as the solve has them; the others are premultiplied.
-        const value = component === 3 || component === HUE_INDEX[readout.space] ? color[component] : color[3] > 1e-6 ? color[component] / color[3] : 0;
+        const value = straightComponent(color, component, readout.space);
         return (value - low) / (high - low);
     };
     const heights = [];
@@ -1044,6 +1072,8 @@ function commonState() {
         edges: state?.edges ?? "mirrored",
         gamut: state?.gamut ?? "srgb",
         sample: state?.sample ?? false,
+        otherCurves: state?.otherCurves ?? false,
+        edgeStrips: state?.edgeStrips ?? true,
     };
 }
 
@@ -1068,8 +1098,7 @@ function showSample(view, event) {
     }
     const color = sampleReadout(readout, p);
     const shown = appearance(color, readout.space);
-    const hue = HUE_INDEX[readout.space];
-    const components = [0, 1, 2].map(k => k === hue ? color[k] : color[3] > 1e-6 ? color[k] / color[3] : 0);
+    const components = [0, 1, 2].map(k => straightComponent(color, k, readout.space));
     const excess = excessOf(shown);
     const lines = [
         `${readout.space} ${components.map(v => v.toFixed(3)).join(" ")} / ${shown.alpha.toFixed(3)}`,

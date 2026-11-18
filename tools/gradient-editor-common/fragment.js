@@ -9,6 +9,33 @@ function encodeState() {
     return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+// The shared settings of a link, each kept to what the page can show, or its default.
+function soundState(data) {
+    const defaults = presetState(DEFAULT_PRESET);
+    const integer = (value, low, high, fallback) => Number.isInteger(value) ? clamp(value, low, high) : fallback;
+    const finite = v => typeof v === "number" && Number.isFinite(v);
+    data.width = finite(data.width) ? clamp(Math.round(data.width), 100, 2000) : defaults.width;
+    data.height = finite(data.height) ? clamp(Math.round(data.height), 100, 2000) : defaults.height;
+    data.steps = integer(data.steps, 0, 12, defaults.steps);
+    data.level = integer(data.level, 0, 16, defaults.level);
+    const resolutions = [...$("resolution").options].map(option => Number(option.value));
+    if (!resolutions.includes(data.resolution))
+        data.resolution = defaults.resolution;
+    const models = Array.isArray(data.models) ? ["biharmonic", "harmonic"].filter(model => data.models.includes(model)) : [];
+    data.models = models.length ? models : defaults.models;
+    if (![...$("view").options].some(option => option.value === data.view))
+        data.view = "gradient";
+    const point = p => Array.isArray(p) && p.length === 2 && p.every(finite);
+    data.section = Array.isArray(data.section) && data.section.length === 2 && data.section.every(point)
+        ? data.section.map(p => p.map(v => clamp(v, 0, 1))) : defaults.section;
+    if (typeof data.sheetHeight !== "string")
+        data.sheetHeight = defaults.sheetHeight;
+    for (const key of ["crossSection", "sheet", "numbers", "about", "sample", "otherCurves"])
+        data[key] = !!data[key];
+    data.edgeStrips = data.edgeStrips !== false;
+    return data;
+}
+
 function decodeState(text) {
     try {
         const binary = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
@@ -28,7 +55,7 @@ function decodeState(text) {
         if (!EDGES.includes(data.edges))
             data.edges = "mirrored";
         delete data.v;
-        return { ...presetState(DEFAULT_PRESET), ...data };
+        return soundState({ ...presetState(DEFAULT_PRESET), ...data });
     } catch {
         return null;
     }

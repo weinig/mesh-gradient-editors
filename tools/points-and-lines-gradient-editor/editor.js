@@ -129,6 +129,7 @@ const influenceAvailable = () => selection !== null && !!state.stops[selection];
 // What the shared code needs from this editor: which state a preset sets, which preset to start from, what to reset
 // when a preset is chosen, and which links it can read.
 const PRESET_KEYS = ["stops", "lines"];
+const TWO_SIDED_LINES = false;
 const DEFAULT_PRESET = 0;
 
 function resetEditing() {
@@ -136,8 +137,26 @@ function resetEditing() {
     drawing = null;
 }
 
+// A link's stops and lines, made sound: stops with a position and a color, and lines of two stops or more that are in
+// range.
 function acceptsState(data) {
-    return Array.isArray(data.stops) && Array.isArray(data.lines);
+    if (!Array.isArray(data.stops) || !Array.isArray(data.lines))
+        return false;
+    const finite = v => typeof v === "number" && Number.isFinite(v);
+    const kept = data.stops.map(stop => !!stop && Array.isArray(stop.p) && finite(stop.p[0]) && finite(stop.p[1]) && typeof stop.color === "string");
+    const index = [];
+    let next = 0;
+    kept.forEach((keep, i) => index[i] = keep ? next++ : -1);
+    data.stops = data.stops.filter((_, i) => kept[i]).map(stop => ({
+        p: stop.p.slice(0, 2), color: stop.color,
+        opacity: finite(stop.opacity) ? clamp(stop.opacity, 0, 100) : 100,
+        spread: finite(stop.spread) ? clamp(stop.spread, 0, 100) : 0,
+    }));
+    data.lines = data.lines.filter(line => line && Array.isArray(line.stops)).map(line => {
+        const stops = line.stops.filter(i => Number.isInteger(i) && index[i] >= 0).map(i => index[i]);
+        return { stops, closed: !!line.closed && stops.length > 2 };
+    }).filter(line => line.stops.length > 1);
+    return true;
 }
 
 function presetState(index) {
@@ -156,8 +175,20 @@ const boxScale = () => {
 };
 
 // The lines each stop is on.
+// The lines each stop is on. A line being drawn isn't one until it has two stops, so its first stop is still a point.
 function linesThrough(index) {
-    return state.lines.filter(line => line.stops.includes(index));
+    return state.lines.filter(line => line.stops.length > 1 && line.stops.includes(index));
+}
+
+// Drops the lines left with fewer than two stops, but for the one being drawn.
+function pruneLines() {
+    const drawn = drawing !== null ? state.lines[drawing] : null;
+    state.lines = state.lines.filter(line => line.stops.length > 1 || line === drawn);
+    for (const line of state.lines) {
+        if (line.stops.length < 3)
+            line.closed = false;
+    }
+    drawing = drawn ? state.lines.indexOf(drawn) : null;
 }
 
 // A line's stretches from stop to stop, as their four Bézier points and the stops at either end. Two stops make a
@@ -420,7 +451,7 @@ function colorAt(p) {
     const sum = [0, 0, 0, 0];
     for (const stop of state.stops) {
         const weight = 1 / Math.max(((stop.p[0] - p[0]) * sx) ** 2 + ((stop.p[1] - p[1]) * sy) ** 2, 1e-8);
-        const color = parseColor(stop.color);
+        const color = parseColor(stop.color) ?? parseColor("black");
         const srgb = fromXYZ("srgb", toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
         srgb.forEach((v, k) => sum[k] += weight * v);
         sum[3] += weight * stop.opacity;
@@ -602,14 +633,31 @@ for (const view of views) {
 for (const button of document.querySelectorAll("#toolbar button[data-mode]"))
     button.addEventListener("click", () => setMode(button.dataset.mode));
 
-// Two colors mixed in sRGB, as a new stop on a line takes them.
+// Two colors mixed as the line between them mixes them: in the interpolation space, with straight components, a hue
+// the shorter way around, and alpha mixed too. The mix is written in that space's own CSS syntax.
 function colorMix(a, b, t) {
-    const toSRGB = text => {
-        const color = parseColor(text);
-        return fromXYZ("srgb", toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
-    };
-    const ca = toSRGB(a), cb = toSRGB(b);
-    return "#" + ca.map((v, k) => Math.round(clamp(v + (cb[k] - v) * t, 0, 1) * 255).toString(16).padStart(2, "0")).join("");
+    const [ca, cb] = [a, b].map(interpolationComponents);
+    const hue = HUE_INDEX[state.space];
+    if (hue !== undefined)
+        cb[hue] = ca[hue] + (((cb[hue] - ca[hue]) % 360 + 540) % 360 - 180);
+    const mixed = ca.map((v, k) => v + (cb[k] - v) * t);
+    if (hue !== undefined)
+        mixed[hue] = ((mixed[hue] % 360) + 360) % 360;
+    return cssColorIn(state.space, mixed.slice(0, 3), mixed[3]);
+}
+
+// Components in a space, as a CSS color in that space's syntax.
+function cssColorIn(space, c, alpha) {
+    const n = v => String(Math.round(v * 10000) / 10000);
+    const tail = alpha < 1 ? ` / ${n(clamp(alpha, 0, 1))}` : "";
+    switch (space) {
+    case "lab": case "oklab": case "lch": case "oklch":
+        return `${space}(${c.map(n).join(" ")}${tail})`;
+    case "hsl": case "hwb":
+        return `${space}(${n(c[0])} ${n(c[1])}% ${n(c[2])}%${tail})`;
+    default:
+        return `color(${space} ${c.map(n).join(" ")}${tail})`;
+    }
 }
 
 // MARK: - Controls
@@ -662,7 +710,7 @@ function updateStopList() {
     const list = $("stopList");
     const points = state.stops.map((_, i) => i).filter(i => !linesThrough(i).length);
     const groups = [
-        ...state.lines.map((line, l) => ({ label: `Line ${l + 1}`, stops: line.stops, closed: line.closed && line.stops.length > 2, line: l })),
+        ...state.lines.map((line, l) => ({ label: `Line ${l + 1}`, stops: line.stops, closed: line.closed && line.stops.length > 2, line: l })).filter(group => group.stops.length > 1),
         ...(points.length ? [{ label: "Points", stops: points, closed: false, line: null }] : []),
     ];
     const key = JSON.stringify(groups);
@@ -693,10 +741,12 @@ function updateStopList() {
                 const remove = Object.assign(document.createElement("button"), { className: "small", textContent: "×", title: "Delete this line and its stops" });
                 remove.addEventListener("click", () => {
                     // Its stops go too, but not one that joins it to another line.
+                    const drawn = drawing !== null ? state.lines[drawing] : null;
                     const [line] = state.lines.splice(group.line, 1);
-                    drawing = null;
-                    for (const index of line.stops.filter(i => !linesThrough(i).length).sort((a, b) => b - a))
+                    drawing = drawn && drawn !== line ? state.lines.indexOf(drawn) : null;
+                    for (const index of line.stops.filter(i => !state.lines.some(other => other.stops.includes(i))).sort((a, b) => b - a))
                         deleteStop(index);
+                    pruneLines();
                     changed();
                 });
                 row.append(remove);
@@ -799,7 +849,7 @@ function stopText(stop, withSpread) {
 function cssText() {
     const prelude = [state.models.length === 1 && state.models[0] === "harmonic" ? "harmonic" : "", `in ${state.space}`].filter(Boolean).join(" ");
     const points = state.stops.filter((_, i) => !linesThrough(i).length).map(stop => stopText(stop, true));
-    const lines = state.lines.map(line => {
+    const lines = state.lines.filter(line => line.stops.length > 1).map(line => {
         const stops = line.stops.map(i => stopText(state.stops[i], false));
         return `line(${[...stops, ...(line.closed && line.stops.length > 2 ? ["close"] : [])].join(", ")})`;
     });

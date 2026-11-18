@@ -130,6 +130,7 @@ const influenceAvailable = () => !!(selection && state.curves[selection.curve]);
 // What the shared code needs from this editor: which state a preset sets, which preset to start from, what to reset
 // when a preset is chosen, and which links it can read.
 const PRESET_KEYS = ["curves"];
+const TWO_SIDED_LINES = true;
 const DEFAULT_PRESET = 2;
 
 function resetEditing() {
@@ -141,8 +142,27 @@ function resetEditing() {
 function acceptsState(data) {
     if (!Array.isArray(data.curves))
         return false;
-    for (const curve of data.curves)
+    const point = p => Array.isArray(p) && p.length >= 2 && p.slice(0, 2).every(Number.isFinite);
+    const node = n => !!n && point(n.p) && point(n.in) && point(n.out);
+    const sound = curve => {
+        switch (curve.kind) {
+        case "ellipse": return point(curve.center) && point(curve.radii) && Number.isFinite(curve.angle);
+        case "line": return point(curve.from) && point(curve.to);
+        case "arc": return point(curve.from) && point(curve.to) && Number.isFinite(curve.bend);
+        case "path": return Array.isArray(curve.nodes) && curve.nodes.length > 1 && curve.nodes.every(node);
+        default: return false;
+        }
+    };
+    data.curves = data.curves.filter(curve => {
+        if (!curve || typeof curve !== "object")
+            return false;
         curve.kind ??= "path";
+        // A closed path needs three nodes to close.
+        if (curve.kind === "path" && curve.closed && curve.nodes?.length < 3)
+            return false;
+        const sides = curve.closed ? ["inside", "outside"] : ["left", "right"];
+        return sound(curve) && sides.every(side => typeof curve[side] === "string");
+    });
     return true;
 }
 
@@ -299,9 +319,16 @@ function offsetPieces(flat, distance, closed) {
     const [sx, sy] = boxScale();
     const normals = flat.map(([x0, y0, x1, y1]) => {
         const dx = (x1 - x0) * sx, dy = (y1 - y0) * sy;
-        const length = Math.hypot(dx, dy) || 1;
-        return [dy / length, -dx / length];
+        const length = Math.hypot(dx, dy);
+        return length > 1e-9 ? [dy / length, -dx / length] : null;
     });
+    // A piece of no length has no direction of its own, so it takes the nearest one's before it, or after it.
+    for (let i = 1; i < normals.length; ++i)
+        normals[i] ??= normals[i - 1];
+    for (let i = normals.length - 2; i >= 0; --i)
+        normals[i] ??= normals[i + 1];
+    if (!normals[0])
+        return flat;
     const count = flat.length;
     const joints = [];
     for (let i = 0; i <= count; ++i) {
@@ -838,7 +865,7 @@ for (const view of views) {
             const curve = penCurve === null ? null : state.curves[penCurve];
             const first = curve && curve.nodes[0];
             const size = [overlay.clientWidth, overlay.clientHeight];
-            if (curve && curve.nodes.length > 1 && Math.hypot((first.p[0] - at[0]) * size[0], (first.p[1] - at[1]) * size[1]) < 9) {
+            if (curve && curve.nodes.length > 2 && Math.hypot((first.p[0] - at[0]) * size[0], (first.p[1] - at[1]) * size[1]) < 9) {
                 closeCurve(penCurve);
                 selection = { curve: penCurve, node: 0 };
                 penCurve = null;
@@ -913,9 +940,15 @@ for (const view of views) {
         case "pen": {
             // Dragging out from a new node pulls its handles, making it smooth.
             const node = curve.nodes[drag.node];
-            node.out = delta;
-            node.in = [-delta[0], -delta[1]];
-            node.kind = "smooth";
+            if (Math.hypot(delta[0] * overlay.clientWidth, delta[1] * overlay.clientHeight) < 3) {
+                node.out = [0, 0];
+                node.in = [0, 0];
+                node.kind = "corner";
+            } else {
+                node.out = delta;
+                node.in = [-delta[0], -delta[1]];
+                node.kind = "smooth";
+            }
             break;
         }
         case "line":
@@ -968,6 +1001,12 @@ for (const view of views) {
 
     overlay.addEventListener("dblclick", event => {
         if (tool === "pen") {
+            // Both clicks of a double-click added a node; nodes on top of the one before them go.
+            const curve = penCurve !== null ? state.curves[penCurve] : null;
+            const size = [overlay.clientWidth, overlay.clientHeight];
+            const near = (a, b) => Math.hypot((a[0] - b[0]) * size[0], (a[1] - b[1]) * size[1]) < 4;
+            while (curve && curve.nodes.length > 1 && near(curve.nodes.at(-1).p, curve.nodes.at(-2).p))
+                curve.nodes.pop();
             finishPen();
             return;
         }
@@ -1147,9 +1186,11 @@ function curveRow(_, index) {
     }
     const remove = Object.assign(document.createElement("button"), { className: "small", textContent: "×", title: "Delete this curve" });
     remove.addEventListener("click", () => {
+        const drawn = penCurve !== null ? state.curves[penCurve] : null;
         state.curves.splice(index, 1);
         selection = null;
-        penCurve = null;
+        penCurve = drawn && state.curves.includes(drawn) ? state.curves.indexOf(drawn) : null;
+        finishPen();
         changed();
     });
     row.append(remove);

@@ -263,7 +263,7 @@ export class WebGPUFreeformGradientRenderer {
       { binding: 1, resource: this.view(this.levels[0].values.texture) },
     ]));
     render.draw(3);
-    if (this.edgeVertexCount > 0) {
+    if (this.edgeVertexCount > 0 && this.gradient.edgeStrips !== false) {
       // Over the gradient, the strips either side of its two-sided lines.
       render.setPipeline(this.edgePipeline);
       render.setBindGroup(0, this.bindGroup(this.edgePipeline, [
