@@ -392,7 +392,7 @@ function colorAt(p) {
     for (const stop of state.stops) {
         const weight = 1 / Math.max(((stop.p[0] - p[0]) * sx) ** 2 + ((stop.p[1] - p[1]) * sy) ** 2, 1e-8);
         const color = parseColor(stop.color);
-        const srgb = fromXYZ("srgb", toXYZ(color.space, color.c));
+        const srgb = fromXYZ("srgb", toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
         srgb.forEach((v, k) => sum[k] += weight * v);
         sum[3] += weight * stop.opacity;
         total += weight;
@@ -570,7 +570,7 @@ for (const button of document.querySelectorAll("#toolbar button[data-mode]"))
 function colorMix(a, b, t) {
     const toSRGB = text => {
         const color = parseColor(text);
-        return fromXYZ("srgb", toXYZ(color.space, color.c));
+        return fromXYZ("srgb", toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
     };
     const ca = toSRGB(a), cb = toSRGB(b);
     return "#" + ca.map((v, k) => Math.round(clamp(v + (cb[k] - v) * t, 0, 1) * 255).toString(16).padStart(2, "0")).join("");
@@ -610,14 +610,25 @@ function updateControls() {
     const onLines = state.stops.filter((_, i) => linesThrough(i).length).length;
     $("countNote").textContent = `${state.stops.length} stop${state.stops.length === 1 ? "" : "s"}: ${state.stops.length - onLines} point${state.stops.length - onLines === 1 ? "" : "s"}, ${onLines} on ${state.lines.length} line${state.lines.length === 1 ? "" : "s"}.`;
 
+    updateStopList();
+
     const selected = selection !== null ? state.stops[selection] : null;
-    $("selectedStop").hidden = !selected;
+    $("stopFields").hidden = !selected;
+    $("deleteStop").hidden = !selected;
     $("finishLine").hidden = drawing === null;
+    if (!selected)
+        $("stopTitle").textContent = "Stops";
     if (selected) {
-        const onLine = linesThrough(selection).length > 0;
-        $("selectedName").textContent = onLine ? "Stop on a line" : "Point";
-        if (document.activeElement !== $("stopColor"))
-            $("stopColor").value = selected.color;
+        const lines = linesThrough(selection).map(line => state.lines.indexOf(line) + 1);
+        const onLine = lines.length > 0;
+        $("stopTitle").textContent = `Stop ${selection + 1}${onLine ? `, on line${lines.length > 1 ? "s" : ""} ${lines.join(" and ")}` : ", a point"}`;
+        if (document.activeElement !== $("stopText"))
+            $("stopText").value = selected.color;
+        $("stopPicker").value = hexColor(selected.color);
+        for (const [id, axis] of [["stopX", 0], ["stopY", 1]]) {
+            if (document.activeElement !== $(id))
+                $(id).value = Math.round(selected.p[axis] * 1000) / 10;
+        }
         for (const [id, value] of [["opacity", selected.opacity], ["spread", selected.spread]]) {
             $(id).value = value;
             $(id + "Value").textContent = value + "%";
@@ -627,12 +638,101 @@ function updateControls() {
     }
 }
 
-$("stopColor").addEventListener("input", () => {
+// Each line with its stops in order, then the points, each stop a swatch that selects it.
+let stopListKey = null;
+function updateStopList() {
+    const list = $("stopList");
+    const points = state.stops.map((_, i) => i).filter(i => !linesThrough(i).length);
+    const groups = [
+        ...state.lines.map((line, l) => ({ label: `Line ${l + 1}`, stops: line.stops, closed: line.closed && line.stops.length > 2, line: l })),
+        ...(points.length ? [{ label: "Points", stops: points, closed: false, line: null }] : []),
+    ];
+    const key = JSON.stringify(groups);
+    if (key !== stopListKey) {
+        stopListKey = key;
+        list.replaceChildren(...groups.map(group => {
+            const row = document.createElement("div");
+            row.className = "group";
+            row.dataset.line = group.line ?? "";
+            const label = document.createElement("span");
+            label.textContent = group.label;
+            const swatches = document.createElement("div");
+            swatches.className = "swatches";
+            for (const index of group.stops) {
+                const button = document.createElement("button");
+                button.dataset.stop = index;
+                button.append(document.createElement("span"));
+                button.addEventListener("click", () => {
+                    selection = index;
+                    changed();
+                });
+                swatches.append(button);
+            }
+            if (group.closed)
+                swatches.append(Object.assign(document.createElement("span"), { className: "joint", textContent: "↺", title: "Closed: the line runs back to its first stop" }));
+            row.append(label, swatches);
+            if (group.line !== null) {
+                const remove = Object.assign(document.createElement("button"), { className: "small", textContent: "×", title: "Delete this line and its stops" });
+                remove.addEventListener("click", () => {
+                    // Its stops go too, but not one that joins it to another line.
+                    const [line] = state.lines.splice(group.line, 1);
+                    drawing = null;
+                    for (const index of line.stops.filter(i => !linesThrough(i).length).sort((a, b) => b - a))
+                        deleteStop(index);
+                    changed();
+                });
+                row.append(remove);
+            }
+            return row;
+        }));
+    }
+    for (const button of list.querySelectorAll("button[data-stop]")) {
+        const stop = state.stops[Number(button.dataset.stop)];
+        button.firstChild.style.background = stop.color;
+        button.firstChild.style.opacity = stop.opacity / 100;
+        button.title = `${stop.color}${stop.opacity < 100 ? `, ${stop.opacity}%` : ""}`;
+        button.classList.toggle("selected", Number(button.dataset.stop) === selection);
+    }
+    for (const row of list.children)
+        row.classList.toggle("drawing", row.dataset.line !== "" && Number(row.dataset.line) === drawing);
+}
+
+// A CSS color as the sRGB hex a color well takes, clipped.
+function hexColor(text) {
+    const color = parseColor(text) ?? parseColor("black");
+    const srgb = fromXYZ("srgb", toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
+    return "#" + srgb.map(v => Math.round(clamp(v, 0, 1) * 255).toString(16).padStart(2, "0")).join("");
+}
+
+$("stopPicker").addEventListener("input", () => {
     if (selection === null)
         return;
-    state.stops[selection].color = $("stopColor").value;
+    state.stops[selection].color = $("stopPicker").value;
+    $("stopText").value = $("stopPicker").value;
     changed();
 });
+$("stopText").addEventListener("input", () => {
+    if (selection === null || !parseColor($("stopText").value.trim()))
+        return;
+    state.stops[selection].color = $("stopText").value.trim();
+    changed();
+});
+$("stopText").addEventListener("change", () => updateControls());
+// A new stop goes in the middle of the box, or beside the selected one, in the color there.
+$("addStop").addEventListener("click", () => {
+    const near = selection !== null ? state.stops[selection].p : null;
+    const p = near ? [clamp(near[0] + 0.08, 0.02, 0.98), clamp(near[1] + 0.08, 0.02, 0.98)] : [0.5, 0.5];
+    selection = addStop(p);
+    changed();
+});
+for (const [id, axis] of [["stopX", 0], ["stopY", 1]]) {
+    $(id).addEventListener("change", () => {
+        const value = parseFloat($(id).value);
+        if (selection !== null && Number.isFinite(value))
+            state.stops[selection].p[axis] = clamp(value, 0, 100) / 100;
+        changed();
+    });
+}
 for (const id of ["opacity", "spread"]) {
     $(id).addEventListener("input", () => {
         if (selection === null)

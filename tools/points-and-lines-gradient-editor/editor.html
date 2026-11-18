@@ -64,35 +64,40 @@
             <p id="gpuStatus" class="status"></p>
         </section>
 
-        <section id="selectedStop" hidden>
-            <h2 id="selectedName"></h2>
-            <div class="row">
-                <label for="stopColor">Color</label>
-                <input id="stopColor" type="color">
+        <section id="stops">
+            <h2 id="stopTitle">Stops</h2>
+            <div id="stopFields">
+                <div class="row">
+                    <input id="stopPicker" type="color" title="Pick an sRGB color">
+                    <input id="stopText" type="text" spellcheck="false" title="Any CSS color">
+                </div>
+                <div class="row">
+                    <label>Position</label>
+                    <input id="stopX" class="percent" type="number" min="0" max="100" step="1" title="Horizontal position as a percentage of the box's width"> % ×
+                    <input id="stopY" class="percent" type="number" min="0" max="100" step="1" title="Vertical position as a percentage of the box's height"> %
+                </div>
+                <div class="row">
+                    <label for="opacity">Opacity</label>
+                    <input id="opacity" type="range" min="0" max="100" step="1">
+                    <output id="opacityValue"></output>
+                </div>
+                <div class="row" id="spreadRow" title="How far the stop's color holds before it starts to blend. Drag the dashed circle to change it.">
+                    <label for="spread">Spread</label>
+                    <input id="spread" type="range" min="0" max="100" step="1">
+                    <output id="spreadValue"></output>
+                </div>
+                <p id="spreadNote" class="note">Stops on lines have no spread.</p>
             </div>
             <div class="row">
-                <label for="opacity">Opacity</label>
-                <input id="opacity" type="range" min="0" max="100" step="1">
-                <output id="opacityValue"></output>
-            </div>
-            <div class="row" id="spreadRow" title="How far the stop's color holds before it starts to blend. Drag the dashed circle to change it.">
-                <label for="spread">Spread</label>
-                <input id="spread" type="range" min="0" max="100" step="1">
-                <output id="spreadValue"></output>
-            </div>
-            <p id="spreadNote" class="note">Stops on lines have no spread.</p>
-            <div class="row">
-                <button id="deleteStop" class="small">Delete stop</button>
+                <button id="addStop" class="small">Add stop</button>
+                <button id="deleteStop" class="small">Remove stop</button>
                 <button id="finishLine" class="small">Finish line</button>
+                <button id="clearStops" class="small">Remove all</button>
             </div>
-        </section>
-
-        <section>
-            <h2>Stops</h2>
-            <p class="note">Each stop holds its color. In Lines, the color runs along each line from stop to stop, and the line curves through its stops once it has three.</p>
-            <p id="modeNote" class="note"></p>
+            <div id="stopList"></div>
             <p id="countNote" class="note"></p>
-            <div class="row"><button id="clearStops" class="small">Remove all stops</button></div>
+            <p id="modeNote" class="note"></p>
+            <p class="note">Each stop holds its color. In Lines, the color runs along each line from stop to stop, and the line curves through its stops once it has three.</p>
         </section>
     </aside>
 </main>
