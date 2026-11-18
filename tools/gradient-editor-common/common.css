@@ -1,0 +1,85 @@
+#topBar {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+#modelBar { display: flex; }
+#modelBar button {
+    font: inherit;
+    padding: 5px 14px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--fg);
+    cursor: pointer;
+}
+#modelBar button + button { border-left: none; }
+#modelBar button:first-child { border-radius: 6px 0 0 6px; }
+#modelBar button:last-child { border-radius: 0 6px 6px 0; }
+#modelBar button[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: #fff; }
+#views {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+}
+.view { margin: 0; flex: 1 1 0; min-width: 0; }
+.view[hidden] { display: none; }
+.stage {
+    position: relative;
+    width: 100%;
+    outline: 1px solid var(--border);
+    background-color: #fff;
+    background-image: conic-gradient(#ddd 0 25%, #fff 0 50%, #ddd 0 75%, #fff 0);
+    background-size: 16px 16px;
+}
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.stage .overlay { touch-action: none; }
+.view figcaption { font-size: 12px; margin-top: 6px; }
+.view figcaption .note { display: block; margin-top: 2px; }
+#toolbar {
+    flex: none;
+    position: sticky;
+    top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+#toolbar > button {
+    width: 34px;
+    height: 34px;
+    padding: 5px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--fg);
+    cursor: pointer;
+}
+#toolbar > button:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+#toolbar > button[aria-pressed=true] { background: var(--accent); color: #fff; }
+#toolbar svg { width: 24px; height: 24px; display: block; }
+#presetNote[hidden], #levelRow[hidden], #stepsRow[hidden], #sheetRow[hidden], aside .note[hidden] { display: none; }
+#levelRow input[type=range], #stepsRow input[type=range] { flex: 1; }
+#levelValue, #stepsValue { min-width: 5.5em; text-align: right; font-variant-numeric: tabular-nums; }
+aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.view .plot, .view .sheet {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    touch-action: none;
+}
+.view .plot { height: 170px; }
+.view .sheet { height: 260px; cursor: grab; }
+.view .plot[hidden], .view .sheet[hidden], .view .numbers[hidden] { display: none; }
+.view .numbers { font-variant-numeric: tabular-nums; }
+@media (max-width: 720px) {
+    #toolbar { flex-direction: row; flex-wrap: wrap; position: static; flex: 1 1 100%; }
+    #views { flex-direction: column; }
+    .view { flex: none; width: 100%; }
+}

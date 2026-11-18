@@ -1,0 +1,66 @@
+    <div id="stageScroller">
+        <div id="topBar">
+            <div id="modelBar" role="group" aria-label="Models">
+                <button data-model="biharmonic">Biharmonic</button>
+                <button data-model="harmonic">Harmonic</button>
+            </div>
+        </div>
+        <div id="views">
+            <figure class="view" data-model="biharmonic">
+                <div class="stage">
+                    <canvas class="gpu"></canvas>
+                    <canvas class="overlay"></canvas>
+                </div>
+                <figcaption><b>Biharmonic</b><span class="note">{{BIHARMONIC_NOTE}}</span></figcaption>
+                <p class="numbers note" hidden></p>
+                <canvas class="plot" hidden></canvas>
+                <canvas class="sheet" hidden></canvas>
+            </figure>
+            <figure class="view" data-model="harmonic">
+                <div class="stage">
+                    <canvas class="gpu"></canvas>
+                    <canvas class="overlay"></canvas>
+                </div>
+                <figcaption><b>Harmonic</b><span class="note">{{HARMONIC_NOTE}}</span></figcaption>
+                <p class="numbers note" hidden></p>
+                <canvas class="plot" hidden></canvas>
+                <canvas class="sheet" hidden></canvas>
+            </figure>
+        </div>
+    </div>
+    <aside>
+        <section>
+            <h1>{{TITLE}}</h1>
+            <div class="row">
+                <label for="preset">Preset</label>
+                <select id="preset"></select>
+            </div>
+            <p id="presetNote" class="note"></p>
+            <div class="row">
+                <label>Box</label>
+                <input id="width" type="number" min="100" max="2000" step="10" title="Width"> ×
+                <input id="height" type="number" min="100" max="2000" step="10" title="Height"> px
+            </div>
+            <div class="row">
+                <label for="space">Interpolate in</label>
+                <select id="space">
+                    <option value="0">srgb</option>
+                    <option value="1">srgb-linear</option>
+                    <option value="2">oklab</option>
+                </select>
+            </div>
+            <div class="row" title="How many texels the grid has along its longer side, at most. The grid is never finer than the box's pixels.">
+                <label for="resolution">Grid</label>
+                <select id="resolution">
+                    <option value="128">128</option>
+                    <option value="256">256</option>
+                    <option value="512">512</option>
+                    <option value="1024">1024</option>
+                </select>
+                <span class="note">texels on the longer side</span>
+            </div>
+            <div class="row">
+                <label><input type="checkbox" id="{{SHOW_ID}}" checked> {{SHOW_LABEL}}</label>
+            </div>
+            <p id="gpuStatus" class="status"></p>
+        </section>

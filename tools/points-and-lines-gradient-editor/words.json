@@ -1,0 +1,9 @@
+{
+    "TITLE": "Points and Lines Gradient Editor",
+    "SHOW_ID": "showStops",
+    "SHOW_LABEL": "Show the stops",
+    "BIHARMONIC_NOTE": "A stiff sheet held at the stops: smooth everywhere, overshooting past the stops' colors where it bends, most of all near the edges.",
+    "HARMONIC_NOTE": "A stretched membrane held at the stops: never overshoots, but creased at each one.",
+    "HOLDERS": "stops",
+    "SHEET_NOTE": "One component as a height over the box. The harmonic model is a membrane pinned at the stops: it rises to a sharp peak or dips to a pit at each point, and is creased along each line. The biharmonic model is a stiff sheet that bends smoothly through them, and past a stop it keeps going, above 1 or below 0. Drag to turn it."
+}

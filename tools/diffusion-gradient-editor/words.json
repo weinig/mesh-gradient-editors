@@ -1,0 +1,9 @@
+{
+    "TITLE": "Diffusion Gradient Editor",
+    "SHOW_ID": "showCurves",
+    "SHOW_LABEL": "Show the curves",
+    "BIHARMONIC_NOTE": "A stiff sheet held along the curves: smooth everywhere, as in Finch et al.'s freeform vector graphics.",
+    "HARMONIC_NOTE": "A stretched membrane held along the curves: never overshoots, as in Orzan et al.'s diffusion curves.",
+    "HOLDERS": "curves",
+    "SHEET_NOTE": "One component as a height over the box. The harmonic model is a membrane, stretched between the curves that hold it: it's creased along them and peaked at their ends. The biharmonic model is a stiff sheet that bends smoothly through them, and past a jump it keeps going, above 1 or below 0. Drag to turn it."
+}

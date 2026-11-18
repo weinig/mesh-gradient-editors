@@ -192,7 +192,7 @@ button.small { font-size: 12px; }
     border: 1px solid var(--border);
     border-radius: 8px;
 }
-#toolbar button[data-mode] {
+#toolbar > button {
     width: 34px;
     height: 34px;
     padding: 5px;
@@ -202,9 +202,25 @@ button.small { font-size: 12px; }
     color: var(--fg);
     cursor: pointer;
 }
-#toolbar button[data-mode]:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
-#toolbar button[data-mode][aria-pressed=true] { background: var(--accent); color: #fff; }
+#toolbar > button:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+#toolbar > button[aria-pressed=true] { background: var(--accent); color: #fff; }
 #toolbar svg { width: 24px; height: 24px; display: block; }
+#presetNote[hidden], #levelRow[hidden], #stepsRow[hidden], #sheetRow[hidden], aside .note[hidden] { display: none; }
+#levelRow input[type=range], #stepsRow input[type=range] { flex: 1; }
+#levelValue, #stepsValue { min-width: 5.5em; text-align: right; font-variant-numeric: tabular-nums; }
+aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.view .plot, .view .sheet {
+    display: block;
+    width: 100%;
+    margin-top: 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    touch-action: none;
+}
+.view .plot { height: 170px; }
+.view .sheet { height: 260px; cursor: grab; }
+.view .plot[hidden], .view .sheet[hidden], .view .numbers[hidden] { display: none; }
+.view .numbers { font-variant-numeric: tabular-nums; }
 @media (max-width: 720px) {
     #toolbar { flex-direction: row; flex-wrap: wrap; position: static; flex: 1 1 100%; }
     #views { flex-direction: column; }
@@ -235,22 +251,6 @@ button.small { font-size: 12px; }
 #stopList .swatches .joint { align-self: center; color: var(--muted); font-size: 11px; }
 #stops [hidden] { display: none !important; }
 input.percent { width: 72px; }
-#presetNote[hidden], #levelRow[hidden], #stepsRow[hidden], #sheetRow[hidden], aside .note[hidden] { display: none; }
-#levelRow input[type=range], #stepsRow input[type=range] { flex: 1; }
-#levelValue, #stepsValue { min-width: 5.5em; text-align: right; font-variant-numeric: tabular-nums; }
-aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-.view .plot, .view .sheet {
-    display: block;
-    width: 100%;
-    margin-top: 8px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    touch-action: none;
-}
-.view .plot { height: 170px; }
-.view .sheet { height: 260px; cursor: grab; }
-.view .plot[hidden], .view .sheet[hidden], .view .numbers[hidden] { display: none; }
-.view .numbers { font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -804,7 +804,7 @@ function hexForColor(color) {
 // MARK: - Renderer
 
 // MeshShader2's WebGPU freeform gradient renderer: its constraint rasterizer, harmonic and biharmonic multigrids,
-// with its points and one-sided lines. See tools/diffusion-gradient-editor/vendor/README.md.
+// and the sharp edges drawn along two-sided lines. See tools/gradient-editor-common/vendor/README.md.
 // Draws a freeform gradient with WebGPU: the browser side of the
 // FreeformGradient package's WebGPU renderer, a port of its Metal renderer:
 // the solver's harmonic and biharmonic multigrids, and the sharp edges drawn
@@ -2128,20 +2128,24 @@ const PRESETS = [
     },
 ];
 
+// What the shared code needs from this editor: which state a preset sets, which preset to start from, what to reset
+// when a preset is chosen, and which links it can read.
+const PRESET_KEYS = ["stops", "lines"];
+const DEFAULT_PRESET = 0;
+
+function resetEditing() {
+    selection = null;
+    drawing = null;
+}
+
+function acceptsState(data) {
+    return Array.isArray(data.stops) && Array.isArray(data.lines);
+}
+
 function presetState(index) {
     return {
-        space: state?.space ?? 2,
-        resolution: state?.resolution ?? 512,
-        models: state?.models ?? ["biharmonic", "harmonic"],
+        ...commonState(),
         showStops: state?.showStops ?? true,
-        view: state?.view ?? "gradient",
-        level: state?.level ?? 2,
-        steps: state?.steps ?? 6,
-        crossSection: state?.crossSection ?? false,
-        section: state?.section ?? [[0.1, 0.5], [0.9, 0.5]],
-        sheet: state?.sheet ?? false,
-        sheetHeight: state?.sheetHeight ?? "L",
-        numbers: state?.numbers ?? false,
         ...structuredClone(PRESETS[index].state),
     };
 }
@@ -2401,7 +2405,7 @@ function encodeView(view, encoder, width, height) {
 // MARK: - Visualizations
 
 // Draws a box's solution as one of the views under Visualize, reading the renderer's textures for one level: its
-// solution, the colors its stops hold and how firmly, and for the difference, the other box's solution. Also reads a
+// solution, the colors its curves or stops hold and how firmly, and for the difference, the other box's solution. Also reads a
 // level back for the cross-section, 3D and numbers.
 const VISUALIZE_SHADER = `
 struct Visualize {
@@ -2511,7 +2515,7 @@ fn dither(position: vec2<f32>) -> f32 {
     return fract(52.9829189 * fract(dot(position, vec2<f32>(0.06711056, 0.00583715))));
 }
 
-// Modes: 1 what the stops hold, 2 where it leaves sRGB, 3 lines of equal lightness, 4 the difference from the other
+// Modes: 1 what the curves or stops hold, 2 where it leaves sRGB, 3 lines of equal lightness, 4 the difference from the other
 // box, 5 one level's texels.
 @fragment
 fn visualizeFragment(input: VisualizeVertex) -> @location(0) vec4<f32> {
@@ -2597,16 +2601,6 @@ let readPipeline = null;
 
 const VIEW_MODES = { holds: 1, gamut: 2, isolines: 3, difference: 4, level: 5 };
 
-const VIEW_NOTES = {
-    gradient: "The gradient each model draws from the same stops.",
-    holds: "Every texel of the grid is worked out from the texels the stops hold, shown here in the colors they're held to, over the faded gradient. A point holds a disc out to its spread, at least 1% of the box's shorter side; a line holds a band 1% either side of it, its color running from stop to stop. Set Grid to 128 to see the texels.",
-    gamut: "Hatching marks where the solved colors fall outside sRGB, so they're clipped to draw them. The harmonic model makes each texel the average of its neighbors, so it can't go past the colors it's held to. The biharmonic model keeps the slope smooth through each stop, so past a stop it keeps going, and overshoots, most of all near the box's edges. In oklab, a mix of two colors inside sRGB can also fall outside it, in either model.",
-    isolines: "Lines of equal lightness, every 0.025 of Oklab L. The harmonic model is a membrane: its lines ring each point tightly and kink around it, since it's continuous there but not smooth. The biharmonic model is a stiff sheet: its lines bend smoothly through and around the stops, since its slope is continuous too.",
-    difference: "White where the two models agree, purple where they differ, darkest at a difference of 0.15 in Oklab (ΔE OK) or more. Both boxes show the same difference.",
-    level: "The solve runs on a pyramid of grids, each half the size of the one above it. The coarsest is solved outright, and each finer level starts from the one below, scaled up, so it only has to fix the detail. This shows one level's texels as they are, unfiltered, with the texels the stops hold marked. Level 0 is the finest, the one that's drawn.",
-    relaxation: "The harmonic model's finest grid, started from the stops' average color and relaxed without the pyramid: each step moves every texel toward the average of its four neighbors. The colors creep out from the stops a texel or two a step, so a fine grid would take hundreds of thousands of steps to settle. That's why the solve starts coarse. The biharmonic box shows its gradient.",
-};
-
 function viewAvailable(name) {
     if (name === "difference")
         return state.models.length > 1;
@@ -2650,7 +2644,7 @@ function encodeVisualization(view, encoder) {
     pass.end();
 }
 
-// The harmonic model's finest grid started from the stops' average color and smoothed `steps` times, without the
+// The harmonic model's finest grid started from the average held color and smoothed `steps` times, without the
 // coarser levels, through the renderer's own kernels, as its encodeSolve() does.
 function encodeRelaxation(renderer, encoder, steps) {
     renderer.slots = new Map();
@@ -2830,7 +2824,7 @@ function drawPanels() {
 }
 
 // The components along the cross-section from A to B, as encoded sRGB before clipping, under a strip of the colors
-// there, over bars of how firmly the stops hold each point.
+// there, over bars of how firmly each point is held.
 function drawPlot(view) {
     const { ctx, width, height } = sizeCanvas(view.plot);
     const ink = isDark() ? "255, 255, 255" : "0, 0, 0";
@@ -3084,13 +3078,6 @@ function numbersText(view) {
         ` Oklab L from ${darkest.toFixed(3)} to ${lightest.toFixed(3)}.`;
 }
 
-// MARK: - Overlay
-
-const ACCENT = "#0a84ff";
-
-// Whether a stop has been dragged out of the box, and goes when it's let go.
-const outside = ([x, y]) => x < -0.02 || x > 1.02 || y < -0.02 || y > 1.02;
-
 // The cross-section's line, dashed, with its ends A and B.
 function drawSection(ctx, toPixels) {
     const ends = state.section.map(toPixels);
@@ -3119,6 +3106,42 @@ function drawSection(ctx, toPixels) {
         ctx.fillText(i ? "B" : "A", at[0], at[1] + 0.5);
     });
 }
+
+// The settings every editor's state has: from the current state when a preset is chosen, so they stay as they were.
+function commonState() {
+    return {
+        space: state?.space ?? 2,
+        resolution: state?.resolution ?? 512,
+        models: state?.models ?? ["biharmonic", "harmonic"],
+        view: state?.view ?? "gradient",
+        level: state?.level ?? 2,
+        steps: state?.steps ?? 6,
+        crossSection: state?.crossSection ?? false,
+        section: state?.section ?? [[0.1, 0.5], [0.9, 0.5]],
+        sheet: state?.sheet ?? false,
+        sheetHeight: state?.sheetHeight ?? "L",
+        numbers: state?.numbers ?? false,
+    };
+}
+
+// MARK: - View notes
+
+const VIEW_NOTES = {
+    gradient: "The gradient each model draws from the same stops.",
+    holds: "Every texel of the grid is worked out from the texels the stops hold, shown here in the colors they're held to, over the faded gradient. A point holds a disc out to its spread, at least 1% of the box's shorter side; a line holds a band 1% either side of it, its color running from stop to stop. Set Grid to 128 to see the texels.",
+    gamut: "Hatching marks where the solved colors fall outside sRGB, so they're clipped to draw them. The harmonic model makes each texel the average of its neighbors, so it can't go past the colors it's held to. The biharmonic model keeps the slope smooth through each stop, so past a stop it keeps going, and overshoots, most of all near the box's edges. In oklab, a mix of two colors inside sRGB can also fall outside it, in either model.",
+    isolines: "Lines of equal lightness, every 0.025 of Oklab L. The harmonic model is a membrane: its lines ring each point tightly and kink around it, since it's continuous there but not smooth. The biharmonic model is a stiff sheet: its lines bend smoothly through and around the stops, since its slope is continuous too.",
+    difference: "White where the two models agree, purple where they differ, darkest at a difference of 0.15 in Oklab (ΔE OK) or more. Both boxes show the same difference.",
+    level: "The solve runs on a pyramid of grids, each half the size of the one above it. The coarsest is solved outright, and each finer level starts from the one below, scaled up, so it only has to fix the detail. This shows one level's texels as they are, unfiltered, with the texels the stops hold marked. Level 0 is the finest, the one that's drawn.",
+    relaxation: "The harmonic model's finest grid, started from the stops' average color and relaxed without the pyramid: each step moves every texel toward the average of its four neighbors. The colors creep out from the stops a texel or two a step, so a fine grid would take hundreds of thousands of steps to settle. That's why the solve starts coarse. The biharmonic box shows its gradient.",
+};
+
+// MARK: - Overlay
+
+const ACCENT = "#0a84ff";
+
+// Whether a stop has been dragged out of the box, and goes when it's let go.
+const outside = ([x, y]) => x < -0.02 || x > 1.02 || y < -0.02 || y > 1.02;
 
 // The lines, each stop as a swatch of its color, and the selected stop's spread as a dashed circle.
 function drawOverlay(view) {
@@ -3442,60 +3465,14 @@ function colorMix(a, b, t) {
 
 // MARK: - Controls
 
-$("preset").add(new Option("Custom", ""));
-PRESETS.forEach((preset, index) => $("preset").add(new Option(preset.name, String(index))));
-
-function matchingPreset() {
-    const describe = ({ width, height, stops, lines }) => JSON.stringify([width, height, stops, lines]);
-    const current = describe(state);
-    return PRESETS.findIndex(preset => describe(preset.state) === current);
-}
-
 const MODE_NOTES = {
     points: "Points: click to add a stop, in the color around it, and drag stops to move them. Drag a stop out of the box to remove it. Drag the dashed circle around a selected stop to change its spread.",
     lines: "Lines: click to add stops along a line; it curves through them once it has three. Double-click or press Finish line to end it. Click a stop at the end of a line to carry on from it, the first stop to close the line, another line's end to join them, or a line to add a stop on it.",
 };
 
 function updateControls() {
-    const preset = matchingPreset();
-    $("preset").value = preset < 0 ? "" : String(preset);
-    $("presetNote").textContent = PRESETS[preset]?.note ?? "";
-    $("presetNote").hidden = !PRESETS[preset]?.note;
-
-    $("view").value = state.view;
-    for (const option of $("view").options)
-        option.disabled = !viewAvailable(option.value);
-    $("viewNote").textContent = VIEW_NOTES[state.view];
-    $("levelRow").hidden = state.view !== "level";
-    $("stepsRow").hidden = state.view !== "relaxation";
-    const levels = views.find(view => !view.figure.hidden)?.renderer?.levels ?? [];
-    $("level").max = String(Math.max(0, levels.length - 1));
-    $("level").value = String(state.level);
-    const level = levels[Math.min(state.level, levels.length - 1)];
-    $("levelValue").textContent = level ? `${Math.min(state.level, levels.length - 1)}: ${level.width} × ${level.height}` : String(state.level);
-    $("steps").value = String(state.steps);
-    $("stepsValue").textContent = (2 ** state.steps).toLocaleString();
-    $("playSteps").textContent = playing ? "Stop" : "Play";
-    for (const id of ["crossSection", "sheet", "numbers"]) {
-        $(id).checked = state[id];
-        $(id + "Note").hidden = !state[id];
-    }
-    $("sheetRow").hidden = !state.sheet;
-    const heights = sheetHeights(state.space);
-    if ($("sheetHeight").dataset.space !== String(state.space)) {
-        $("sheetHeight").replaceChildren(...heights.map(height => new Option(height.label, height.value)));
-        $("sheetHeight").dataset.space = String(state.space);
-    }
-    $("sheetHeight").value = sheetHeight(state.space).value;
-    for (const id of ["width", "height"]) {
-        if (document.activeElement !== $(id))
-            $(id).value = state[id];
-    }
-    $("space").value = String(state.space);
-    $("resolution").value = String(state.resolution);
+    updateCommonControls();
     $("showStops").checked = state.showStops;
-    for (const button of document.querySelectorAll("#modelBar button"))
-        button.setAttribute("aria-pressed", String(state.models.includes(button.dataset.model)));
     for (const button of document.querySelectorAll("#toolbar button[data-mode]"))
         button.setAttribute("aria-pressed", String(button.dataset.mode === mode));
     $("modeNote").textContent = MODE_NOTES[mode];
@@ -3652,12 +3629,72 @@ $("clearStops").addEventListener("click", () => {
     drawing = null;
     changed();
 });
+$("showStops").addEventListener("change", () => {
+    state.showStops = $("showStops").checked;
+    changed();
+});
+
+// MARK: - Shared controls
+
+// The editor gives PRESETS, PRESET_KEYS (the state a preset sets besides the box), presetState(index), resetEditing()
+// for when a preset replaces the state, and VIEW_NOTES.
+
+$("preset").add(new Option("Custom", ""));
+PRESETS.forEach((preset, index) => $("preset").add(new Option(preset.name, String(index))));
+
+function matchingPreset() {
+    const describe = source => JSON.stringify([source.width, source.height, ...PRESET_KEYS.map(key => source[key])]);
+    const current = describe(state);
+    return PRESETS.findIndex(preset => describe(preset.state) === current);
+}
+
+// The preset, the box, the space, the grid, the models and the visualizations; the editor updates the rest.
+function updateCommonControls() {
+    const preset = matchingPreset();
+    $("preset").value = preset < 0 ? "" : String(preset);
+    $("presetNote").textContent = PRESETS[preset]?.note ?? "";
+    $("presetNote").hidden = !PRESETS[preset]?.note;
+
+    $("view").value = state.view;
+    for (const option of $("view").options)
+        option.disabled = !viewAvailable(option.value);
+    $("viewNote").textContent = VIEW_NOTES[state.view];
+    $("levelRow").hidden = state.view !== "level";
+    $("stepsRow").hidden = state.view !== "relaxation";
+    const levels = views.find(view => !view.figure.hidden)?.renderer?.levels ?? [];
+    $("level").max = String(Math.max(0, levels.length - 1));
+    $("level").value = String(state.level);
+    const level = levels[Math.min(state.level, levels.length - 1)];
+    $("levelValue").textContent = level ? `${Math.min(state.level, levels.length - 1)}: ${level.width} × ${level.height}` : String(state.level);
+    $("steps").value = String(state.steps);
+    $("stepsValue").textContent = (2 ** state.steps).toLocaleString();
+    $("playSteps").textContent = playing ? "Stop" : "Play";
+    for (const id of ["crossSection", "sheet", "numbers"]) {
+        $(id).checked = state[id];
+        $(id + "Note").hidden = !state[id];
+    }
+    $("sheetRow").hidden = !state.sheet;
+    const heights = sheetHeights(state.space);
+    if ($("sheetHeight").dataset.space !== String(state.space)) {
+        $("sheetHeight").replaceChildren(...heights.map(height => new Option(height.label, height.value)));
+        $("sheetHeight").dataset.space = String(state.space);
+    }
+    $("sheetHeight").value = sheetHeight(state.space).value;
+    for (const id of ["width", "height"]) {
+        if (document.activeElement !== $(id))
+            $(id).value = state[id];
+    }
+    $("space").value = String(state.space);
+    $("resolution").value = String(state.resolution);
+    for (const button of document.querySelectorAll("#modelBar button"))
+        button.setAttribute("aria-pressed", String(state.models.includes(button.dataset.model)));
+}
+
 $("preset").addEventListener("change", () => {
     if ($("preset").value === "")
         return updateControls();
     state = { ...presetState(Number($("preset").value)) };
-    selection = null;
-    drawing = null;
+    resetEditing();
     changed();
 });
 for (const id of ["width", "height"]) {
@@ -3674,10 +3711,6 @@ $("space").addEventListener("change", () => {
 });
 $("resolution").addEventListener("change", () => {
     state.resolution = Number($("resolution").value);
-    changed();
-});
-$("showStops").addEventListener("change", () => {
-    state.showStops = $("showStops").checked;
     changed();
 });
 // Either model, or both side by side, but at least one.
@@ -3766,10 +3799,10 @@ function decodeState(text) {
     try {
         const binary = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
         const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(binary, ch => ch.charCodeAt(0))));
-        if (data.v !== 1 || !Array.isArray(data.stops) || !Array.isArray(data.lines))
+        if (data.v !== 1 || !acceptsState(data))
             return null;
         delete data.v;
-        return { ...presetState(0), ...data };
+        return { ...presetState(DEFAULT_PRESET), ...data };
     } catch {
         return null;
     }
@@ -3799,7 +3832,7 @@ function scheduleHashWrite() {
 // MARK: - Start
 
 new ResizeObserver(() => scheduleRender()).observe($("views"));
-state = decodeState(location.hash.slice(1)) ?? presetState(0);
+state = decodeState(location.hash.slice(1)) ?? presetState(DEFAULT_PRESET);
 render();
 setUpGPU().then(() => scheduleRender(), error => {
     gpuError = error.message;

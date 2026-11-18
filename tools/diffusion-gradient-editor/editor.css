@@ -1,81 +1,14 @@
-#topBar {
-    display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-bottom: 12px;
-}
-#modelBar { display: flex; }
-#modelBar button {
-    font: inherit;
-    padding: 5px 14px;
-    border: 1px solid var(--border);
-    background: var(--panel);
-    color: var(--fg);
-    cursor: pointer;
-}
-#modelBar button + button { border-left: none; }
-#modelBar button:first-child { border-radius: 6px 0 0 6px; }
-#modelBar button:last-child { border-radius: 0 6px 6px 0; }
-#modelBar button[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: #fff; }
-#views {
-    display: flex;
-    gap: 16px;
-    align-items: flex-start;
-}
-.view { margin: 0; flex: 1 1 0; min-width: 0; }
-.view[hidden] { display: none; }
-.stage {
-    position: relative;
-    width: 100%;
-    outline: 1px solid var(--border);
-    background-color: #fff;
-    background-image: conic-gradient(#ddd 0 25%, #fff 0 50%, #ddd 0 75%, #fff 0);
-    background-size: 16px 16px;
-}
-.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
-.stage .overlay { touch-action: none; }
-.view figcaption { font-size: 12px; margin-top: 6px; }
-.view figcaption .note { display: block; margin-top: 2px; }
 #curveList { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
 #curveList .curve { display: flex; align-items: center; gap: 8px; }
 #curveList .curve { padding: 2px 4px; border-radius: 4px; cursor: pointer; }
 #curveList .curve.selected { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 #curveList .curve span { flex: 1; }
 #curveList input[type=color] { width: 32px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 4px; }
-#toolbar {
-    flex: none;
-    position: sticky;
-    top: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 6px;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-}
-#toolbar button[data-tool] {
-    width: 34px;
-    height: 34px;
-    padding: 5px;
-    border: none;
-    border-radius: 6px;
-    background: none;
-    color: var(--fg);
-    cursor: pointer;
-}
-#toolbar button[data-tool]:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
-#toolbar button[data-tool][aria-pressed=true] { background: var(--accent); color: #fff; }
-#toolbar svg { width: 24px; height: 24px; display: block; }
 #newColors { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
 #newColors input[type=color] { width: 30px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 4px; }
 #swapNewColors { font: inherit; font-size: 12px; padding: 0 6px; border: none; background: none; color: var(--fg); cursor: pointer; }
 @media (max-width: 720px) {
-    #toolbar { flex-direction: row; flex-wrap: wrap; position: static; flex: 1 1 100%; }
     #newColors { flex-direction: row; margin: 0 0 0 6px; padding: 0 0 0 8px; border-top: none; border-left: 1px solid var(--border); }
-    #views { flex-direction: column; }
-    .view { flex: none; width: 100%; }
 }
 #curves [hidden] { display: none !important; }
 #curves input[type=range] { flex: 1; }
@@ -84,21 +17,5 @@
 #curveFields #secondColorLabel { min-width: 0; margin-left: 8px; }
 #shapeFields input[type=number] { width: 4.5em; }
 #curveFields + #curveList { margin-top: 10px; }
-#presetNote[hidden], #levelRow[hidden], #stepsRow[hidden], #sheetRow[hidden], aside .note[hidden] { display: none; }
-#levelRow input[type=range], #stepsRow input[type=range] { flex: 1; }
-#levelValue, #stepsValue { min-width: 5.5em; text-align: right; font-variant-numeric: tabular-nums; }
-aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
-.view .plot, .view .sheet {
-    display: block;
-    width: 100%;
-    margin-top: 8px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    touch-action: none;
-}
-.view .plot { height: 170px; }
-.view .sheet { height: 260px; cursor: grab; }
-.view .plot[hidden], .view .sheet[hidden], .view .numbers[hidden] { display: none; }
-.view .numbers { font-variant-numeric: tabular-nums; }
 #toPathRow[hidden] { display: none; }
 #output { min-height: 160px; white-space: pre; }

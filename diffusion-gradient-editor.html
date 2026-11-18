@@ -180,12 +180,6 @@ button.small { font-size: 12px; }
 .stage .overlay { touch-action: none; }
 .view figcaption { font-size: 12px; margin-top: 6px; }
 .view figcaption .note { display: block; margin-top: 2px; }
-#curveList { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
-#curveList .curve { display: flex; align-items: center; gap: 8px; }
-#curveList .curve { padding: 2px 4px; border-radius: 4px; cursor: pointer; }
-#curveList .curve.selected { background: color-mix(in srgb, var(--accent) 18%, transparent); }
-#curveList .curve span { flex: 1; }
-#curveList input[type=color] { width: 32px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 4px; }
 #toolbar {
     flex: none;
     position: sticky;
@@ -198,7 +192,7 @@ button.small { font-size: 12px; }
     border: 1px solid var(--border);
     border-radius: 8px;
 }
-#toolbar button[data-tool] {
+#toolbar > button {
     width: 34px;
     height: 34px;
     padding: 5px;
@@ -208,25 +202,9 @@ button.small { font-size: 12px; }
     color: var(--fg);
     cursor: pointer;
 }
-#toolbar button[data-tool]:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
-#toolbar button[data-tool][aria-pressed=true] { background: var(--accent); color: #fff; }
+#toolbar > button:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+#toolbar > button[aria-pressed=true] { background: var(--accent); color: #fff; }
 #toolbar svg { width: 24px; height: 24px; display: block; }
-#newColors { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
-#newColors input[type=color] { width: 30px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 4px; }
-#swapNewColors { font: inherit; font-size: 12px; padding: 0 6px; border: none; background: none; color: var(--fg); cursor: pointer; }
-@media (max-width: 720px) {
-    #toolbar { flex-direction: row; flex-wrap: wrap; position: static; flex: 1 1 100%; }
-    #newColors { flex-direction: row; margin: 0 0 0 6px; padding: 0 0 0 8px; border-top: none; border-left: 1px solid var(--border); }
-    #views { flex-direction: column; }
-    .view { flex: none; width: 100%; }
-}
-#curves [hidden] { display: none !important; }
-#curves input[type=range] { flex: 1; }
-#curves output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
-#curveFields input[type=color] { width: 32px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 4px; }
-#curveFields #secondColorLabel { min-width: 0; margin-left: 8px; }
-#shapeFields input[type=number] { width: 4.5em; }
-#curveFields + #curveList { margin-top: 10px; }
 #presetNote[hidden], #levelRow[hidden], #stepsRow[hidden], #sheetRow[hidden], aside .note[hidden] { display: none; }
 #levelRow input[type=range], #stepsRow input[type=range] { flex: 1; }
 #levelValue, #stepsValue { min-width: 5.5em; text-align: right; font-variant-numeric: tabular-nums; }
@@ -243,6 +221,30 @@ aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transf
 .view .sheet { height: 260px; cursor: grab; }
 .view .plot[hidden], .view .sheet[hidden], .view .numbers[hidden] { display: none; }
 .view .numbers { font-variant-numeric: tabular-nums; }
+@media (max-width: 720px) {
+    #toolbar { flex-direction: row; flex-wrap: wrap; position: static; flex: 1 1 100%; }
+    #views { flex-direction: column; }
+    .view { flex: none; width: 100%; }
+}
+#curveList { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+#curveList .curve { display: flex; align-items: center; gap: 8px; }
+#curveList .curve { padding: 2px 4px; border-radius: 4px; cursor: pointer; }
+#curveList .curve.selected { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+#curveList .curve span { flex: 1; }
+#curveList input[type=color] { width: 32px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 4px; }
+#newColors { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
+#newColors input[type=color] { width: 30px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 4px; }
+#swapNewColors { font: inherit; font-size: 12px; padding: 0 6px; border: none; background: none; color: var(--fg); cursor: pointer; }
+@media (max-width: 720px) {
+    #newColors { flex-direction: row; margin: 0 0 0 6px; padding: 0 0 0 8px; border-top: none; border-left: 1px solid var(--border); }
+}
+#curves [hidden] { display: none !important; }
+#curves input[type=range] { flex: 1; }
+#curves output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
+#curveFields input[type=color] { width: 32px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 4px; }
+#curveFields #secondColorLabel { min-width: 0; margin-left: 8px; }
+#shapeFields input[type=number] { width: 4.5em; }
+#curveFields + #curveList { margin-top: 10px; }
 #toPathRow[hidden] { display: none; }
 #output { min-height: 160px; white-space: pre; }
 </style>
@@ -814,7 +816,7 @@ function hexForColor(color) {
 // MARK: - Renderer
 
 // MeshShader2's WebGPU freeform gradient renderer: its constraint rasterizer, harmonic and biharmonic multigrids,
-// and the sharp edges drawn along two-sided lines. See tools/diffusion-gradient-editor/vendor/README.md.
+// and the sharp edges drawn along two-sided lines. See tools/gradient-editor-common/vendor/README.md.
 // Draws a freeform gradient with WebGPU: the browser side of the
 // FreeformGradient package's WebGPU renderer, a port of its Metal renderer:
 // the solver's harmonic and biharmonic multigrids, and the sharp edges drawn
@@ -2139,20 +2141,29 @@ const PRESETS = [
     },
 ];
 
+// What the shared code needs from this editor: which state a preset sets, which preset to start from, what to reset
+// when a preset is chosen, and which links it can read.
+const PRESET_KEYS = ["curves"];
+const DEFAULT_PRESET = 2;
+
+function resetEditing() {
+    selection = null;
+    penCurve = null;
+}
+
+// Before shapes kept their form, every curve was a path of nodes.
+function acceptsState(data) {
+    if (!Array.isArray(data.curves))
+        return false;
+    for (const curve of data.curves)
+        curve.kind ??= "path";
+    return true;
+}
+
 function presetState(index) {
     return {
-        space: state?.space ?? 2,
-        resolution: state?.resolution ?? 512,
-        models: state?.models ?? ["biharmonic", "harmonic"],
+        ...commonState(),
         showCurves: state?.showCurves ?? true,
-        view: state?.view ?? "gradient",
-        level: state?.level ?? 2,
-        steps: state?.steps ?? 6,
-        crossSection: state?.crossSection ?? false,
-        section: state?.section ?? [[0.1, 0.5], [0.9, 0.5]],
-        sheet: state?.sheet ?? false,
-        sheetHeight: state?.sheetHeight ?? "L",
-        numbers: state?.numbers ?? false,
         ...structuredClone(PRESETS[index].state),
     };
 }
@@ -2519,7 +2530,7 @@ function encodeView(view, encoder, width, height) {
 // MARK: - Visualizations
 
 // Draws a box's solution as one of the views under Visualize, reading the renderer's textures for one level: its
-// solution, the colors its curves hold and how firmly, and for the difference, the other box's solution. Also reads a
+// solution, the colors its curves or stops hold and how firmly, and for the difference, the other box's solution. Also reads a
 // level back for the cross-section, 3D and numbers.
 const VISUALIZE_SHADER = `
 struct Visualize {
@@ -2629,7 +2640,7 @@ fn dither(position: vec2<f32>) -> f32 {
     return fract(52.9829189 * fract(dot(position, vec2<f32>(0.06711056, 0.00583715))));
 }
 
-// Modes: 1 what the curves hold, 2 where it leaves sRGB, 3 lines of equal lightness, 4 the difference from the other
+// Modes: 1 what the curves or stops hold, 2 where it leaves sRGB, 3 lines of equal lightness, 4 the difference from the other
 // box, 5 one level's texels.
 @fragment
 fn visualizeFragment(input: VisualizeVertex) -> @location(0) vec4<f32> {
@@ -2715,16 +2726,6 @@ let readPipeline = null;
 
 const VIEW_MODES = { holds: 1, gamut: 2, isolines: 3, difference: 4, level: 5 };
 
-const VIEW_NOTES = {
-    gradient: "The gradient each model draws from the same curves.",
-    holds: "Every texel of the grid is worked out from the texels the curves hold, shown here in the colors they're held to, over the faded gradient. A curve holds a band 1% of the box's shorter side either side of it, each side its own color. Below 100% strength, its texels are held only in part, so the colors around them bleed in. A blurred curve is held as two one-sided copies, moved apart by the blur, and the solve fills the band between them. Set Grid to 128 to see the texels.",
-    gamut: "Hatching marks where the solved colors fall outside sRGB, so they're clipped to draw them. The harmonic model makes each texel the average of its neighbors, so it can't go past the colors it's held to. The biharmonic model keeps the slope smooth through each curve, so past a jump it keeps going, and overshoots. In oklab, a mix of two colors inside sRGB can also fall outside it, in either model.",
-    isolines: "Lines of equal lightness, every 0.025 of Oklab L. The harmonic model is a membrane: its lines bunch up at the curves and kink where they end, since it's continuous there but not smooth. The biharmonic model is a stiff sheet: its lines bend smoothly around a curve's end, since its slope is continuous too.",
-    difference: "White where the two models agree, purple where they differ, darkest at a difference of 0.15 in Oklab (ΔE OK) or more. Both boxes show the same difference.",
-    level: "The solve runs on a pyramid of grids, each half the size of the one above it. The coarsest is solved outright, and each finer level starts from the one below, scaled up, so it only has to fix the detail. This shows one level's texels as they are, unfiltered, with the texels the curves hold marked. Level 0 is the finest, the one that's drawn.",
-    relaxation: "The harmonic model's finest grid, started from the curves' average color and relaxed without the pyramid: each step moves every texel toward the average of its four neighbors. The colors creep out from the curves a texel or two a step, so a fine grid would take hundreds of thousands of steps to settle. That's why the solve starts coarse. The biharmonic box shows its gradient.",
-};
-
 function viewAvailable(name) {
     if (name === "difference")
         return state.models.length > 1;
@@ -2768,7 +2769,7 @@ function encodeVisualization(view, encoder) {
     pass.end();
 }
 
-// The harmonic model's finest grid started from the curves' average color and smoothed `steps` times, without the
+// The harmonic model's finest grid started from the average held color and smoothed `steps` times, without the
 // coarser levels, through the renderer's own kernels, as its encodeSolve() does.
 function encodeRelaxation(renderer, encoder, steps) {
     renderer.slots = new Map();
@@ -2948,7 +2949,7 @@ function drawPanels() {
 }
 
 // The components along the cross-section from A to B, as encoded sRGB before clipping, under a strip of the colors
-// there, over bars of how firmly the curves hold each point.
+// there, over bars of how firmly each point is held.
 function drawPlot(view) {
     const { ctx, width, height } = sizeCanvas(view.plot);
     const ink = isDark() ? "255, 255, 255" : "0, 0, 0";
@@ -3121,7 +3122,7 @@ function drawSheet(view) {
         }
     }
     if (state.crossSection) {
-        // Where the cross-section cuts the surface: the curves the plot draws.
+        // Where the cross-section cuts the surface: the lines the plot draws.
         const [a, b] = state.section;
         const points = [];
         for (let i = 0; i <= 80; ++i) {
@@ -3202,35 +3203,6 @@ function numbersText(view) {
         ` Oklab L from ${darkest.toFixed(3)} to ${lightest.toFixed(3)}.`;
 }
 
-// MARK: - Overlay
-
-const ACCENT = "#0a84ff";
-
-// Where a curve's two swatches sit, in CSS pixels of a box `size` across and down: either side of the middle of its
-// first stretch, left of the direction of travel first. Each comes with the name of the color it shows.
-function swatches(curve, size) {
-    const stretch = stretches(curve)[0];
-    if (!stretch)
-        return [];
-    const toPixels = ([x, y]) => [x * size[0], y * size[1]];
-    const middle = toPixels(bezier(stretch, 0.5));
-    const ahead = toPixels(bezier(stretch, 0.51)), behind = toPixels(bezier(stretch, 0.49));
-    const tangent = [ahead[0] - behind[0], ahead[1] - behind[1]];
-    const length = Math.hypot(...tangent) || 1;
-    // Left of the direction of travel, with y down.
-    const leftward = [tangent[1] / length, -tangent[0] / length];
-    const names = sideNames(curve);
-    return [1, -1].map((sign, i) => ({ side: names[i], at: [middle[0] + leftward[0] * 12 * sign, middle[1] + leftward[1] * 12 * sign] }));
-}
-
-// The names of the colors on a curve's left and right, going along it with y down.
-function sideNames(curve) {
-    if (!curve.closed)
-        return ["left", "right"];
-    const [left] = sideColors({ ...curve, inside: "inside", outside: "outside" }, pieces(curve));
-    return left === "inside" ? ["inside", "outside"] : ["outside", "inside"];
-}
-
 // The cross-section's line, dashed, with its ends A and B.
 function drawSection(ctx, toPixels) {
     const ends = state.section.map(toPixels);
@@ -3258,6 +3230,64 @@ function drawSection(ctx, toPixels) {
         ctx.fillStyle = "#fff";
         ctx.fillText(i ? "B" : "A", at[0], at[1] + 0.5);
     });
+}
+
+// The settings every editor's state has: from the current state when a preset is chosen, so they stay as they were.
+function commonState() {
+    return {
+        space: state?.space ?? 2,
+        resolution: state?.resolution ?? 512,
+        models: state?.models ?? ["biharmonic", "harmonic"],
+        view: state?.view ?? "gradient",
+        level: state?.level ?? 2,
+        steps: state?.steps ?? 6,
+        crossSection: state?.crossSection ?? false,
+        section: state?.section ?? [[0.1, 0.5], [0.9, 0.5]],
+        sheet: state?.sheet ?? false,
+        sheetHeight: state?.sheetHeight ?? "L",
+        numbers: state?.numbers ?? false,
+    };
+}
+
+// MARK: - View notes
+
+const VIEW_NOTES = {
+    gradient: "The gradient each model draws from the same curves.",
+    holds: "Every texel of the grid is worked out from the texels the curves hold, shown here in the colors they're held to, over the faded gradient. A curve holds a band 1% of the box's shorter side either side of it, each side its own color. Below 100% strength, its texels are held only in part, so the colors around them bleed in. A blurred curve is held as two one-sided copies, moved apart by the blur, and the solve fills the band between them. Set Grid to 128 to see the texels.",
+    gamut: "Hatching marks where the solved colors fall outside sRGB, so they're clipped to draw them. The harmonic model makes each texel the average of its neighbors, so it can't go past the colors it's held to. The biharmonic model keeps the slope smooth through each curve, so past a jump it keeps going, and overshoots. In oklab, a mix of two colors inside sRGB can also fall outside it, in either model.",
+    isolines: "Lines of equal lightness, every 0.025 of Oklab L. The harmonic model is a membrane: its lines bunch up at the curves and kink where they end, since it's continuous there but not smooth. The biharmonic model is a stiff sheet: its lines bend smoothly around a curve's end, since its slope is continuous too.",
+    difference: "White where the two models agree, purple where they differ, darkest at a difference of 0.15 in Oklab (ΔE OK) or more. Both boxes show the same difference.",
+    level: "The solve runs on a pyramid of grids, each half the size of the one above it. The coarsest is solved outright, and each finer level starts from the one below, scaled up, so it only has to fix the detail. This shows one level's texels as they are, unfiltered, with the texels the curves hold marked. Level 0 is the finest, the one that's drawn.",
+    relaxation: "The harmonic model's finest grid, started from the curves' average color and relaxed without the pyramid: each step moves every texel toward the average of its four neighbors. The colors creep out from the curves a texel or two a step, so a fine grid would take hundreds of thousands of steps to settle. That's why the solve starts coarse. The biharmonic box shows its gradient.",
+};
+
+// MARK: - Overlay
+
+const ACCENT = "#0a84ff";
+
+// Where a curve's two swatches sit, in CSS pixels of a box `size` across and down: either side of the middle of its
+// first stretch, left of the direction of travel first. Each comes with the name of the color it shows.
+function swatches(curve, size) {
+    const stretch = stretches(curve)[0];
+    if (!stretch)
+        return [];
+    const toPixels = ([x, y]) => [x * size[0], y * size[1]];
+    const middle = toPixels(bezier(stretch, 0.5));
+    const ahead = toPixels(bezier(stretch, 0.51)), behind = toPixels(bezier(stretch, 0.49));
+    const tangent = [ahead[0] - behind[0], ahead[1] - behind[1]];
+    const length = Math.hypot(...tangent) || 1;
+    // Left of the direction of travel, with y down.
+    const leftward = [tangent[1] / length, -tangent[0] / length];
+    const names = sideNames(curve);
+    return [1, -1].map((sign, i) => ({ side: names[i], at: [middle[0] + leftward[0] * 12 * sign, middle[1] + leftward[1] * 12 * sign] }));
+}
+
+// The names of the colors on a curve's left and right, going along it with y down.
+function sideNames(curve) {
+    if (!curve.closed)
+        return ["left", "right"];
+    const [left] = sideColors({ ...curve, inside: "inside", outside: "outside" }, pieces(curve));
+    return left === "inside" ? ["inside", "outside"] : ["outside", "inside"];
 }
 
 function curvePath(ctx, curve, toPixels) {
@@ -3834,55 +3864,9 @@ $("swapNewColors").addEventListener("click", () => {
 
 // MARK: - Controls
 
-$("preset").add(new Option("Custom", ""));
-PRESETS.forEach((preset, index) => $("preset").add(new Option(preset.name, String(index))));
-
-function matchingPreset() {
-    const describe = ({ width, height, curves }) => JSON.stringify([width, height, curves]);
-    const current = describe(state);
-    return PRESETS.findIndex(preset => describe(preset.state) === current);
-}
-
 function updateControls() {
-    const preset = matchingPreset();
-    $("preset").value = preset < 0 ? "" : String(preset);
-    $("presetNote").textContent = PRESETS[preset]?.note ?? "";
-    $("presetNote").hidden = !PRESETS[preset]?.note;
-
-    $("view").value = state.view;
-    for (const option of $("view").options)
-        option.disabled = !viewAvailable(option.value);
-    $("viewNote").textContent = VIEW_NOTES[state.view];
-    $("levelRow").hidden = state.view !== "level";
-    $("stepsRow").hidden = state.view !== "relaxation";
-    const levels = views.find(view => !view.figure.hidden)?.renderer?.levels ?? [];
-    $("level").max = String(Math.max(0, levels.length - 1));
-    $("level").value = String(state.level);
-    const level = levels[Math.min(state.level, levels.length - 1)];
-    $("levelValue").textContent = level ? `${Math.min(state.level, levels.length - 1)}: ${level.width} × ${level.height}` : String(state.level);
-    $("steps").value = String(state.steps);
-    $("stepsValue").textContent = (2 ** state.steps).toLocaleString();
-    $("playSteps").textContent = playing ? "Stop" : "Play";
-    for (const id of ["crossSection", "sheet", "numbers"]) {
-        $(id).checked = state[id];
-        $(id + "Note").hidden = !state[id];
-    }
-    $("sheetRow").hidden = !state.sheet;
-    const heights = sheetHeights(state.space);
-    if ($("sheetHeight").dataset.space !== String(state.space)) {
-        $("sheetHeight").replaceChildren(...heights.map(height => new Option(height.label, height.value)));
-        $("sheetHeight").dataset.space = String(state.space);
-    }
-    $("sheetHeight").value = sheetHeight(state.space).value;
-    for (const id of ["width", "height"]) {
-        if (document.activeElement !== $(id))
-            $(id).value = state[id];
-    }
-    $("space").value = String(state.space);
-    $("resolution").value = String(state.resolution);
+    updateCommonControls();
     $("showCurves").checked = state.showCurves;
-    for (const button of document.querySelectorAll("#modelBar button"))
-        button.setAttribute("aria-pressed", String(state.models.includes(button.dataset.model)));
     for (const button of document.querySelectorAll("#toolbar button[data-tool]"))
         button.setAttribute("aria-pressed", String(button.dataset.tool === tool));
     $("newFirst").value = newColors[0];
@@ -4056,12 +4040,80 @@ $("toPath").addEventListener("click", () => {
     changed();
 });
 
+$("showCurves").addEventListener("change", () => {
+    state.showCurves = $("showCurves").checked;
+    changed();
+});
+$("clearCurves").addEventListener("click", () => {
+    if (!state.curves.length)
+        return;
+    state.curves = [];
+    selection = null;
+    penCurve = null;
+    changed();
+});
+
+// MARK: - Shared controls
+
+// The editor gives PRESETS, PRESET_KEYS (the state a preset sets besides the box), presetState(index), resetEditing()
+// for when a preset replaces the state, and VIEW_NOTES.
+
+$("preset").add(new Option("Custom", ""));
+PRESETS.forEach((preset, index) => $("preset").add(new Option(preset.name, String(index))));
+
+function matchingPreset() {
+    const describe = source => JSON.stringify([source.width, source.height, ...PRESET_KEYS.map(key => source[key])]);
+    const current = describe(state);
+    return PRESETS.findIndex(preset => describe(preset.state) === current);
+}
+
+// The preset, the box, the space, the grid, the models and the visualizations; the editor updates the rest.
+function updateCommonControls() {
+    const preset = matchingPreset();
+    $("preset").value = preset < 0 ? "" : String(preset);
+    $("presetNote").textContent = PRESETS[preset]?.note ?? "";
+    $("presetNote").hidden = !PRESETS[preset]?.note;
+
+    $("view").value = state.view;
+    for (const option of $("view").options)
+        option.disabled = !viewAvailable(option.value);
+    $("viewNote").textContent = VIEW_NOTES[state.view];
+    $("levelRow").hidden = state.view !== "level";
+    $("stepsRow").hidden = state.view !== "relaxation";
+    const levels = views.find(view => !view.figure.hidden)?.renderer?.levels ?? [];
+    $("level").max = String(Math.max(0, levels.length - 1));
+    $("level").value = String(state.level);
+    const level = levels[Math.min(state.level, levels.length - 1)];
+    $("levelValue").textContent = level ? `${Math.min(state.level, levels.length - 1)}: ${level.width} × ${level.height}` : String(state.level);
+    $("steps").value = String(state.steps);
+    $("stepsValue").textContent = (2 ** state.steps).toLocaleString();
+    $("playSteps").textContent = playing ? "Stop" : "Play";
+    for (const id of ["crossSection", "sheet", "numbers"]) {
+        $(id).checked = state[id];
+        $(id + "Note").hidden = !state[id];
+    }
+    $("sheetRow").hidden = !state.sheet;
+    const heights = sheetHeights(state.space);
+    if ($("sheetHeight").dataset.space !== String(state.space)) {
+        $("sheetHeight").replaceChildren(...heights.map(height => new Option(height.label, height.value)));
+        $("sheetHeight").dataset.space = String(state.space);
+    }
+    $("sheetHeight").value = sheetHeight(state.space).value;
+    for (const id of ["width", "height"]) {
+        if (document.activeElement !== $(id))
+            $(id).value = state[id];
+    }
+    $("space").value = String(state.space);
+    $("resolution").value = String(state.resolution);
+    for (const button of document.querySelectorAll("#modelBar button"))
+        button.setAttribute("aria-pressed", String(state.models.includes(button.dataset.model)));
+}
+
 $("preset").addEventListener("change", () => {
     if ($("preset").value === "")
         return updateControls();
     state = { ...presetState(Number($("preset").value)) };
-    selection = null;
-    penCurve = null;
+    resetEditing();
     changed();
 });
 for (const id of ["width", "height"]) {
@@ -4078,18 +4130,6 @@ $("space").addEventListener("change", () => {
 });
 $("resolution").addEventListener("change", () => {
     state.resolution = Number($("resolution").value);
-    changed();
-});
-$("showCurves").addEventListener("change", () => {
-    state.showCurves = $("showCurves").checked;
-    changed();
-});
-$("clearCurves").addEventListener("click", () => {
-    if (!state.curves.length)
-        return;
-    state.curves = [];
-    selection = null;
-    penCurve = null;
     changed();
 });
 // Either model, or both side by side, but at least one.
@@ -4162,7 +4202,6 @@ $("playSteps").addEventListener("click", () => {
     changed();
     playing.frame = requestAnimationFrame(tick);
 });
-
 // MARK: - CSS
 
 // A made-up diffusion-gradient(), each curve written as a CSS shape:
@@ -4269,13 +4308,10 @@ function decodeState(text) {
     try {
         const binary = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
         const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(binary, ch => ch.charCodeAt(0))));
-        if (data.v !== 1 || !Array.isArray(data.curves))
+        if (data.v !== 1 || !acceptsState(data))
             return null;
         delete data.v;
-        // Before shapes kept their form, every curve was a path of nodes.
-        for (const curve of data.curves)
-            curve.kind ??= "path";
-        return { ...presetState(0), ...data };
+        return { ...presetState(DEFAULT_PRESET), ...data };
     } catch {
         return null;
     }
@@ -4305,7 +4341,7 @@ function scheduleHashWrite() {
 // MARK: - Start
 
 new ResizeObserver(() => scheduleRender()).observe($("views"));
-state = decodeState(location.hash.slice(1)) ?? presetState(2);
+state = decodeState(location.hash.slice(1)) ?? presetState(DEFAULT_PRESET);
 render();
 setUpGPU().then(() => scheduleRender(), error => {
     gpuError = error.message;

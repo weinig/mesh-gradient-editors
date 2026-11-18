@@ -1,0 +1,41 @@
+        <section>
+            <h2>Visualize</h2>
+            <p class="note">Ways to see how the solve works, and how the two models differ.</p>
+            <div class="row">
+                <label for="view">Show</label>
+                <select id="view">
+                    <option value="gradient">The gradient</option>
+                    <option value="holds">What the {{HOLDERS}} hold</option>
+                    <option value="gamut">Where it leaves sRGB</option>
+                    <option value="isolines">Lines of equal lightness</option>
+                    <option value="difference">The difference between the models</option>
+                    <option value="level">One level of the grid pyramid</option>
+                    <option value="relaxation">Relaxing without the pyramid</option>
+                </select>
+            </div>
+            <div id="levelRow" class="row">
+                <label for="level">Level</label>
+                <input id="level" type="range" min="0" max="6" step="1">
+                <output id="levelValue"></output>
+            </div>
+            <div id="stepsRow" class="row" title="How many times the finest grid is relaxed.">
+                <label for="steps">Steps</label>
+                <input id="steps" type="range" min="0" max="12" step="1">
+                <output id="stepsValue"></output>
+                <button id="playSteps" class="small">Play</button>
+            </div>
+            <p id="viewNote" class="note"></p>
+            <h3>Under each box</h3>
+            <div class="row">
+                <label><input type="checkbox" id="crossSection"> Cross-section</label>
+                <label><input type="checkbox" id="sheet"> 3D</label>
+                <label><input type="checkbox" id="numbers"> Numbers</label>
+            </div>
+            <p id="crossSectionNote" class="note">The color's red, green and blue along the dashed line from A to B, as encoded sRGB before it's clipped. Where they go past 0 or 1, in the shaded bands, the color is clipped. The bars along the bottom show how firmly the {{HOLDERS}} hold each point. Drag A and B in either box.</p>
+            <div id="sheetRow" class="row">
+                <label for="sheetHeight">Height</label>
+                <select id="sheetHeight" title="One of the components the solve works in, in the space it interpolates in"></select>
+            </div>
+            <p id="sheetNote" class="note">{{SHEET_NOTE}}</p>
+            <p id="numbersNote" class="note">Under each box: its grid, how many texels the {{HOLDERS}} hold, how much of it is outside sRGB and how far, and its range of lightness.</p>
+        </section>
