@@ -1442,8 +1442,8 @@ function convertToPath(curve) {
     curve.nodes = nodes;
 }
 
-const KIND_NAMES = { ellipse: "Ellipse", line: "Line", arc: "Arc" };
-const curveName = (curve, index) => `${KIND_NAMES[curve.kind] ?? (curve.closed ? "Closed path" : "Path")} ${index + 1}`;
+const KIND_NAMES = { ellipse: "an ellipse", line: "a line", arc: "an arc" };
+const curveName = (curve, index) => `Curve ${index + 1}, ${KIND_NAMES[curve.kind] ?? (curve.closed ? "a closed path" : "a path")}`;
 
 // MARK: - Editing
 
@@ -1875,15 +1875,88 @@ function updateControls() {
         $("output").value = css;
 
     const selected = selection && state.curves[selection.curve];
-    $("selectedCurve").hidden = !selected;
+    $("curvesTitle").textContent = selected ? curveName(selected, selection.curve) : "Curves";
+    $("curveFields").hidden = !selected;
     if (selected) {
-        $("selectedName").textContent = curveName(selected, selection.curve);
+        const sides = selected.closed ? ["inside", "outside"] : ["left", "right"];
+        for (const [which, side] of [["first", sides[0]], ["second", sides[1]]]) {
+            $(which + "ColorLabel").textContent = side[0].toUpperCase() + side.slice(1);
+            if (document.activeElement !== $(which + "Color"))
+                $(which + "Color").value = selected[side];
+        }
+        updateShapeFields(selected);
         $("toPathRow").hidden = isPath(selected);
         for (const [id, value, unit] of [["strength", selected.strength ?? 100, "%"], ["blur", selected.blur ?? 0, " px"]]) {
             $(id).value = value;
             $(id + "Value").textContent = value + unit;
         }
     }
+}
+
+// The fields for a shape's own form, by kind: a label, the key, and whether it's a point or a pair of fractions of the
+// box, shown as percentages, or a number.
+const SHAPE_FIELDS = {
+    ellipse: [["Center", "center", "pair"], ["Radii", "radii", "pair"], ["Turn", "angle", "degrees"]],
+    line: [["From", "from", "pair"], ["To", "to", "pair"]],
+    arc: [["From", "from", "pair"], ["To", "to", "pair"], ["Bend", "bend", "number"]],
+};
+
+function updateShapeFields(curve) {
+    const container = $("shapeFields");
+    const fields = SHAPE_FIELDS[curve.kind] ?? [];
+    if (container.dataset.kind !== (curve.kind ?? "path")) {
+        container.dataset.kind = curve.kind ?? "path";
+        container.replaceChildren(...fields.map(shapeFieldRow));
+    }
+    fields.forEach(([, key, type], i) => {
+        const inputs = container.children[i].querySelectorAll("input");
+        const values = type === "pair" ? curve[key].map(v => Math.round(v * 1000) / 10) : [Math.round(curve[key] * 100) / 100];
+        inputs.forEach((input, k) => {
+            if (document.activeElement !== input)
+                input.value = values[k];
+        });
+    });
+}
+
+function shapeFieldRow([label, key, type]) {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.append(Object.assign(document.createElement("label"), { textContent: label }));
+    const count = type === "pair" ? 2 : 1;
+    for (let k = 0; k < count; ++k) {
+        const input = Object.assign(document.createElement("input"), { type: "number", step: type === "number" ? "0.05" : "1" });
+        input.title = type === "pair" ? `${label}, ${["across", "down"][k]}, as a percentage of the box's ${["width", "height"][k]}` : label;
+        input.addEventListener("input", () => {
+            const curve = selection && state.curves[selection.curve];
+            const value = Number(input.value);
+            if (!curve || input.value === "" || !Number.isFinite(value))
+                return;
+            if (type === "pair") {
+                curve[key] = curve[key].slice();
+                curve[key][k] = key === "radii" ? Math.max(0, value) / 100 : value / 100;
+            } else {
+                curve[key] = key === "bend" ? clamp(value, -4, 4) : value;
+            }
+            changed();
+        });
+        row.append(input);
+        if (type === "pair")
+            row.append(k ? " %" : " % ×");
+    }
+    if (type === "degrees")
+        row.append(" °");
+    return row;
+}
+
+for (const which of ["first", "second"]) {
+    $(which + "Color").addEventListener("input", () => {
+        const curve = selection && state.curves[selection.curve];
+        if (!curve)
+            return;
+        const sides = curve.closed ? ["inside", "outside"] : ["left", "right"];
+        curve[sides[which === "first" ? 0 : 1]] = $(which + "Color").value;
+        changed();
+    });
 }
 
 const TOOL_NOTES = {

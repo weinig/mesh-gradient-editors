@@ -77,9 +77,13 @@
     #views { flex-direction: column; }
     .view { flex: none; width: 100%; }
 }
-#selectedCurve[hidden] { display: none; }
-#selectedCurve input[type=range] { flex: 1; }
-#selectedCurve output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
+#curves [hidden] { display: none !important; }
+#curves input[type=range] { flex: 1; }
+#curves output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
+#curveFields input[type=color] { width: 32px; height: 22px; padding: 0; border: 1px solid var(--border); border-radius: 4px; }
+#curveFields #secondColorLabel { min-width: 0; margin-left: 8px; }
+#shapeFields input[type=number] { width: 4.5em; }
+#curveFields + #curveList { margin-top: 10px; }
 #presetNote[hidden], #levelRow[hidden], #stepsRow[hidden], #sheetRow[hidden], aside .note[hidden] { display: none; }
 #levelRow input[type=range], #stepsRow input[type=range] { flex: 1; }
 #levelValue, #stepsValue { min-width: 5.5em; text-align: right; font-variant-numeric: tabular-nums; }

@@ -80,42 +80,37 @@
             <p id="gpuStatus" class="status"></p>
         </section>
 
-        <section id="selectedCurve" hidden>
-            <h2 id="selectedName"></h2>
-            <div class="row" title="How firmly the curve holds its colors. Below 100%, the colors around it bleed in. Only the harmonic model takes it for now.">
-                <label for="strength">Strength</label>
-                <input id="strength" type="range" min="0" max="100" step="1">
-                <output id="strengthValue"></output>
+        <section id="curves">
+            <h2 id="curvesTitle">Curves</h2>
+            <div id="curveFields">
+                <div class="row">
+                    <label id="firstColorLabel" for="firstColor"></label>
+                    <input id="firstColor" type="color">
+                    <label id="secondColorLabel" for="secondColor"></label>
+                    <input id="secondColor" type="color">
+                </div>
+                <div id="shapeFields"></div>
+                <div class="row" title="How firmly the curve holds its colors. Below 100%, the colors around it bleed in. Only the harmonic model takes it for now.">
+                    <label for="strength">Strength</label>
+                    <input id="strength" type="range" min="0" max="100" step="1">
+                    <output id="strengthValue"></output>
+                </div>
+                <div class="row" title="How wide a band the jump between the curve's two colors is softened over.">
+                    <label for="blur">Blur</label>
+                    <input id="blur" type="range" min="0" max="100" step="1">
+                    <output id="blurValue"></output>
+                </div>
+                <div id="toPathRow" class="row" title="Turn the shape into a path of nodes, to shape it freely. It can't be turned back.">
+                    <button id="toPath" class="small">Convert to a path</button>
+                </div>
             </div>
-            <div class="row" title="How wide a band the jump between the curve's two colors is softened over.">
-                <label for="blur">Blur</label>
-                <input id="blur" type="range" min="0" max="100" step="1">
-                <output id="blurValue"></output>
-            </div>
-            <div id="toPathRow" class="row" title="Turn the shape into a path of nodes, to shape it freely. It can't be turned back.">
-                <button id="toPath" class="small">Convert to a path</button>
-            </div>
-        </section>
-
-        <section>
-            <h2>Curves</h2>
-            <p class="note">Each curve holds a color on each side. For a closed curve, that's inside and outside.</p>
-            <p id="toolNote" class="note"></p>
             <div id="curveList"></div>
-            <p id="emptyNote" class="note">No curves. Draw some with the tools on the left.</p>
             <div class="row"><button id="clearCurves" class="small">Remove all curves</button></div>
+            <p id="emptyNote" class="note">No curves. Draw some with the tools on the left.</p>
+            <p id="toolNote" class="note"></p>
+            <p class="note">Each curve holds a color on each side. For a closed curve, that's inside and outside.</p>
         </section>
 
-        <section>
-            <h2>CSS</h2>
-            <p class="note">CSS has no diffusion gradient, so this syntax is made up, to show how one might look. Each curve is a CSS shape: <code>circle()</code> or <code>ellipse()</code>, or <code>shape()</code> for lines, arcs, turned ellipses and paths. Its colors follow, left and right of the way it's drawn, or inside and outside, then its strength and blur unless they're 100% and 0. The biharmonic model is the default; <code>harmonic</code> picks the other one.</p>
-            <textarea id="output" readonly spellcheck="false"></textarea>
-            <div class="row">
-                <button id="copyCSS">Copy CSS</button>
-                <button id="copyLink">Copy link</button>
-                <span id="copyStatus" class="note"></span>
-            </div>
-        </section>
 
         <section>
             <h2>Visualize</h2>
@@ -162,6 +157,17 @@
             </div>
             <p id="sheetNote" class="note">One component as a height over the box. The harmonic model is a membrane, stretched between the curves that hold it: it's creased along them and peaked at their ends. The biharmonic model is a stiff sheet that bends smoothly through them, and past a jump it keeps going, above 1 or below 0. Drag to turn it.</p>
             <p id="numbersNote" class="note">Under each box: its grid, how many texels the curves hold, how much of it is outside sRGB and how far, and its range of lightness.</p>
+        </section>
+
+        <section>
+            <h2>CSS</h2>
+            <p class="note" title="Each curve is circle(), ellipse(), or shape() for lines, arcs, turned ellipses and paths, then left and right colors, or inside and outside, then strength and blur unless they're 100% and 0. The biharmonic model is the default; harmonic picks the other one.">A made-up <code>diffusion-gradient()</code>: each curve is a CSS shape, followed by its colors, strength and blur.</p>
+            <textarea id="output" readonly spellcheck="false"></textarea>
+            <div class="row">
+                <button id="copyCSS">Copy CSS</button>
+                <button id="copyLink">Copy link</button>
+                <span id="copyStatus" class="note"></span>
+            </div>
         </section>
     </aside>
 </main>
