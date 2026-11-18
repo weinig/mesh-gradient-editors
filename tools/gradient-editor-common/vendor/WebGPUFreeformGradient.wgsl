@@ -57,7 +57,10 @@ struct Level {
     holds: u32,
     // The level below, for freeformRestrict.
     coarseSize: vec2<u32>,
-    padding1: vec2<u32>,
+    // For freeformConstraints: the finest level's texel over the texel a
+    // strength is given for, squared.
+    strengthScale: f32,
+    padding1: u32,
 }
 
 // MARK: - Color sources
@@ -131,8 +134,12 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
         let along = b - a;
         let lengthSquared = dot(along, along);
         var t = 0.0;
+        // How far past either end the texel is, along the segment.
+        var beyond = 0.0;
         if (lengthSquared > 0.0) {
-            t = saturate(dot(position - a, along) / lengthSquared);
+            let along01 = dot(position - a, along) / lengthSquared;
+            t = saturate(along01);
+            beyond = abs(along01 - t) * sqrt(lengthSquared);
         }
         let radius = mix(segment.startRadius, segment.endRadius, t);
         var coverage = saturate((radius - distance(position, a + t * along)) / texel + 0.5);
@@ -156,6 +163,14 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
         }
         var color = mix(mix(segment.startRight, segment.endRight, t), mix(segment.startLeft, segment.endLeft, t), left);
         var strength = segment.strength;
+        // A partial hold is a penalty on each texel, which against the
+        // Laplacian's texel² would hold more firmly the finer the grid. Its
+        // odds are scaled to the finest level's texel, so a strength means
+        // the same on every grid.
+        if (level.holds == 0u && strength > 0.0 && strength < 1.0) {
+            let odds = strength / (1.0 - strength) * level.strengthScale;
+            strength = odds / (1.0 + odds);
+        }
         if (level.holds == 2u && strength < 1.0) {
             let free = bilinearRead(constraintFree, (vec2<f32>(gid) + 0.5) / vec2<f32>(level.size)
                                     * vec2<f32>(textureDimensions(constraintFree)) - 0.5);
@@ -163,9 +178,14 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
             strength = 1.0;
         }
         // A segment's color counts as much as it holds, so a weak one doesn't
-        // dilute a strong hold where they cross.
-        colorSum += coverage * strength * color;
-        coverageSum += coverage * strength;
+        // dilute a strong hold where they cross. Past its end, a segment's
+        // round cap tells left from right by its own line, which at a corner
+        // is the wrong side of the next segment: there its color gives way,
+        // over a texel, to any segment the texel is beside, and counts only
+        // where no other does.
+        let share = max(saturate(1.0 - beyond / texel), 1e-4);
+        colorSum += coverage * strength * share * color;
+        coverageSum += coverage * strength * share;
         weight = max(weight, coverage * strength);
     }
 
@@ -482,15 +502,23 @@ fn freeformEdgeVertex(@builtin(vertex_index) vid: u32) -> EdgeFragment {
     return out;
 }
 
-// The strip's color, blended within half a pixel of the line toward the color
-// halfway between the sides, so the edge is antialiased as the strips on
+// The strip's color, blended within half a pixel of the line toward the mean
+// of the two sides' colors, so the edge is antialiased as the strips on
 // either side of it meet.
 @fragment
 fn freeformEdgeFragment(input: EdgeFragment) -> @location(0) vec4<f32> {
     let edge = saturate(2.0 * input.across / max(fwidth(input.across), 1e-7));
-    let color = toSRGB(mix(input.edgeColor, input.color, edge), display.space);
-    let encoded = saturate(color.rgb + (ditherNoise(input.position.xy) - 0.5) / 255.0);
-    return vec4<f32>(encoded * color.a, color.a);
+    let own = toSRGB(input.color, display.space);
+    var color = vec4<f32>(own.rgb * own.a, own.a);
+    if (edge < 1.0) {
+        // The other side's color is as far past the line's as this side's is
+        // before it. The two are mixed as they're drawn, not in the
+        // interpolation space, where halfway between two hues is a third.
+        let other = toSRGB(2.0 * input.edgeColor - input.color, display.space);
+        color = mix(0.5 * (color + vec4<f32>(other.rgb * other.a, other.a)), color, edge);
+    }
+    let dither = (ditherNoise(input.position.xy) - 0.5) / 255.0 * color.a;
+    return vec4<f32>(clamp(color.rgb + dither, vec3<f32>(0.0), vec3<f32>(color.a)), color.a);
 }
 
 // MARK: - Biharmonic multigrid

@@ -1026,6 +1026,7 @@ export class WebGPUFreeformGradientRenderer {
       u32[11] = holds;
       u32[12] = coarseSize[0];
       u32[13] = coarseSize[1];
+      f32[14] = this.strengthScale;
     });
   }
 
@@ -1067,6 +1068,10 @@ export class WebGPUFreeformGradientRenderer {
 
     const finest = this.levels[0];
     const texel = Math.max(boxScale[0] / finest.width, boxScale[1] / finest.height);
+    // A strength is given for a texel of `strengthTexel`, in units of the box's shorter side: by default, a grid of
+    // 512 texels along the longer side.
+    const strengthTexel = gradient.strengthTexel > 0 ? gradient.strengthTexel : Math.max(...boxScale) / 512;
+    this.strengthScale = (texel / strengthTexel) ** 2;
     const least = twoSidedTexels * texel;
     const segments = gradient.segments;
     const count = segments.length / 23;

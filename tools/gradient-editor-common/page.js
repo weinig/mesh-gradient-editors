@@ -95,7 +95,10 @@ function windowed(data) {
         segments[i + 21] /= 2;
     }
     const lines = data.lines.map(line => ({ ...line, ends: line.ends.map(inside) }));
-    return { ...data, points, segments, lines, window: viewWindow() };
+    // A strength is for the same texel of the view either way: a 512th of its longer side, half as long in the
+    // bigger box's units.
+    const strengthTexel = Math.max(state.width, state.height) / Math.min(state.width, state.height) / 512 / 2;
+    return { ...data, points, segments, lines, window: viewWindow(), strengthTexel };
 }
 
 // MARK: - Page
