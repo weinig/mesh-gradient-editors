@@ -367,4 +367,5 @@ def main():
     page.save(os.path.join(OUT, "all.png"))
 
 
-main()
+if __name__ == "__main__":
+    main()

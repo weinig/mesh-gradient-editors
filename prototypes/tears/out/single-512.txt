@@ -1,0 +1,55 @@
+Grid 512. Errors are the largest difference from the direct double-precision solve, in units where colors run 0 to 1; a step of an 8-bit color is 0.0039.
+circle: A closed circle, red inside and blue outside.
+  mirrored membrane 1e-07: 4036 held, range +0.12 to +1.00
+    double, worst error after each count of steps: 10: 0.0202, 20: 0.0000, 40: 0.0000, 80: 0.0000
+    single, worst error after each count of steps: 10: 0.0202, 20: 0.0000, 40: 0.0000, 80: 0.0000
+  natural  membrane 1e-07: 4036 held, range +0.12 to +1.00
+    double, worst error after each count of steps: 10: 0.3535, 20: 0.0635, 40: 0.0023, 80: 0.0000
+    single, worst error after each count of steps: 10: 0.3540, 20: 0.0637, 40: 0.0024, 80: 0.0000
+open-line: One open line, purple on one side and yellow on the other.
+  mirrored membrane 1e-07: 1864 held, range -2.74 to +3.72
+    double, worst error after each count of steps: 10: 0.0003, 20: 0.0000, 40: 0.0000, 80: 0.0000
+    single, worst error after each count of steps: 10: 0.0023, 20: 0.0021, 40: 0.0021, 80: 0.0021
+  natural  membrane 1e-07: 1864 held, range -6.00 to +6.94
+    double, worst error after each count of steps: 10: 1.4531, 20: 0.2443, 40: 0.0255, 80: 0.0003
+    single, worst error after each count of steps: 10: 1.4442, 20: 0.2345, 40: 0.0150, 80: 0.0147
+crossing: Two lines that cross, each with its own two colors.
+  mirrored membrane 1e-07: 3646 held, range -2.44 to +4.45
+    double, worst error after each count of steps: 10: 0.0904, 20: 0.0004, 40: 0.0000, 80: 0.0000
+    single, worst error after each count of steps: 10: 0.0909, 20: 0.0012, 40: 0.0013, 80: 0.0012
+  natural  membrane 1e-07: 3646 held, range -4.30 to +7.91
+    double, worst error after each count of steps: 10: 2.7294, 20: 0.5673, 40: 0.0176, 80: 0.0001
+    single, worst error after each count of steps: 10: 2.7275, 20: 0.5623, 40: 0.0140, 80: 0.0062
+shapes: A circle, red inside and blue outside, over a gray box with a white highlight line.
+  mirrored membrane 1e-07: 10690 held, range +0.12 to +1.01
+    double, worst error after each count of steps: 10: 0.0507, 20: 0.0001, 40: 0.0000, 80: 0.0000
+    single, worst error after each count of steps: 10: 0.0507, 20: 0.0001, 40: 0.0000, 80: 0.0000
+  natural  membrane 1e-07: 10690 held, range +0.12 to +1.01
+    double, worst error after each count of steps: 10: 0.2137, 20: 0.0325, 40: 0.0002, 80: 0.0000
+    single, worst error after each count of steps: 10: 0.2137, 20: 0.0325, 40: 0.0003, 80: 0.0000
+two-stops: Two points, black and white. A thin plate through two values is a linear ramp.
+  mirrored membrane 1e-07: 0 held, range -0.25 to +1.25
+    double, worst error after each count of steps: 10: 0.0006, 20: 0.0000, 40: 0.0000, 80: 0.0000
+    single, worst error after each count of steps: 10: 0.0006, 20: 0.0005, 40: 0.0005, 80: 0.0005
+  natural  membrane 1e-07: 0 held, range -0.74 to +1.71
+    double, worst error after each count of steps: 10: 0.4535, 20: 0.0317, 40: 0.0006, 80: 0.0000
+    single, worst error after each count of steps: 10: 0.4530, 20: 0.0299, 40: 0.0026, 80: 0.0025
+  natural  membrane 1e-05: 0 held, range -0.22 to +1.00, 1.6983 from the weakest membrane's
+    double, worst error after each count of steps: 10: 0.1867, 20: 0.0081, 40: 0.0001, 80: 0.0000
+    single, worst error after each count of steps: 10: 0.1863, 20: 0.0083, 40: 0.0065, 80: 0.0064
+  natural  membrane 0.0001: 0 held, range -0.09 to +1.00, 1.7559 from the weakest membrane's
+    double, worst error after each count of steps: 10: 0.0234, 20: 0.0004, 40: 0.0000, 80: 0.0000
+    single, worst error after each count of steps: 10: 0.0234, 20: 0.0004, 40: 0.0002, 80: 0.0002
+three-stops: Three points. A thin plate through three values is a plane.
+  mirrored membrane 1e-07: 0 held, range -0.32 to +1.28
+    double, worst error after each count of steps: 10: 0.0020, 20: 0.0000, 40: 0.0000, 80: 0.0000
+    single, worst error after each count of steps: 10: 0.0019, 20: 0.0004, 40: 0.0004, 80: 0.0003
+  natural  membrane 1e-07: 0 held, range -0.84 to +1.85
+    double, worst error after each count of steps: 10: 0.5138, 20: 0.0699, 40: 0.0058, 80: 0.0001
+    single, worst error after each count of steps: 10: 0.5133, 20: 0.0677, 40: 0.0042, 80: 0.0026
+  natural  membrane 1e-05: 0 held, range -0.29 to +1.00, 1.7859 from the weakest membrane's
+    double, worst error after each count of steps: 10: 0.3218, 20: 0.0148, 40: 0.0002, 80: 0.0000
+    single, worst error after each count of steps: 10: 0.3216, 20: 0.0146, 40: 0.0041, 80: 0.0041
+  natural  membrane 0.0001: 0 held, range -0.16 to +1.00, 1.9820 from the weakest membrane's
+    double, worst error after each count of steps: 10: 0.1068, 20: 0.0022, 40: 0.0000, 80: 0.0000
+    single, worst error after each count of steps: 10: 0.1070, 20: 0.0023, 40: 0.0007, 80: 0.0007
