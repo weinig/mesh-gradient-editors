@@ -120,6 +120,12 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
         if (all(abs(delta) <= 0.5 * level.texelSize)) {
             coverage = 1.0;
         }
+        // A point of no radius holds the texel it's in and no other, so
+        // nothing holds the slope there: just one, even from a texel's edge,
+        // since two would hold the slope between them.
+        if (point.radius <= 0.0) {
+            coverage = select(0.0, 1.0, all(delta > -0.5 * level.texelSize) && all(delta <= 0.5 * level.texelSize));
+        }
         colorSum += coverage * point.color;
         coverageSum += coverage;
         weight = max(weight, coverage);
@@ -561,8 +567,11 @@ struct Biharmonic {
     flag: u32,
     // How many partial sums there are.
     count: u32,
-    padding0: u32,
-    padding1: u32,
+    // Whether the box's edges are natural rather than mirrored: see
+    // edgeCoefficient().
+    natural: u32,
+    // The weight of the membrane that regularizes a level's own equation.
+    membrane: f32,
     padding2: u32,
 }
 
@@ -614,12 +623,50 @@ fn penalty(w: f32) -> f32 {
     return w / ((1.0 - w) * (bh.omega / 20.0));
 }
 
+// What a level's own equation has besides the 13-point stencil with mirrored
+// edges, between texel p and its neighbor one step e away; p's own
+// coefficient has as much taken off it.
+//
+// With natural edges, nothing holds the surface at the box's sides: the
+// equation is the thin plate's energy with the terms that would leave the
+// grid left out, as Finch et al.'s is, not mirrored there. The two differ by
+// the squared first difference of the outermost pair of texels in each row
+// and column, so that pair's link is 1 weaker.
+//
+// The membrane, a weak 5-point Laplacian with mirrored edges, decides what
+// the thin plate leaves free: with natural edges, the tilt of a plane held at
+// fewer than three points.
+var<private> edgeDirections: array<vec2<i32>, 4> = array<vec2<i32>, 4>(
+    vec2<i32>(-1, 0), vec2<i32>(1, 0), vec2<i32>(0, -1), vec2<i32>(0, 1));
+
+fn edgeCoefficient(p: vec2<i32>, e: vec2<i32>, size: vec2<i32>) -> f32 {
+    let q = p + e;
+    if (any(q < vec2<i32>(0)) || any(q >= size)) {
+        return 0.0;
+    }
+    var c = -bh.membrane;
+    if (bh.natural != 0u) {
+        let lo = select(min(p.y, q.y), min(p.x, q.x), e.x != 0);
+        let last = select(size.y, size.x, e.x != 0) - 2;
+        c += select(0.0, 1.0, lo == 0) + select(0.0, 1.0, lo == last);
+    }
+    return c;
+}
+
 // The stencil sums to zero, so it is applied to differences from the center.
 fn biharmonicStencil(p: vec2<i32>, size: vec2<i32>) -> vec4<f32> {
     let center = textureLoad(bX, p, 0);
     var sum = vec4<f32>(0.0);
     for (var o = 1; o < 13; o++) {
         sum += biharmonicCoefficients[o] * (textureLoad(bX, mirrored(p + biharmonicOffsets[o], size), 0) - center);
+    }
+    if (bh.natural != 0u || bh.membrane != 0.0) {
+        for (var d = 0; d < 4; d++) {
+            let c = edgeCoefficient(p, edgeDirections[d], size);
+            if (c != 0.0) {
+                sum += c * (textureLoad(bX, p + edgeDirections[d], 0) - center);
+            }
+        }
     }
     return sum;
 }
@@ -761,14 +808,29 @@ fn bhOwnCoefficients(@builtin(global_invocation_id) id: vec3<u32>) {
                 rowSum -= biharmonicCoefficients[o];
             }
         }
+        for (var d = 0; d < 4; d++) {
+            let e = edgeDirections[d];
+            let c = edgeCoefficient(p, e, size);
+            if (c == 0.0) {
+                continue;
+            }
+            row[12] -= c;
+            if (textureLoad(bWeight, p + e, 0).r < 1.0) {
+                row[coefficientSlice(e)] += c;
+            } else {
+                rowSum -= c;
+            }
+        }
     }
     writeCoefficients(p, &row, rowSum, false);
 }
 
+// The 13-point stencil's background row, and with the membrane's weight, the
+// 5-point Laplacian's, which the rows after the 16 levels' are.
 fn backgroundRow(index: u32) -> array<f32, 25> {
     var row: array<f32, 25>;
     for (var o = 0u; o < 25u; o++) {
-        row[o] = bBackground[index * 25u + o];
+        row[o] = bBackground[index * 25u + o] + bh.membrane * bBackground[(16u + index) * 25u + o];
     }
     return row;
 }
@@ -830,22 +892,31 @@ fn ownEntry(i: vec2<i32>, j: vec2<i32>, size: vec2<i32>, d: f32) -> f32 {
         return 0.0;
     }
     let nearEdge = any(i < vec2<i32>(2)) || any(i + 2 >= size);
+    let a = abs(s.x) + abs(s.y);
+    var c = select(0.0, d, a == 0);
     if (!nearEdge) {
-        let a = abs(s.x) + abs(s.y);
-        var c = 0.0;
         if (a == 0) {
-            c = 20.0;
+            c += 20.0;
         } else if (a == 1) {
-            c = -8.0;
+            c += -8.0;
         } else if (a == 2) {
-            c = select(1.0, 2.0, abs(s.x) == 1);
+            c += select(1.0, 2.0, abs(s.x) == 1);
         }
-        return c + select(0.0, d, a == 0);
+    } else {
+        for (var o = 0; o < 13; o++) {
+            if (all(mirrored(i + biharmonicOffsets[o], size) == j)) {
+                c += biharmonicCoefficients[o];
+            }
+        }
     }
-    var c = select(0.0, d, all(s == vec2<i32>(0)));
-    for (var o = 0; o < 13; o++) {
-        if (all(mirrored(i + biharmonicOffsets[o], size) == j)) {
-            c += biharmonicCoefficients[o];
+    if (a <= 1 && (bh.natural != 0u || bh.membrane != 0.0)) {
+        for (var k = 0; k < 4; k++) {
+            let e = edgeCoefficient(i, edgeDirections[k], size);
+            if (a == 0) {
+                c -= e;
+            } else if (all(edgeDirections[k] == s)) {
+                c += e;
+            }
         }
     }
     return c;
@@ -984,6 +1055,12 @@ fn bhRowsFromOwn(@builtin(global_invocation_id) id: vec3<u32>) {
             for (var o = 0; o < 13; o++) {
                 if (textureLoad(bWeight, mirrored(i + biharmonicOffsets[o], size), 0).r >= 0.5) {
                     iSum -= biharmonicCoefficients[o];
+                }
+            }
+            for (var d = 0; d < 4; d++) {
+                let c = edgeCoefficient(i, edgeDirections[d], size);
+                if (c != 0.0 && textureLoad(bWeight, i + edgeDirections[d], 0).r >= 0.5) {
+                    iSum -= c;
                 }
             }
             rowSum += pi * iSum;

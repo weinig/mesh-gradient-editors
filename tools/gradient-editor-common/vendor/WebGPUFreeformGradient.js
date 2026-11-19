@@ -37,6 +37,9 @@ const galerkinSmoothing = 4;
 const biharmonicCycles = 1;
 const finestBiharmonicCycles = 16;
 const twoSidedBiharmonicCycles = 4;
+// With natural edges the finest level takes more steps, its residual formed afresh every few.
+const naturalBiharmonicCycles = 40;
+const naturalRestart = 10;
 const conjugateGradientSmoothing = 2;
 // The coarsest level's inverse, n × n with n up to 64, then each row's scale.
 const coarsestTexels = 64;
@@ -57,13 +60,23 @@ const fround = Math.fround;
 // and no edge reaches: the 13-point stencil's Pᵀ K P / 4 on an unbounded
 // grid, and that of each in turn, 25 numbers a row, as the Metal solver's
 // backgroundRows.
+//
+// After those 16 levels' rows are the same for the membrane's 5-point
+// Laplacian, which the shader adds by the membrane's weight.
 function backgroundRows() {
+  return new Float32Array([
+    ...stencilBackgroundRows([
+      [0, 0, 20], [-1, 0, -8], [1, 0, -8], [0, -1, -8], [0, 1, -8],
+      [-1, -1, 2], [1, -1, 2], [-1, 1, 2], [1, 1, 2], [-2, 0, 1], [2, 0, 1], [0, -2, 1], [0, 2, 1],
+    ]),
+    ...stencilBackgroundRows([[0, 0, 4], [-1, 0, -1], [1, 0, -1], [0, -1, -1], [0, 1, -1]]),
+  ]);
+}
+
+function stencilBackgroundRows(coefficients) {
   let stencil = new Map();
   const key = (x, y) => `${x},${y}`;
-  for (const [x, y, c] of [
-    [0, 0, 20], [-1, 0, -8], [1, 0, -8], [0, -1, -8], [0, 1, -8],
-    [-1, -1, 2], [1, -1, 2], [-1, 1, 2], [1, 1, 2], [-2, 0, 1], [2, 0, 1], [0, -2, 1], [0, 2, 1],
-  ]) {
+  for (const [x, y, c] of coefficients) {
     stencil.set(key(x, y), { x, y, c });
   }
   const corners = (i) => {
@@ -94,8 +107,15 @@ function backgroundRows() {
       rows.push(coarse.get(key(o % 5 - 2, Math.floor(o / 5) - 2))?.c ?? 0);
     }
   }
-  return new Float32Array(rows);
+  return rows;
 }
+
+// The membrane's weight in a level's own equation with natural edges, scaled
+// as Finch et al. scale theirs, by the texel's size in the box squared, so
+// it weighs the same on every grid. It's a tenth of their 0.16, which bent a
+// plane through three points by 0.03 of its colors' range; this bends it by
+// 0.003, and 32-bit floats still solve it.
+const membraneWeight = 0.016;
 
 // Each Chebyshev step's weights, toward eigenvalues in [1/16, 1] of a level
 // scaled so that none is larger than 1, in 32-bit floats as the Metal solver
@@ -643,9 +663,12 @@ export class WebGPUFreeformGradientRenderer {
 
   // The biharmonic kernels' uniforms: `of` the level, or the finer of two;
   // `coarse` the coarser, or the level itself for its own coefficients.
-  bh({ of, coarse = null, fill = [0, 0, 0, 0], step = null, flag = 0, count = 0 }) {
+  bh({ of, coarse = null, fill = [0, 0, 0, 0], step = null, flag = 0, count = 0, own = of }) {
+    // `own` is the level whose own equation the kernel has or builds on: `of`, unless told.
+    const natural = this.gradient.naturalEdges ? 1 : 0;
+    const membrane = natural ? membraneWeight / Math.max(own.width, own.height) ** 2 : 0;
     const key = ["bh", of.width, of.height, coarse?.width ?? 0, coarse?.height ?? 0, ...fill,
-                 step?.omega ?? 0, step?.gamma ?? 0, flag, count].join(":");
+                 step?.omega ?? 0, step?.gamma ?? 0, flag, count, natural, membrane].join(":");
     return this.slotEntry(20, key, (u32, f32) => {
       u32[0] = of.width;
       u32[1] = of.height;
@@ -657,6 +680,8 @@ export class WebGPUFreeformGradientRenderer {
       f32[10] = step?.gamma ?? 0;
       u32[11] = flag;
       u32[12] = count;
+      u32[13] = natural;
+      f32[14] = membrane;
     });
   }
 
@@ -709,7 +734,8 @@ export class WebGPUFreeformGradientRenderer {
     });
     bottom.values.flip();
 
-    const cycles = finestBiharmonicCycles + (gradient.hasTwoSidedLines ? twoSidedBiharmonicCycles : 0);
+    const cycles = (gradient.naturalEdges ? naturalBiharmonicCycles : finestBiharmonicCycles)
+      + (gradient.hasTwoSidedLines ? twoSidedBiharmonicCycles : 0);
     for (let index = coarsest - 1; index >= 0; index--) {
       const level = levels[index];
       this.bhDispatch("ProlongHeld", level, this.bh({ of: level }), {
@@ -719,7 +745,7 @@ export class WebGPUFreeformGradientRenderer {
       level.values.current = 0;
       this.buildGalerkinLevels(index);
       if (index === 0) {
-        this.encodeConjugateGradients(cycles);
+        this.encodeConjugateGradients(cycles, gradient.naturalEdges ? naturalRestart : 0);
       } else {
         for (let cycle = 0; cycle < biharmonicCycles; cycle++) {
           this.biharmonicVCycle(index);
@@ -742,7 +768,7 @@ export class WebGPUFreeformGradientRenderer {
     for (let index = top + 1; index < levels.length - 1; index++) {
       const fine = levels[index];
       const below = levels[index + 1];
-      const uniforms = this.bh({ of: fine, coarse: below, flag: Math.min(index - top, 15) });
+      const uniforms = this.bh({ of: fine, coarse: below, flag: Math.min(index - top, 15), own: level });
       const galerkin = { coefficients: fine.coefficients, coarseCoefficients: below.coefficients };
       this.bhDispatch("BackgroundFromGalerkin", below, uniforms, { ...galerkin, background: this.backgroundRows });
       this.bhDispatch("EntriesFromGalerkin", [Math.ceil(below.width / 8), Math.ceil(below.height / 8), 13], uniforms, galerkin);
@@ -834,7 +860,7 @@ export class WebGPUFreeformGradientRenderer {
 
   // `count` steps of conjugate gradients on the finest level's own equation,
   // preconditioned by a V-cycle, from the solution it holds.
-  encodeConjugateGradients(count) {
+  encodeConjugateGradients(count, restart = 0) {
     const { levels } = this;
     if (count <= 0 || levels.length <= 1) {
       return;
@@ -848,12 +874,21 @@ export class WebGPUFreeformGradientRenderer {
       x: level.values.texture, out: level.values.next, color: level.constraintColor, weight: level.constraintWeight,
     });
     level.values.flip();
-    this.bhDispatch("ResidualOwn", level, uniforms, {
-      x: level.values.texture, out: residual.texture, color: level.constraintColor, weight: level.constraintWeight,
-    });
-    this.bhDispatch("Reset", [1, 1, 1], null, { state: this.conjugateGradientState });
+    const start = () => {
+      this.bhDispatch("ResidualOwn", level, uniforms, {
+        x: level.values.texture, out: residual.texture, color: level.constraintColor, weight: level.constraintWeight,
+      });
+      this.bhDispatch("Reset", [1, 1, 1], null, { state: this.conjugateGradientState });
+    };
+    start();
 
     for (let step = 0; step < count; step++) {
+      // The residual each step carries along drifts from the solution's own in 32-bit floats. With natural edges,
+      // what's left to solve can be a twist that only the box's four corner texels resist, too faint to survive
+      // that, so there the residual is formed afresh from the solution every few steps.
+      if (restart > 0 && step > 0 && step % restart === 0) {
+        start();
+      }
       const z = this.encodePreconditioner();
       this.encodeDot(residual.texture, z, false);
       this.bhDispatch("Direction", level, uniforms, {

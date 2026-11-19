@@ -70,7 +70,9 @@ function solveResolution() {
 // With mirrored edges the grid is the box. With open edges it reaches half the box's size past each side, so its edges
 // are far from the stops: the renderer solves a box twice the size, with the gradient in its middle, and shows the
 // middle. Its texels are bigger as a result.
-const EDGES = ["mirrored", "open"];
+// With natural edges nothing holds the surface at the box's sides, so the biharmonic model keeps its slope there:
+// the thin plate's own boundary. The harmonic model's is the same as mirrored.
+const EDGES = ["mirrored", "open", "natural"];
 const openEdges = () => state.edges === "open";
 
 // The part of the solved box the view shows: its origin and size, 0 to 1 across and down the box.
@@ -229,7 +231,8 @@ function render() {
 
 // Solves the view's gradient if it changed, or relaxes it for the relaxation view, and draws it.
 function encodeView(view, encoder, viewWidth, viewHeight) {
-    const data = { ...windowed(gradientData(view.model)), gamutMapping: state.gamutMapping === "map" ? 1 : 0, edgeStrips: state.edgeStrips };
+    const data = { ...windowed(gradientData(view.model)), gamutMapping: state.gamutMapping === "map" ? 1 : 0, edgeStrips: state.edgeStrips,
+        naturalEdges: state.edges === "natural" };
     // The box the renderer solves: the view's, or twice it for open edges.
     const width = openEdges() ? 2 * viewWidth : viewWidth, height = openEdges() ? 2 * viewHeight : viewHeight;
     const relaxing = state.view === "relaxation" && view.model === "harmonic";
@@ -254,7 +257,7 @@ function encodeView(view, encoder, viewWidth, viewHeight) {
     view.solveWindow = viewWindow();
     // The influence is solved as a gradient of its own, drawn over by the visualization.
     if (state.view === "influence" && influenceAvailable()) {
-        const influence = windowed(gradientData(view.model, true));
+        const influence = { ...windowed(gradientData(view.model, true)), naturalEdges: state.edges === "natural" };
         const influenceKey = JSON.stringify(influence);
         if (influenceKey !== view.influenceKey) {
             view.influence.setGradient(influence);

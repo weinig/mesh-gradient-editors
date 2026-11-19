@@ -88,11 +88,12 @@
                     <option value="quarter">A quarter of the grid</option>
                 </select>
             </div>
-            <div class="row" title="Mirrored: the grid is exactly the box, and the surface meets each side flat, as if a mirror stood there. Open: the grid reaches half the box's size past each side, so its edges are far from the stops, and its texels are bigger as a result.">
+            <div class="row" title="Mirrored: the grid is exactly the box, and the surface meets each side flat, as if a mirror stood there. Open: the grid reaches half the box's size past each side, so its edges are far from the stops, and its texels are bigger as a result. Natural: nothing holds the surface at the box's sides, so the biharmonic model keeps its slope there, and goes further past its colors; the harmonic model is as with Mirrored.">
                 <label for="edges">Edges</label>
                 <select id="edges">
                     <option value="mirrored">Mirrored</option>
                     <option value="open">Open</option>
+                    <option value="natural">Natural</option>
                 </select>
             </div>
             <div class="row" title="Colors outside the screen's gamut are clipped, as WebKit does, or gamut mapped as CSS Color 4 says.">

@@ -1,5 +1,5 @@
 These are MeshShader2's WebGPU freeform gradient renderer and its shader, from
-FreeformGradient/Sources/FreeformGradient/WebGPU/ at MeshShader2 commit cf95dc0, with four changes and a fix.
+FreeformGradient/Sources/FreeformGradient/WebGPU/ at MeshShader2 commit cf95dc0, with five changes and a fix.
 
 First, a gradient may give `strengths`, one number from 0 to 1 for each segment, how firmly the segment holds its
 colors, in the padding after `endDistance`. The harmonic multiplies the segment's weight by it, with the weight's
@@ -22,6 +22,15 @@ down the box, [0, 0, 1, 1] if it has none. The display samples the solution thro
 placed through it, so a page can solve a box bigger than the view, for edges far from its stops, and show the middle.
 
 Fourth, a gradient may give `edgeStrips: false`, to draw the solution without the strips along its two-sided lines.
+
+Fifth, a gradient may give `naturalEdges: true`, for the biharmonic. Nothing then holds the surface at the box's
+sides: a level's own equation is the thin plate's energy with the terms that would leave the grid left out, as Finch
+et al.'s is, which is the mirrored 13-point stencil with the link between the outermost pair of texels in each row
+and column 1 weaker. A weak membrane, scaled to weigh the same on every grid, decides what that leaves free, such as
+the tilt of a plane held at fewer than three points. The finest level takes more steps of conjugate gradients, with
+its residual formed afresh from the solution every ten: carried along in 32-bit floats, it loses a twist that only
+the box's four corner texels resist. And a point of no radius holds exactly the one texel it's in, so nothing holds
+the slope there, and with natural edges two such points make a linear ramp and three a plane.
 
 Fixes: edgeQuads() gives each segment's first and last pieces the segment's own ends, so pieces meet exactly and a
 line's strips aren't broken into runs at joints that rounding put a unit apart; it skips segments of no length, and

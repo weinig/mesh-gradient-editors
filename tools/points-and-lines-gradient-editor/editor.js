@@ -152,6 +152,8 @@ function acceptsState(data) {
         opacity: finite(stop.opacity) ? clamp(stop.opacity, 0, 100) : 100,
         spread: finite(stop.spread) ? clamp(stop.spread, 0, 100) : 0,
     }));
+    if (!STOP_SIZES.includes(data.stopSize))
+        data.stopSize = "disc";
     data.lines = data.lines.filter(line => line && Array.isArray(line.stops)).map(line => {
         const stops = line.stops.filter(i => Number.isInteger(i) && index[i] >= 0).map(i => index[i]);
         return { stops, closed: !!line.closed && stops.length > 2 };
@@ -163,6 +165,7 @@ function presetState(index) {
     return {
         ...commonState(),
         showStops: state?.showStops ?? true,
+        stopSize: state?.stopSize ?? "disc",
         ...structuredClone(PRESETS[index].state),
     };
 }
@@ -245,7 +248,13 @@ const STOP_RADIUS = 0.01;
 // How far a point holds its color at a spread of 100%.
 const FULL_SPREAD = 0.35;
 
-const spreadRadius = stop => STOP_RADIUS + (FULL_SPREAD - STOP_RADIUS) * stop.spread / 100;
+// A point holds a disc, which also holds the surface flat there, or with a spread of 0 just the texel it's in, which
+// holds its color and leaves its slope free.
+const STOP_SIZES = ["disc", "texel"];
+const spreadRadius = stop => {
+    const least = state.stopSize === "texel" ? 0 : STOP_RADIUS;
+    return least + (FULL_SPREAD - least) * stop.spread / 100;
+};
 
 // The gradient as MeshShader2's renderer takes it: each stop on no line a point, held out to its spread, and each
 // line's pieces one-sided segments, their colors blended from stop to stop.
@@ -307,7 +316,7 @@ const MODEL_ABOUT = {
 
 const VIEW_NOTES = {
     gradient: "The gradient each model draws from the same stops.",
-    holds: "Every texel of the grid is worked out from the texels the stops hold, shown here in the colors they're held to, over the faded gradient. A point holds a disc out to its spread, at least 1% of the box's shorter side; a line holds a band 1% either side of it, its color running from stop to stop. Set Grid to 128 to see the texels.",
+    holds: "Every texel of the grid is worked out from the texels the stops hold, shown here in the colors they're held to, over the faded gradient. A point holds a disc out to its spread, at least 1% of the box's shorter side, or with One texel and no spread, the one texel it's in; a line holds a band 1% either side of it, its color running from stop to stop. Set Grid to 128 to see the texels.",
     gamut: "Hatching marks where the solved colors fall outside the chosen gamut, where they're clipped or gamut mapped to draw them. The harmonic model makes each texel the average of its neighbors, so it can't go past the colors it's held to. The biharmonic model keeps the slope smooth through each stop, so past a stop it keeps going, and overshoots, most of all near the box's edges. In oklab, a mix of two colors inside sRGB can also fall outside it, in either model.",
     isolines: "Lines of equal lightness, every 0.025 of Oklab L. The harmonic model is a membrane: its lines ring each point tightly and kink around it, since it's continuous there but not smooth. The biharmonic model is a stiff sheet: its lines bend smoothly through and around the stops, since its slope is continuous too.",
     influence: "Each model mixes the stops' colors in fixed proportions, so each point's color is a weighted sum of them. This shows the selected stop's weight: orange where it adds its color, white where it adds none, blue where it takes color away, and dark red above 1. The harmonic model's stays between 0 and 1. The biharmonic model's has negative patches and can go above 1, but it ends at the box's edges. A stop on a line shares its weight along the line with its neighbors.",
@@ -666,6 +675,7 @@ const MODE_NOTES = {
 function updateControls() {
     updateCommonControls();
     $("showStops").checked = state.showStops;
+    $("stopSize").value = state.stopSize;
     for (const button of document.querySelectorAll("#toolbar button[data-mode]"))
         button.setAttribute("aria-pressed", String(button.dataset.mode === mode));
     $("modeNote").textContent = MODE_NOTES[mode];
@@ -789,6 +799,10 @@ for (const [id, axis] of [["stopX", 0], ["stopY", 1]]) {
         changed();
     });
 }
+$("stopSize").addEventListener("change", () => {
+    state.stopSize = $("stopSize").value;
+    changed();
+});
 for (const id of ["opacity", "spread"]) {
     $(id).addEventListener("input", () => {
         if (selection === null)
