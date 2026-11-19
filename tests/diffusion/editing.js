@@ -51,3 +51,42 @@ test("the Free slope checkbox", async t => {
     t.equal($("free").disabled, true, "a blurred curve has no free slope");
     t.ok(!/ free/.test($("output").value), "and its CSS doesn't say free");
 });
+
+// A key pressed with nothing focused.
+const press = (key, more = {}) => document.body.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...more }));
+
+test("undo, redo, and the arrow, Delete and Escape keys", async t => {
+    await preset("A circle");
+    await sleep(500);
+    const start = state.curves[0].center[0];
+    selection = { curve: 0, node: null };
+    changed();
+    for (let i = 0; i < 3; ++i)
+        press("ArrowRight");
+    t.below(Math.abs(state.curves[0].center[0] - (start + 3 / state.width)), 1e-9, "three presses of the right arrow move the curve three pixels");
+    press("ArrowDown", { shiftKey: true });
+    await sleep(500);
+    t.equal($("undo").disabled, false, "there is a step to undo");
+    press("z", { metaKey: true });
+    await sleep(100);
+    t.below(Math.abs(state.curves[0].center[0] - start), 1e-9, "undo puts the curve back");
+    t.equal($("redo").disabled, false, "and there is a step to redo");
+    press("z", { metaKey: true, shiftKey: true });
+    await sleep(100);
+    t.below(Math.abs(state.curves[0].center[0] - (start + 3 / state.width)), 1e-9, "redo moves it again");
+    const count = state.curves.length;
+    press("Delete");
+    await sleep(500);
+    t.equal(state.curves.length, count - 1, "Delete removes the selected curve");
+    $("undo").click();
+    await sleep(100);
+    t.equal(state.curves.length, count, "the Undo button brings it back");
+    selection = { curve: 0, node: null };
+    press("Escape");
+    t.equal(selection, null, "Escape selects nothing");
+    // Typing in a field keeps its keys.
+    $("width").focus();
+    $("width").dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true }));
+    t.equal(state.curves.length, count, "Backspace in a field deletes no curve");
+    $("width").blur();
+});

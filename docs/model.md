@@ -74,7 +74,10 @@ they stop mattering.
   grid's solution, filtered up to the box.
 - **A band's least width.** A two-colored curve's band is at least 3 texels a side: with fewer than two whole texels
   the biharmonic's slope isn't held, and the answer changes character. So on a coarse grid a band is wider than 0.01.
-- **A point.** A one-texel stop holds the texel it's in, so it moves in steps of a texel.
+- **A point.** A one-texel stop holds the texel it's in, at the texel's center. The biharmonic is solved twice, the
+  second time with each center held off its stop's color by as much as the first solution differs between the
+  center and the stop, so the stop's color is at the stop itself and moving it moves the gradient smoothly. The
+  harmonic's stop still moves in steps of a texel.
 - **A tear.** It holds the texel either side of each edge of the grid it crosses.
 - **Partly covered texels.** A texel a band covers in part is held in part, which moves a band's edge smoothly as a
   curve moves but means something a little different on each grid.

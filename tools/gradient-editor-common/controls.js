@@ -1,3 +1,91 @@
+// MARK: - Undo, redo and keys
+
+// Undo steps through what the editor itself holds, its PRESET_KEYS and the box's size, not the settings around it.
+// A step is taken when a change has settled: after a drag or a slider's move ends, not during it.
+const undoSteps = [];
+let undoIndex = -1;
+let undoTimer = null;
+
+const undoSnapshot = () => JSON.stringify(Object.fromEntries(["width", "height", ...PRESET_KEYS].map(key => [key, state[key]])));
+
+function takeUndoStep() {
+    undoTimer = null;
+    if (drag || adjusting)
+        return scheduleUndoStep();
+    const now = undoSnapshot();
+    if (now === undoSteps[undoIndex])
+        return;
+    undoSteps.splice(undoIndex + 1, Infinity, now);
+    if (undoSteps.length > 200)
+        undoSteps.shift();
+    undoIndex = undoSteps.length - 1;
+    updateUndoButtons();
+}
+
+function scheduleUndoStep() {
+    if (undoTimer === null)
+        undoTimer = setTimeout(takeUndoStep, 300);
+}
+
+// Steps back, or forward for 1, to what the editor held then.
+function stepUndo(by) {
+    // A change still settling is a step of its own, to come back to.
+    if (undoTimer !== null) {
+        clearTimeout(undoTimer);
+        takeUndoStep();
+    }
+    if (drag || !undoSteps[undoIndex + by])
+        return;
+    undoIndex += by;
+    Object.assign(state, JSON.parse(undoSteps[undoIndex]));
+    restoredEditing();
+    changed();
+    updateUndoButtons();
+}
+
+function updateUndoButtons() {
+    $("undo").disabled = undoIndex <= 0;
+    $("redo").disabled = undoIndex >= undoSteps.length - 1;
+}
+
+$("undo").addEventListener("click", () => stepUndo(-1));
+$("redo").addEventListener("click", () => stepUndo(1));
+
+// The editor gives restoredEditing(), to drop a selection that undo left pointing at nothing; deleteSelection() and
+// nudgeSelection(dx, dy), which say whether there was a selection to act on; and cancelEditing(), for Escape.
+document.addEventListener("keydown", event => {
+    // Keys typed into a field of text are the field's: its own undo, its Delete. Arrows are also a slider's and a
+    // menu's.
+    const field = event.target.closest?.("input, textarea, select");
+    const typing = !!field && (field.tagName === "TEXTAREA" || ["text", "number", "search"].includes(field.type));
+    const steering = typing || (!!field && (field.tagName === "SELECT" || field.type === "range"));
+    const command = event.metaKey || event.ctrlKey;
+    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+    if (command && !typing && (key === "z" || key === "y")) {
+        event.preventDefault();
+        stepUndo(key === "y" || event.shiftKey ? 1 : -1);
+        return;
+    }
+    if (typing || command || event.altKey || (steering && key.startsWith("Arrow")))
+        return;
+    const arrows = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    let handled = false;
+    if (key === "Delete" || key === "Backspace") {
+        handled = deleteSelection();
+    } else if (key === "Escape") {
+        cancelEditing();
+        handled = true;
+    } else if (arrows[key]) {
+        // A pixel of the box, or ten with Shift.
+        const pixels = event.shiftKey ? 10 : 1;
+        handled = nudgeSelection(arrows[key][0] * pixels / state.width, arrows[key][1] * pixels / state.height);
+    }
+    if (handled) {
+        event.preventDefault();
+        changed();
+    }
+});
+
 // MARK: - Shared controls
 
 // The editor gives PRESETS, PRESET_KEYS (the state a preset sets besides the box), presetState(index), resetEditing()

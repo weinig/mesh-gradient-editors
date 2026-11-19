@@ -33,13 +33,16 @@ async function preset(name) {
 
 // The solve of box `view` (0 the biharmonic, 1 the harmonic) read back afresh: needs Numbers, Cross-section or 3D on.
 async function grab(view = 0) {
+    // Drawn here and now: a window that's covered gets no frames of its own, and the page would wait for one.
     changed();
+    render();
     await sleep(400);
     for (let tries = 0; tries < 100 && views[view].reading; ++tries)
         await sleep(50);
     views[view].readout = null;
     views[view].readKey = null;
     changed();
+    render();
     for (let tries = 0; tries < 400 && !(views[view].readout && !views[view].reading); ++tries)
         await sleep(50);
     if (!views[view].readout)

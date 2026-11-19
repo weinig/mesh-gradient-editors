@@ -191,6 +191,7 @@ function scheduleRender() {
 function changed() {
     scheduleRender();
     scheduleHashWrite();
+    scheduleUndoStep();
 }
 
 // Every box is solved and drawn first, then the visualizations drawn over them, since the difference reads the other

@@ -14,7 +14,9 @@ def read(path):
         return file.read()
 
 
-def build(parts, output_path, source_path):
+# The parts every editor takes from mesh-gradient-editor.html, by name. The freeform-gradient() editor's builder
+# takes them from here too.
+def mesh_parts(source_path):
     lines = read(source_path).split("\n")
 
     def index_of(text, start=0):
@@ -27,34 +29,6 @@ def build(parts, output_path, source_path):
         a = index_of(start_marker)
         b = index_of(end_marker, a + 1)
         return "\n".join(lines[a:b + (1 if include_end else 0)])
-
-    def fill(text, replacements):
-        for marker, value in replacements.items():
-            assert marker in text, marker
-            text = text.replace(marker, value)
-        return text
-
-    words = json.loads(read(os.path.join(parts, "words.json")))
-
-    # The page's CSS, up to the end of the shared rules.
-    style = between("<!DOCTYPE html>", "</style>")
-    assert style.count("<title>mesh-gradient() Editor</title>") == 1
-    style = style.replace("<title>mesh-gradient() Editor</title>", f"<title>{words['TITLE']}</title>")
-
-    html = fill(read(os.path.join(parts, "editor.html")), {
-        "{{PAGE}}": read(os.path.join(common, "page.html")),
-        "{{VISUALIZE}}": read(os.path.join(common, "visualize.html")),
-        "{{CSS}}": read(os.path.join(common, "css.html")),
-    })
-    html = fill(html, {"{{" + key + "}}": value for key, value in words.items()})
-    leftover = re.findall(r"\{\{\w+\}\}", html)
-    assert not leftover, leftover
-
-    # MeshShader2's renderer, as a classic script rather than a module.
-    vendor = os.path.join(common, "vendor")
-    renderer = read(os.path.join(vendor, "WebGPUFreeformGradient.js"))
-    assert renderer.count("export class WebGPUFreeformGradientRenderer") == 1
-    renderer = renderer.replace("export class WebGPUFreeformGradientRenderer", "class WebGPUFreeformGradientRenderer")
 
     # The mesh editor's backdrop, behind every box rather than its one.
     backdrop = between("// MARK: - Backdrop", "// MARK: - Start")
@@ -73,6 +47,65 @@ def build(parts, output_path, source_path):
             stage.style.backgroundImage = backgroundImage;
     }
 """)
+
+    # The WGSL color conversions: the functions from transform() through toPremultipliedColor().
+    shader_color = between("fn transform(m: array<vec3f, 3>, v: vec3f) -> vec3f {", "@fragment fn meshGradientFragment")
+    assert "fn toPremultipliedColor(color: vec4f) -> vec4f {" in shader_color
+
+    # Overlay coordinates and reach, without updateMargin(), which lays out the mesh editor's one box.
+    overlay_helpers = between("function toOverlay(p) {", "function drawOverlay(width, height, dpr) {")
+    overlay_helpers = (overlay_helpers[:overlay_helpers.index("function updateMargin(")]
+                       + overlay_helpers[overlay_helpers.index("narrowScreen.addEventListener("):])
+
+    return {
+        # The page's head and CSS, up to the end of the shared rules.
+        "style": between("<!DOCTYPE html>", "</style>"),
+        # A photo of a puppy, for the Puppy backdrop.
+        "puppy": lines[index_of("const PUPPY_IMAGE = ")],
+        # Color spaces and parsing, up to the mesh's hue fixup.
+        "colors": between("// MARK: - Color spaces", "// MARK: - Hue fixup"),
+        "shader_helpers": between("const wgslNumber = ", "const wgslMatrix = ", include_end=True),
+        "shader_matrices": between('${wgslMatrix("linSRGBToXYZ"', "const D50 = ", include_end=True),
+        "shader_color": shader_color,
+        "backdrop": backdrop,
+        # Margins and the narrow-screen scale.
+        "margins": between("// Space around the box for the overlay.", "let viewScale = 1;", include_end=True),
+        "overlay_helpers": overlay_helpers,
+        "copy": between("async function copy(text, label) {", '$("copyLink").addEventListener("click", () => {'),
+    }
+
+
+def fill(text, replacements):
+    for marker, value in replacements.items():
+        assert marker in text, marker
+        text = text.replace(marker, value)
+    return text
+
+
+def build(parts, output_path, source_path):
+    mesh = mesh_parts(source_path)
+
+    words = json.loads(read(os.path.join(parts, "words.json")))
+
+    style = mesh["style"]
+    assert style.count("<title>mesh-gradient() Editor</title>") == 1
+    style = style.replace("<title>mesh-gradient() Editor</title>", f"<title>{words['TITLE']}</title>")
+
+    html = fill(read(os.path.join(parts, "editor.html")), {
+        "{{PAGE}}": read(os.path.join(common, "page.html")),
+        "{{VISUALIZE}}": read(os.path.join(common, "visualize.html")),
+        "{{CSS}}": read(os.path.join(common, "css.html")),
+    })
+    html = fill(html, {"{{" + key + "}}": value for key, value in words.items()})
+    leftover = re.findall(r"\{\{\w+\}\}", html)
+    assert not leftover, leftover
+
+    # MeshShader2's renderer, as a classic script rather than a module.
+    vendor = os.path.join(common, "vendor")
+    renderer = read(os.path.join(vendor, "WebGPUFreeformGradient.js"))
+    assert renderer.count("export class WebGPUFreeformGradientRenderer") == 1
+    renderer = renderer.replace("export class WebGPUFreeformGradientRenderer", "class WebGPUFreeformGradientRenderer")
+
     script = fill(read(os.path.join(parts, "editor.js")), {
         "__COMMON_HEAD__": read(os.path.join(common, "head.js")).rstrip("\n"),
         "__COMMON_PAGE__": read(os.path.join(common, "page.js")).rstrip("\n") + "\n",
@@ -80,19 +113,15 @@ def build(parts, output_path, source_path):
         "__COMMON_FRAGMENT__": read(os.path.join(common, "fragment.js")).rstrip("\n") + "\n</script>\n</body>\n</html>",
     })
     script = fill(script, {
-        "__PUPPY__": lines[index_of("const PUPPY_IMAGE = ")],
-        "__BACKDROP__": backdrop.rstrip("\n"),
+        "__PUPPY__": mesh["puppy"],
+        "__BACKDROP__": mesh["backdrop"].rstrip("\n"),
     })
-    # The WGSL color conversions: the matrices, and the functions from transform() through toPremultipliedColor(), as
-    # the freeform-gradient() editor takes them. srgbToLinear() is renamed, since the renderer's shader has its own.
-    shader_color = between("fn transform(m: array<vec3f, 3>, v: vec3f) -> vec3f {", "@fragment fn meshGradientFragment")
-    assert "fn toPremultipliedColor(color: vec4f) -> vec4f {" in shader_color
-    shader_color = re.sub(r"\bsrgbToLinear\(", "colorSRGBToLinear(", shader_color.rstrip())
-    # Color spaces and parsing, up to the mesh's hue fixup.
+    # srgbToLinear() is renamed, since the renderer's shader has its own.
+    shader_color = re.sub(r"\bsrgbToLinear\(", "colorSRGBToLinear(", mesh["shader_color"].rstrip())
     script = fill(script, {
-        "__COLORS__": between("// MARK: - Color spaces", "// MARK: - Hue fixup"),
-        "__SHADER_HELPERS__": between("const wgslNumber = ", "const wgslMatrix = ", include_end=True),
-        "__SHADER_MATRICES__": between('${wgslMatrix("linSRGBToXYZ"', "const D50 = ", include_end=True),
+        "__COLORS__": mesh["colors"],
+        "__SHADER_HELPERS__": mesh["shader_helpers"],
+        "__SHADER_MATRICES__": mesh["shader_matrices"],
         "__SHADER_COLOR__": shader_color,
         "__RENDERER__": renderer.rstrip(),
         "__SHADER__": json.dumps(read(os.path.join(vendor, "WebGPUFreeformGradient.wgsl"))),

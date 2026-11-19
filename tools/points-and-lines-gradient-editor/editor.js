@@ -137,6 +137,37 @@ function resetEditing() {
     drawing = null;
 }
 
+// After undo or redo: the line being drawn is over, and the selection stays if its stop is still there.
+function restoredEditing() {
+    drawing = null;
+    if (selection !== null && !state.stops[selection])
+        selection = null;
+}
+
+function deleteSelection() {
+    if (selection === null || !state.stops[selection])
+        return false;
+    deleteStop(selection);
+    return true;
+}
+
+// Moves the selected stop by fractions of the box.
+function nudgeSelection(dx, dy) {
+    const stop = selection !== null && state.stops[selection];
+    if (!stop)
+        return false;
+    stop.p = [stop.p[0] + dx, stop.p[1] + dy];
+    return true;
+}
+
+// Escape ends the line being drawn, or else selects nothing.
+function cancelEditing() {
+    if (drawing !== null)
+        finishLine();
+    else
+        selection = null;
+}
+
 // A link's stops and lines, made sound: stops with a position and a color, and lines of two stops or more that are in
 // range.
 function acceptsState(data) {
@@ -668,7 +699,7 @@ function cssColorIn(space, c, alpha) {
 // MARK: - Controls
 
 const MODE_NOTES = {
-    points: "Points: click to add a stop, in the color around it, and drag stops to move them. Drag a stop out of the box to remove it. Drag the dashed circle around a selected stop to change its spread.",
+    points: "Points: click to add a stop, in the color around it, and drag stops to move them. The arrow keys nudge the selected stop, Delete removes it, and Escape selects nothing. Drag a stop out of the box to remove it. Drag the dashed circle around a selected stop to change its spread.",
     lines: "Lines: click to add stops along a line; it curves through them once it has three. Double-click or press Finish line to end it. Click a stop at the end of a line to carry on from it, the first stop to close the line, another line's end to join them, or a line to add a stop on it.",
 };
 

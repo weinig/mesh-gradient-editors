@@ -30,7 +30,9 @@ and column 1 weaker. A weak membrane, scaled to weigh the same on every grid, de
 the tilt of a plane held at fewer than three points. The finest level takes more steps of conjugate gradients, with
 its residual formed afresh from the solution every ten: carried along in 32-bit floats, it loses a twist that only
 the box's four corner texels resist. And a point of no radius holds exactly the one texel it's in, so nothing holds
-the slope there, and with natural edges two such points make a linear ramp and three a plane.
+the slope there, and with natural edges two such points make a linear ramp and three a plane. The texel is held at
+its center, so the biharmonic is solved twice: the second time each center is held off its point's color by as much
+as the first solution differs between the center and the point, which puts the point's color at the point itself.
 
 Sixth, a segment's two-sidedness may be 2, for a tear, as Finch et al.'s: it holds its colors on the texel either
 side of each edge of the grid it crosses, and the biharmonic leaves the slope across it free. freeformConstraints

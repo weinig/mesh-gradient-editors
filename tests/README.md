@@ -18,6 +18,8 @@ a Safari window of its own, and waits. The page runs its cases one after another
 the front for each: a page in the background draws no frames, and the tests would never finish.
 
 For the same reason `run.py` refuses to start while the screen is locked, and keeps the display awake while it runs.
+If another window covers Safari's partway through, the cases that only wait for the page to draw can stall until
+their editor times out; run that editor again.
 
 ## Cases
 

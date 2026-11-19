@@ -517,8 +517,8 @@ export class WebGPUFreeformGradientRenderer {
             { binding: 3, resource: this.view(levels[index].constraintColor) },
             { binding: 4, resource: this.view(levels[index].constraintWeight) },
             { binding: 5, resource: this.view(levels[index].rightHandSide) },
-            // Read only for holds 2; any texture the kernel doesn't write otherwise.
-            { binding: 6, resource: this.view(holds === 2 ? finest.values.texture : finest.correctionRightHandSide) },
+            // Read only for holds 2 and 3; any texture the kernel doesn't write otherwise.
+            { binding: 6, resource: this.view(holds >= 2 ? finest.values.texture : finest.correctionRightHandSide) },
             { binding: 7, resource: this.view(levels[index].tears) },
           ]);
         }
@@ -538,10 +538,18 @@ export class WebGPUFreeformGradientRenderer {
             this.fill(finest, gradient.average);
           }
           holdLevels(2);
+          this.encodeBiharmonic();
         } else {
           holdLevels(0);
+          this.encodeBiharmonic();
+          // A point of no radius holds the texel it's in, at the texel's center. Solved again, with each center
+          // held off its point's color by as much as this solution slopes between the two, the point itself has its
+          // color, wherever in the texel it is.
+          if (this.hasThinPoints) {
+            holdLevels(3);
+            this.encodeBiharmonic();
+          }
         }
-        this.encodeBiharmonic();
       } else {
         holdLevels(0);
         this.encodeMultigrid();
@@ -1108,6 +1116,10 @@ export class WebGPUFreeformGradientRenderer {
     const { gradient, boxScale } = this;
     const points = gradient.points;
     this.pointCount = points.length / 8;
+    this.hasThinPoints = false;
+    for (let i = 6; i < points.length; i += 8) {
+      this.hasThinPoints ||= !(points[i] > 0);
+    }
     const pointData = new Float32Array(Math.max(points.length, 8));
     pointData.set(points);
 

@@ -150,6 +150,53 @@ function resetEditing() {
     penCurve = null;
 }
 
+// After undo or redo: the pen's curve is over, and the selection stays if what it selected is still there.
+function restoredEditing() {
+    penCurve = null;
+    const curve = selection && state.curves[selection.curve];
+    if (!curve)
+        selection = null;
+    else if (selection.node !== null && !(isPath(curve) && curve.nodes[selection.node]))
+        selection.node = null;
+}
+
+// Deletes the selected node of a path, if it can spare one, or else the selected curve.
+function deleteSelection() {
+    const curve = selection && state.curves[selection.curve];
+    if (!curve)
+        return false;
+    if (isPath(curve) && selection.node !== null && curve.nodes.length > (curve.closed ? 3 : 2)) {
+        curve.nodes.splice(selection.node, 1);
+        selection.node = null;
+        return true;
+    }
+    const drawn = penCurve !== null ? state.curves[penCurve] : null;
+    state.curves.splice(selection.curve, 1);
+    selection = null;
+    penCurve = drawn && state.curves.includes(drawn) ? state.curves.indexOf(drawn) : null;
+    return true;
+}
+
+// Moves the selected node, or the selected curve, by fractions of the box.
+function nudgeSelection(dx, dy) {
+    const curve = selection && state.curves[selection.curve];
+    if (!curve)
+        return false;
+    if (isPath(curve) && selection.node !== null)
+        curve.nodes[selection.node].p = add(curve.nodes[selection.node].p, [dx, dy]);
+    else
+        moveCurve(curve, structuredClone(curve), [dx, dy]);
+    return true;
+}
+
+// Escape ends the curve the pen is drawing, or else selects nothing.
+function cancelEditing() {
+    if (penCurve !== null)
+        finishPen();
+    else
+        selection = null;
+}
+
 // Before shapes kept their form, every curve was a path of nodes.
 function acceptsState(data) {
     if (!Array.isArray(data.curves))
@@ -1170,7 +1217,7 @@ for (const which of ["first", "second"]) {
 }
 
 const TOOL_NOTES = {
-    select: "Click a curve to select it, and drag it to move it. Click a swatch to change that side's color. Shapes keep their form: drag a line's or an arc's ends, an arc's middle to bend it, or an ellipse's center, its radii, and the knob that turns it. Hold Shift to make an ellipse a circle, or to turn it in steps of 15°. On a path, drag its nodes and handles, and double-click a node to switch it between corner and smooth.",
+    select: "Click a curve to select it, and drag it to move it. The arrow keys nudge it, Delete removes it, and Escape selects nothing. Click a swatch to change that side's color. Shapes keep their form: drag a line's or an arc's ends, an arc's middle to bend it, or an ellipse's center, its radii, and the knob that turns it. Hold Shift to make an ellipse a circle, or to turn it in steps of 15°. On a path, drag its nodes and handles, and double-click a node to switch it between corner and smooth.",
     pen: "Click to add corner nodes, or drag to add smooth ones. Click the first node to close the curve, or double-click to leave it open.",
     line: "Drag to draw a straight line.",
     ellipse: "Drag to draw an ellipse. Hold Shift for a circle.",

@@ -56,7 +56,9 @@ struct Level {
     iterations: u32,
     // For freeformConstraints: 0 to hold each segment by its strength; 1 to
     // leave out the segments less than fully held; 2 to hold those fully, at
-    // their strength's mix from constraintFree's color to their own.
+    // their strength's mix from constraintFree's color to their own; 3 as 0,
+    // with each point of no radius held so that constraintFree's solution
+    // would have its color at the point itself, not at its texel's center.
     holds: u32,
     // The level below, for freeformRestrict.
     coarseSize: vec2<u32>,
@@ -75,7 +77,8 @@ struct Level {
 @group(0) @binding(4) var constraintWeightOut: texture_storage_2d<r32float, write>;
 @group(0) @binding(5) var rightHandSideOut: texture_storage_2d<rgba32float, write>;
 // For holds 2, the finest level solved without the segments less than fully
-// held.
+// held; for holds 3, solved with each point of no radius at its texel's
+// center.
 @group(0) @binding(6) var constraintFree: texture_2d<f32>;
 // Where tears cross the grid: 1 if one crosses the edge from the texel to the
 // next across, 2 if the edge to the next down, and 4 if one is near enough
@@ -155,7 +158,18 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
         if (point.radius <= 0.0) {
             coverage = select(0.0, 1.0, all(delta > -0.5 * level.texelSize) && all(delta <= 0.5 * level.texelSize));
         }
-        colorSum += coverage * point.color;
+        var color = point.color;
+        if (level.holds == 3u && point.radius <= 0.0 && coverage > 0.0) {
+            // The point is somewhere in its texel, not at its center, and
+            // the surface slopes between the two. By as much as the last
+            // solution differs between them, the center is held off the
+            // point's color, so the point itself comes out at it and moving
+            // the point moves the gradient smoothly, not a texel at a time.
+            let freeSize = vec2<f32>(textureDimensions(constraintFree));
+            let center = (vec2<f32>(gid) + 0.5) / vec2<f32>(level.size) * freeSize - 0.5;
+            color += bilinearRead(constraintFree, center) - bilinearRead(constraintFree, point.position * freeSize - 0.5);
+        }
+        colorSum += coverage * color;
         coverageSum += coverage;
         weight = max(weight, coverage);
     }
