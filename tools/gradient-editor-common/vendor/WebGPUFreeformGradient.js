@@ -22,9 +22,12 @@ const coarsestSmoothing = 500;
 const finestCycles = 2;
 const twoSidedCycles = 2;
 const harmonicOmega = 0.9;
-// A two-sided segment is never thinner than this many texels of the finest
-// level: FreeformGradientDescriptor.twoSidedTexels.
-const twoSidedTexels = 1.5;
+// A two-sided segment holds each side's color across at least this many
+// texels of the finest level. The biharmonic needs two whole texels a side to
+// hold the slope across the line as well as the colors: with fewer, it tilts
+// each side into a steep plane through both colors, far past them. Three
+// leaves room for the partly held texels at the band's edge.
+const twoSidedTexels = 3;
 // Levels of no more than this many texels take all their smoothing steps in
 // one dispatch, as many as the device allows: the Metal solver's
 // smallLevelTexels.

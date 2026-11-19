@@ -308,9 +308,9 @@ function sideColors(curve, flat) {
 }
 
 // How far either side of a curve its colors are held, in units of the box's shorter side: MeshShader2's default
-// point radius. The renderer would hold a two-sided line across at least 1.5 texels, but a band that thin stops the
-// biharmonic solve from settling, more so the finer the grid: a circle red inside and blue outside comes out
-// overshooting far past both colors.
+// point radius. The renderer holds a two-sided line across at least 3 texels a side, which this is less than on a
+// coarse grid: the biharmonic needs two whole texels a side to hold the slope across the curve, and without them a
+// circle red inside and blue outside comes out far past both colors.
 const CURVE_RADIUS = 0.01;
 
 // A curve's pieces moved `distance` to its left, or right if negative, in units of the box's shorter side: each joint

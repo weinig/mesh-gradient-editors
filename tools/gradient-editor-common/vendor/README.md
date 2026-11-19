@@ -32,6 +32,9 @@ its residual formed afresh from the solution every ten: carried along in 32-bit 
 the box's four corner texels resist. And a point of no radius holds exactly the one texel it's in, so nothing holds
 the slope there, and with natural edges two such points make a linear ramp and three a plane.
 
+A two-sided segment holds at least 3 texels a side, not 1.5: with fewer than two whole texels a side the biharmonic
+doesn't hold the slope across the line, and overshoots far past its colors on coarse grids.
+
 Fixes: edgeQuads() gives each segment's first and last pieces the segment's own ends, so pieces meet exactly and a
 line's strips aren't broken into runs at joints that rounding put a unit apart; it skips segments of no length, and
 a hairpin or a vector of no length no longer makes a NaN; and a run that ends where it starts is mitered at its seam
