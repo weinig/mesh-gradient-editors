@@ -27,6 +27,9 @@ struct FreeformSegment {
     end: vec2<f32>,
     startRadius: f32,
     endRadius: f32,
+    // 0 for one color, 1 for a color each side, held across a band, 2 for a
+    // tear: a color each side, held on the texel either side of it, with the
+    // slope across it left free.
     isTwoSided: u32,
     startDistance: f32,
     endDistance: f32,
@@ -74,6 +77,31 @@ struct Level {
 // For holds 2, the finest level solved without the segments less than fully
 // held.
 @group(0) @binding(6) var constraintFree: texture_2d<f32>;
+// Where tears cross the grid: 1 if one crosses the edge from the texel to the
+// next across, 2 if the edge to the next down, and 4 if one is near enough
+// to drop a term of the texel's row of the biharmonic.
+@group(0) @binding(7) var constraintTearsOut: texture_storage_2d<r32float, write>;
+
+// Whether the piece from a to b crosses the grid's edge from one texel's
+// center, c0, to the next's, c1.
+fn crossesEdge(a: vec2<f32>, b: vec2<f32>, c0: vec2<f32>, c1: vec2<f32>) -> bool {
+    let d = b - a;
+    let lengthSquared = dot(d, d);
+    let s0 = d.x * (c0.y - a.y) - d.y * (c0.x - a.x);
+    let s1 = d.x * (c1.y - a.y) - d.y * (c1.x - a.x);
+    if (lengthSquared <= 0.0 || (s0 >= 0.0) == (s1 >= 0.0)) {
+        return false;
+    }
+    let t0 = dot(c0 - a, d) / lengthSquared;
+    let t1 = dot(c1 - a, d) / lengthSquared;
+    let t = t0 + (t1 - t0) * s0 / (s0 - s1);
+    return t >= 0.0 && t <= 1.0;
+}
+
+// A tear is near a texel if it's within this many texels of it: two for the
+// reach of a term of the texel's row, one for the far end of the edge the
+// tear crosses, and a half to spare.
+const tearReach = 3.5;
 
 fn segmentCrossesBox(a: vec2<f32>, b: vec2<f32>, center: vec2<f32>, halfSize: vec2<f32>) -> bool {
     let d = b - a;
@@ -113,6 +141,7 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
     var colorSum = vec4<f32>(0.0);
     var coverageSum = 0.0;
     var weight = 0.0;
+    var tears = 0u;
     for (var i = 0u; i < level.pointCount; i++) {
         let point = points[i];
         let delta = position - point.position * level.boxScale;
@@ -163,8 +192,23 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
         let past = max(-(segment.startDistance + distanceAlong),
                        distanceAlong - segmentLength - segment.endDistance);
         let blend = texel + openEndFan * max(0.0, past + openEndLead * texel);
-        let left = saturate(0.5 + across / blend);
-        if (segment.isTwoSided != 0u) {
+        var left = saturate(0.5 + across / blend);
+        if (segment.isTwoSided == 2u) {
+            // A tear holds the texel either side of each edge of the grid it
+            // crosses, to that side's color, and nothing else.
+            let stepX = vec2<f32>(level.texelSize.x, 0.0);
+            let stepY = vec2<f32>(0.0, level.texelSize.y);
+            let right = crossesEdge(a, b, position, position + stepX);
+            let down = crossesEdge(a, b, position, position + stepY);
+            tears |= select(0u, 1u, right) | select(0u, 2u, down);
+            if (distance(position, a + t * along) <= tearReach * texel) {
+                tears |= 4u;
+            }
+            coverage = select(0.0, 1.0, right || down || crossesEdge(a, b, position - stepX, position)
+                              || crossesEdge(a, b, position - stepY, position));
+            left = select(0.0, 1.0, across > 0.0);
+            beyond = 0.0;
+        } else if (segment.isTwoSided != 0u) {
             coverage *= saturate(1.0 - max(0.0, past) / (openEndFade * texel));
         }
         var color = mix(mix(segment.startRight, segment.endRight, t), mix(segment.startLeft, segment.endLeft, t), left);
@@ -199,6 +243,7 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
     if (coverageSum > 0.0) {
         color = colorSum / coverageSum;
     }
+    textureStore(constraintTearsOut, gid, vec4<f32>(f32(tears)));
     textureStore(constraintColorOut, gid, color);
     textureStore(constraintWeightOut, gid, vec4<f32>(weight));
     textureStore(rightHandSideOut, gid, weight * color);
@@ -639,6 +684,87 @@ fn penalty(w: f32) -> f32 {
 var<private> edgeDirections: array<vec2<i32>, 4> = array<vec2<i32>, 4>(
     vec2<i32>(-1, 0), vec2<i32>(1, 0), vec2<i32>(0, -1), vec2<i32>(0, 1));
 
+// Where tears cross the level's grid, as freeformConstraints wrote it.
+@group(0) @binding(36) var bTears: texture_2d<f32>;
+
+// Whether a tear is near enough to texel p to drop a term of its row.
+fn nearTear(p: vec2<i32>) -> bool {
+    return (u32(textureLoad(bTears, p, 0).r) & 4u) != 0u;
+}
+
+// Whether the grid's edge from p one step e away is in the grid and no tear
+// crosses it.
+fn wholeEdge(p: vec2<i32>, e: vec2<i32>, size: vec2<i32>) -> bool {
+    let q = p + e;
+    if (any(min(p, q) < vec2<i32>(0)) || any(max(p, q) >= size)) {
+        return false;
+    }
+    let bits = u32(textureLoad(bTears, min(p, q), 0).r);
+    return (bits & select(2u, 1u, e.x != 0)) == 0u;
+}
+
+fn checker(c: vec2<i32>) -> f32 {
+    return select(-1.0, 1.0, (c.x + c.y) % 2 == 0);
+}
+
+// Texel p's row of a level's own equation, from the thin plate's energy term
+// by term, as Finch et al. build theirs: its coefficient for each texel up to
+// two away, without p's penalty. The terms are the squared second differences
+// across and down, of three texels in a line, and twice the squared mixed
+// difference of each two-by-two block; one that would leave the grid, or that
+// a tear crosses, is left out. Then, on each whole edge at p, the squared
+// first differences that mirrored edges and the membrane add: see
+// edgeCoefficient(). Where no tear is near, this is the 13-point stencil with
+// mirrored edges and edgeCoefficient()'s corrections, which is quicker.
+fn ownRow(p: vec2<i32>, size: vec2<i32>) -> array<f32, 25> {
+    var row: array<f32, 25>;
+    for (var axis = 0; axis < 2; axis++) {
+        let e = select(vec2<i32>(0, 1), vec2<i32>(1, 0), axis == 0);
+        for (var k = -1; k <= 1; k++) {
+            let c = p + k * e;
+            if (!wholeEdge(c, -e, size) || !wholeEdge(c, e, size)) {
+                continue;
+            }
+            // The term's coefficients are -1, 2, -1; p is its texel c - k e.
+            let own = select(-1.0, 2.0, k == 0);
+            for (var m = -1; m <= 1; m++) {
+                row[coefficientSlice((k + m) * e)] += own * select(-1.0, 2.0, m == 0);
+            }
+        }
+    }
+    for (var j = 0; j <= 1; j++) {
+        for (var i = 0; i <= 1; i++) {
+            // The block p is corner (i, j) of.
+            let o = p - vec2<i32>(i, j);
+            if (!wholeEdge(o, vec2<i32>(1, 0), size) || !wholeEdge(o + vec2<i32>(0, 1), vec2<i32>(1, 0), size)
+                || !wholeEdge(o, vec2<i32>(0, 1), size) || !wholeEdge(o + vec2<i32>(1, 0), vec2<i32>(0, 1), size)) {
+                continue;
+            }
+            let own = checker(vec2<i32>(i, j));
+            for (var cj = 0; cj <= 1; cj++) {
+                for (var ci = 0; ci <= 1; ci++) {
+                    row[coefficientSlice(vec2<i32>(ci - i, cj - j))] += 2.0 * own * checker(vec2<i32>(ci, cj));
+                }
+            }
+        }
+    }
+    for (var d = 0; d < 4; d++) {
+        let e = edgeDirections[d];
+        if (!wholeEdge(p, e, size)) {
+            continue;
+        }
+        var w = bh.membrane;
+        if (bh.natural == 0u) {
+            let lo = select(min(p.y, p.y + e.y), min(p.x, p.x + e.x), e.x != 0);
+            let last = select(size.y, size.x, e.x != 0) - 2;
+            w += select(0.0, 1.0, lo == 0) + select(0.0, 1.0, lo == last);
+        }
+        row[12] += w;
+        row[coefficientSlice(e)] -= w;
+    }
+    return row;
+}
+
 fn edgeCoefficient(p: vec2<i32>, e: vec2<i32>, size: vec2<i32>) -> f32 {
     let q = p + e;
     if (any(q < vec2<i32>(0)) || any(q >= size)) {
@@ -657,6 +783,15 @@ fn edgeCoefficient(p: vec2<i32>, e: vec2<i32>, size: vec2<i32>) -> f32 {
 fn biharmonicStencil(p: vec2<i32>, size: vec2<i32>) -> vec4<f32> {
     let center = textureLoad(bX, p, 0);
     var sum = vec4<f32>(0.0);
+    if (nearTear(p)) {
+        var row = ownRow(p, size);
+        for (var o = 0; o < 25; o++) {
+            if (o != 12 && row[o] != 0.0) {
+                sum += row[o] * (textureLoad(bX, p + vec2<i32>(o % 5 - 2, o / 5 - 2), 0) - center);
+            }
+        }
+        return sum;
+    }
     for (var o = 1; o < 13; o++) {
         sum += biharmonicCoefficients[o] * (textureLoad(bX, mirrored(p + biharmonicOffsets[o], size), 0) - center);
     }
@@ -797,7 +932,21 @@ fn bhOwnCoefficients(@builtin(global_invocation_id) id: vec3<u32>) {
     var row: array<f32, 25>;
     var rowSum = 0.0;
     let w = textureLoad(bWeight, p, 0).r;
-    if (w < 1.0) {
+    if (w < 1.0 && nearTear(p)) {
+        var own = ownRow(p, size);
+        row[12] = penalty(w) + own[12];
+        rowSum = penalty(w);
+        for (var o = 0; o < 25; o++) {
+            if (o == 12 || own[o] == 0.0) {
+                continue;
+            }
+            if (textureLoad(bWeight, p + vec2<i32>(o % 5 - 2, o / 5 - 2), 0).r < 1.0) {
+                row[o] += own[o];
+            } else {
+                rowSum -= own[o];
+            }
+        }
+    } else if (w < 1.0) {
         row[12] = penalty(w);
         rowSum = row[12];
         for (var o = 0; o < 13; o++) {
@@ -890,6 +1039,10 @@ fn ownEntry(i: vec2<i32>, j: vec2<i32>, size: vec2<i32>, d: f32) -> f32 {
     let s = j - i;
     if (any(abs(s) > vec2<i32>(2))) {
         return 0.0;
+    }
+    if (nearTear(i)) {
+        var own = ownRow(i, size);
+        return own[coefficientSlice(s)] + select(0.0, d, all(s == vec2<i32>(0)));
     }
     let nearEdge = any(i < vec2<i32>(2)) || any(i + 2 >= size);
     let a = abs(s.x) + abs(s.y);
@@ -1052,15 +1205,25 @@ fn bhRowsFromOwn(@builtin(global_invocation_id) id: vec3<u32>) {
                 continue;
             }
             var iSum = penalty(wi);
-            for (var o = 0; o < 13; o++) {
-                if (textureLoad(bWeight, mirrored(i + biharmonicOffsets[o], size), 0).r >= 0.5) {
-                    iSum -= biharmonicCoefficients[o];
+            if (nearTear(i)) {
+                var own = ownRow(i, size);
+                for (var o = 0; o < 25; o++) {
+                    if (o != 12 && own[o] != 0.0
+                        && textureLoad(bWeight, i + vec2<i32>(o % 5 - 2, o / 5 - 2), 0).r >= 0.5) {
+                        iSum -= own[o];
+                    }
                 }
-            }
-            for (var d = 0; d < 4; d++) {
-                let c = edgeCoefficient(i, edgeDirections[d], size);
-                if (c != 0.0 && textureLoad(bWeight, i + edgeDirections[d], 0).r >= 0.5) {
-                    iSum -= c;
+            } else {
+                for (var o = 0; o < 13; o++) {
+                    if (textureLoad(bWeight, mirrored(i + biharmonicOffsets[o], size), 0).r >= 0.5) {
+                        iSum -= biharmonicCoefficients[o];
+                    }
+                }
+                for (var d = 0; d < 4; d++) {
+                    let c = edgeCoefficient(i, edgeDirections[d], size);
+                    if (c != 0.0 && textureLoad(bWeight, i + edgeDirections[d], 0).r >= 0.5) {
+                        iSum -= c;
+                    }
                 }
             }
             rowSum += pi * iSum;

@@ -1,5 +1,5 @@
 These are MeshShader2's WebGPU freeform gradient renderer and its shader, from
-FreeformGradient/Sources/FreeformGradient/WebGPU/ at MeshShader2 commit cf95dc0, with five changes and a fix.
+FreeformGradient/Sources/FreeformGradient/WebGPU/ at MeshShader2 commit cf95dc0, with six changes and a fix.
 
 First, a gradient may give `strengths`, one number from 0 to 1 for each segment, how firmly the segment holds its
 colors, in the padding after `endDistance`. The harmonic multiplies the segment's weight by it, with the weight's
@@ -31,6 +31,13 @@ the tilt of a plane held at fewer than three points. The finest level takes more
 its residual formed afresh from the solution every ten: carried along in 32-bit floats, it loses a twist that only
 the box's four corner texels resist. And a point of no radius holds exactly the one texel it's in, so nothing holds
 the slope there, and with natural edges two such points make a linear ramp and three a plane.
+
+Sixth, a segment's two-sidedness may be 2, for a tear, as Finch et al.'s: it holds its colors on the texel either
+side of each edge of the grid it crosses, and the biharmonic leaves the slope across it free. freeformConstraints
+writes where tears cross each level's grid, and near one a texel's row of the level's own equation is built from the
+thin plate's energy term by term, leaving out the terms a tear crosses, rather than taken from the 13-point stencil.
+The coarser levels, built from those rows, need nothing more. A tear's edge strips hold its colors one texel either
+side, and with any tear the finest level is solved as with natural edges.
 
 A two-sided segment holds at least 3 texels a side, not 1.5: with fewer than two whole texels a side the biharmonic
 doesn't hold the slope across the line, and overshoots far past its colors on coarse grids.

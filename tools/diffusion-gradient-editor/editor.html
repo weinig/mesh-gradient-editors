@@ -38,6 +38,9 @@
                     <input id="blur" type="range" min="0" max="100" step="1">
                     <output id="blurValue"></output>
                 </div>
+                <div class="row" title="A curve holds its colors across a band either side of it, which also holds the surface flat there. With a free slope it holds only the texel either side of it, so the biharmonic model's surface keeps its slope through the curve, as a tear in Finch et al.'s paper does. That can run far past the curve's colors, most of all for an open curve. A blurred curve has none, and the harmonic model has no slope to hold.">
+                    <label><input type="checkbox" id="free"> Free slope</label>
+                </div>
                 <div id="toPathRow" class="row" title="Turn the shape into a path of nodes, to shape it freely. It can't be turned back.">
                     <button id="toPath" class="small">Convert to a path</button>
                 </div>

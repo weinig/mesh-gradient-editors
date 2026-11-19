@@ -80,6 +80,18 @@ const PRESETS = [
         },
     },
     {
+        name: "Free slope",
+        note: "Two circles with the same colors, each between a green line and a pink one. The left one holds its colors across a band, which holds the surface flat beside it, so it sits in a halo of its blue before the colors turn toward the lines. The right one's slope is free: it holds only the texel either side of it, so the biharmonic model's turn toward the lines starts at the circle itself, and its halo is thinner. The difference is small for a closed curve like this. An open curve with a free slope tilts each side into a steep plane, far past its colors. Show what the curves hold to see the band and the single texels. The harmonic model has no slope to hold, so its two are nearly alike.",
+        state: {
+            width: 600, height: 300,
+            curves: [0.28, 0.72].flatMap((x, i) => [
+                { ...ellipse(x, 0.5, 0.1, 0.2), inside: "#ffd166", outside: "#26547c", free: i === 1 },
+                { ...line([x - 0.17, 0.9], [x + 0.17, 0.9]), left: "#ef476f", right: "#ef476f" },
+                { ...line([x - 0.17, 0.1], [x + 0.17, 0.1]), left: "#06d6a0", right: "#06d6a0" },
+            ]),
+        },
+    },
+    {
         name: "Blur",
         note: "Three circles, blurred 0, 20 and 60 px. A blurred curve is held as two one-sided copies, moved apart by the blur, and the solve fills the band between them. Show what the curves hold to see the copies.",
         state: {
@@ -161,6 +173,7 @@ function acceptsState(data) {
         if (curve.kind === "path" && curve.closed && curve.nodes?.length < 3)
             return false;
         const sides = curve.closed ? ["inside", "outside"] : ["left", "right"];
+        curve.free = !!curve.free;
         return sound(curve) && sides.every(side => typeof curve[side] === "string");
     });
     return true;
@@ -349,13 +362,17 @@ function offsetPieces(flat, distance, closed) {
 // strength's cube, since the solve barely gives at all above a weight of 0.3. Held in part, a jump would make the
 // biharmonic solve overshoot far out of gamut, so the renderer mixes its held colors instead, which is linear.
 //
+// A curve with a free slope is a tear, as Finch et al.'s: it holds its colors on the texel either side of it and
+// leaves the slope across it free, where a band holds the slope flat too. A blurred curve has no tear.
+//
 // A blurred curve is two one-sided copies of it
 // instead, each holding one side's color, moved apart by the blur, so the solve fills the band between them.
 function gradientData(model, influence = false) {
     const segments = [], strengths = [], lines = [], colors = [];
-    const add = (flat, left, right, twoSided, strength, closed) => {
+    // `kind` is 0 for one color, 1 for a color each side held across a band, 2 for a tear.
+    const add = (flat, left, right, kind, strength, closed) => {
         for (const [x0, y0, x1, y1] of flat) {
-            segments.push(...left, ...left, ...right, ...right, x0, y0, x1, y1, CURVE_RADIUS, CURVE_RADIUS, twoSided ? 1 : 0);
+            segments.push(...left, ...left, ...right, ...right, x0, y0, x1, y1, CURVE_RADIUS, CURVE_RADIUS, kind);
             strengths.push(strength);
         }
         lines.push({ ends: flat.flat(), closed });
@@ -373,10 +390,10 @@ function gradientData(model, influence = false) {
         const blur = (curve.blur ?? 0) / Math.min(state.width, state.height);
         if (blur > 0) {
             const distance = blur / 2 + CURVE_RADIUS;
-            add(offsetPieces(flat, distance, curve.closed), left, left, false, strength, curve.closed);
-            add(offsetPieces(flat, -distance, curve.closed), right, right, false, strength, curve.closed);
+            add(offsetPieces(flat, distance, curve.closed), left, left, 0, strength, curve.closed);
+            add(offsetPieces(flat, -distance, curve.closed), right, right, 0, strength, curve.closed);
         } else {
-            add(flat, left, right, true, strength, curve.closed);
+            add(flat, left, right, curve.free ? 2 : 1, strength, curve.closed);
         }
     }
     const average = [0, 1, 2, 3].map(k => colors.length ? colors.reduce((sum, c) => sum + c[k], 0) / colors.length : 0);
@@ -1073,6 +1090,8 @@ function updateControls() {
             $(id).value = value;
             $(id + "Value").textContent = value + unit;
         }
+        $("free").checked = !!selected.free;
+        $("free").disabled = (selected.blur ?? 0) > 0;
     }
 }
 
@@ -1207,6 +1226,14 @@ for (const id of ["strength", "blur"]) {
     });
 }
 
+$("free").addEventListener("change", () => {
+    const curve = selection && state.curves[selection.curve];
+    if (!curve)
+        return;
+    curve.free = $("free").checked;
+    changed();
+});
+
 $("toPath").addEventListener("click", () => {
     const curve = selection && state.curves[selection.curve];
     if (!curve || isPath(curve))
@@ -1235,7 +1262,7 @@ __COMMON_CONTROLS__
 //
 //   diffusion-gradient( [ harmonic || in <space> ]? , <diffusion-curve># )
 //   <diffusion-curve> = <basic-shape> [ left <color> right <color> | inside <color> outside <color> ]
-//                       [ strength <percentage> ]? [ blur <length> ]?
+//                       [ strength <percentage> ]? [ blur <length> ]? free?
 
 const number = v => String(Math.round(v * 100) / 100 || 0);
 const percent = v => `${number(v * 100)}%`;
@@ -1295,6 +1322,8 @@ function curveText(curve) {
         text += ` strength ${curve.strength}%`;
     if ((curve.blur ?? 0) !== 0)
         text += ` blur ${curve.blur}px`;
+    else if (curve.free)
+        text += " free";
     return text;
 }
 

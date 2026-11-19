@@ -437,6 +437,8 @@ export class WebGPUFreeformGradientRenderer {
       values: grid(),
       constraintColor: texture("rgba32float"),
       constraintWeight: texture("r32float"),
+      // Where tears cross the level's grid.
+      tears: texture("r32float"),
       rightHandSide: texture("rgba32float"),
       correction: grid(),
       correctionRightHandSide: texture("rgba32float"),
@@ -481,7 +483,7 @@ export class WebGPUFreeformGradientRenderer {
 
   destroyLevels() {
     for (const level of this.levels) {
-      for (const t of [...level.values.textures.slice(0, 2), level.constraintColor, level.constraintWeight,
+      for (const t of [...level.values.textures.slice(0, 2), level.constraintColor, level.constraintWeight, level.tears,
                        level.rightHandSide, ...level.correction.textures.slice(0, 2), level.correctionRightHandSide,
                        ...level.owned]) {
         t.destroy();
@@ -517,6 +519,7 @@ export class WebGPUFreeformGradientRenderer {
             { binding: 5, resource: this.view(levels[index].rightHandSide) },
             // Read only for holds 2; any texture the kernel doesn't write otherwise.
             { binding: 6, resource: this.view(holds === 2 ? finest.values.texture : finest.correctionRightHandSide) },
+            { binding: 7, resource: this.view(levels[index].tears) },
           ]);
         }
       };
@@ -694,7 +697,7 @@ export class WebGPUFreeformGradientRenderer {
   bhDispatch(name, over, uniforms, bindings) {
     const numbers = {
       x: 21, previous: 22, out: 23, color: 24, weight: 25, rightHandSide: 26, coefficients: 27,
-      coarseCoefficients: 28, background: 29, out2: 30, inverse: 31, partials: 32, state: 33, y: 34, z: 35,
+      coarseCoefficients: 28, background: 29, out2: 30, inverse: 31, partials: 32, state: 33, y: 34, z: 35, tears: 36,
     };
     const entries = uniforms ? [uniforms] : [];
     for (const [name, resource] of Object.entries(bindings)) {
@@ -728,16 +731,18 @@ export class WebGPUFreeformGradientRenderer {
     });
     bottom.values.current = 0;
     this.bhDispatch("OwnCoefficients", bottom, this.bh({ of: bottom, coarse: bottom }), {
-      weight: bottom.constraintWeight, coarseCoefficients: bottom.coefficients,
+      weight: bottom.constraintWeight, coarseCoefficients: bottom.coefficients, tears: bottom.tears,
     });
     this.invertCoarsest();
     this.bhDispatch("CoarsestSolveOwn", [1, 1, 1], this.bh({ of: bottom }), {
       inverse: this.coarsestInverse, x: bottom.values.texture, out: bottom.values.next,
-      color: bottom.constraintColor, weight: bottom.constraintWeight,
+      color: bottom.constraintColor, weight: bottom.constraintWeight, tears: bottom.tears,
     });
     bottom.values.flip();
 
-    const cycles = (gradient.naturalEdges ? naturalBiharmonicCycles : finestBiharmonicCycles)
+    // With natural edges or tears, what's left to solve can be too faint for a residual carried along.
+    const careful = gradient.naturalEdges || this.hasTears;
+    const cycles = (careful ? naturalBiharmonicCycles : finestBiharmonicCycles)
       + (gradient.hasTwoSidedLines ? twoSidedBiharmonicCycles : 0);
     for (let index = coarsest - 1; index >= 0; index--) {
       const level = levels[index];
@@ -748,7 +753,7 @@ export class WebGPUFreeformGradientRenderer {
       level.values.current = 0;
       this.buildGalerkinLevels(index);
       if (index === 0) {
-        this.encodeConjugateGradients(cycles, gradient.naturalEdges ? naturalRestart : 0);
+        this.encodeConjugateGradients(cycles, careful ? naturalRestart : 0);
       } else {
         for (let cycle = 0; cycle < biharmonicCycles; cycle++) {
           this.biharmonicVCycle(index);
@@ -766,8 +771,8 @@ export class WebGPUFreeformGradientRenderer {
     const own = this.bh({ of: level, coarse, flag: 0 });
     const from = { weight: level.constraintWeight, coarseCoefficients: coarse.coefficients };
     this.bhDispatch("BackgroundFromOwn", coarse, own, { ...from, background: this.backgroundRows });
-    this.bhDispatch("EntriesFromOwn", [Math.ceil(coarse.width / 8), Math.ceil(coarse.height / 8), 13], own, from);
-    this.bhDispatch("RowsFromOwn", coarse, own, from);
+    this.bhDispatch("EntriesFromOwn", [Math.ceil(coarse.width / 8), Math.ceil(coarse.height / 8), 13], own, { ...from, tears: level.tears });
+    this.bhDispatch("RowsFromOwn", coarse, own, { ...from, tears: level.tears });
     for (let index = top + 1; index < levels.length - 1; index++) {
       const fine = levels[index];
       const below = levels[index + 1];
@@ -801,7 +806,7 @@ export class WebGPUFreeformGradientRenderer {
     // level being solved does not otherwise use.
     this.bhDispatch("ResidualOwn", level, this.bh({ of: level }), {
       x: level.values.texture, out: level.correctionRightHandSide,
-      color: level.constraintColor, weight: level.constraintWeight,
+      color: level.constraintColor, weight: level.constraintWeight, tears: level.tears,
     });
     this.bhDispatch("RestrictOwn", coarse, this.bh({ of: level, coarse }), {
       x: level.correctionRightHandSide, weight: level.constraintWeight,
@@ -880,6 +885,7 @@ export class WebGPUFreeformGradientRenderer {
     const start = () => {
       this.bhDispatch("ResidualOwn", level, uniforms, {
         x: level.values.texture, out: residual.texture, color: level.constraintColor, weight: level.constraintWeight,
+        tears: level.tears,
       });
       this.bhDispatch("Reset", [1, 1, 1], null, { state: this.conjugateGradientState });
     };
@@ -900,6 +906,7 @@ export class WebGPUFreeformGradientRenderer {
       direction.flip();
       this.bhDispatch("ResidualOwnCorrection", level, this.bh({ of: level, flag: 1 }), {
         x: direction.texture, out: product, rightHandSide: residual.texture, weight: level.constraintWeight,
+        tears: level.tears,
       });
       this.encodeDot(direction.texture, product, true);
       this.bhDispatch("Step", level, uniforms, {
@@ -938,7 +945,7 @@ export class WebGPUFreeformGradientRenderer {
 
     this.bhDispatch("ResidualOwnCorrection", level, this.bh({ of: level, flag: 0 }), {
       x: level.correction.texture, out: level.correctionRightHandSide, rightHandSide: residual,
-      weight: level.constraintWeight,
+      weight: level.constraintWeight, tears: level.tears,
     });
     this.bhDispatch("RestrictOwn", coarse, this.bh({ of: level, coarse }), {
       x: level.correctionRightHandSide, weight: level.constraintWeight,
@@ -964,7 +971,7 @@ export class WebGPUFreeformGradientRenderer {
       const next = spare(grid.current, previous);
       this.bhDispatch("ChebyshevOwnCorrection", level, this.bh({ of: level, step }), {
         x: grid.texture, previous: grid.textures[previous], out: grid.textures[next],
-        rightHandSide, weight: level.constraintWeight,
+        rightHandSide, weight: level.constraintWeight, tears: level.tears,
       });
       previous = grid.current;
       grid.current = next;
@@ -978,7 +985,7 @@ export class WebGPUFreeformGradientRenderer {
       const next = spare(grid.current, previous);
       this.bhDispatch("ChebyshevOwn", level, this.bh({ of: level, step }), {
         x: grid.texture, previous: grid.textures[previous], out: grid.textures[next],
-        color: level.constraintColor, weight: level.constraintWeight,
+        color: level.constraintColor, weight: level.constraintWeight, tears: level.tears,
       });
       previous = grid.current;
       grid.current = next;
@@ -1111,6 +1118,7 @@ export class WebGPUFreeformGradientRenderer {
     const strengthTexel = gradient.strengthTexel > 0 ? gradient.strengthTexel : Math.max(...boxScale) / 512;
     this.strengthScale = (texel / strengthTexel) ** 2;
     const least = twoSidedTexels * texel;
+    this.hasTears = false;
     const segments = gradient.segments;
     const count = segments.length / 23;
     this.segmentCount = count;
@@ -1135,13 +1143,15 @@ export class WebGPUFreeformGradientRenderer {
     for (let i = 0; i < count; i++) {
       const s = i * 23;
       const o = i * 28;
-      const twoSided = segments[s + 22] !== 0;
+      // 0 for one color, 1 for a color each side across a band, 2 for a tear.
+      const kind = segments[s + 22] === 2 ? 2 : segments[s + 22] !== 0 ? 1 : 0;
+      this.hasTears ||= kind === 2;
       for (let k = 0; k < 20; k++) {
         f32[o + k] = segments[s + k];
       }
-      f32[o + 20] = twoSided ? Math.max(segments[s + 20], least) : segments[s + 20];
-      f32[o + 21] = twoSided ? Math.max(segments[s + 21], least) : segments[s + 21];
-      u32[o + 22] = twoSided ? 1 : 0;
+      f32[o + 20] = kind === 1 ? Math.max(segments[s + 20], least) : segments[s + 20];
+      f32[o + 21] = kind === 1 ? Math.max(segments[s + 21], least) : segments[s + 21];
+      u32[o + 22] = kind;
       f32[o + 23] = i < distances.length ? distances[i][0] : far;
       f32[o + 24] = i < distances.length ? distances[i][1] : far;
       const strength = gradient.strengths?.[i] ?? 1;
@@ -1181,6 +1191,7 @@ function edgeQuads(segments, boxScale, texel, blendWidth, pieceLength) {
       startRight: segments.slice(s + 8, s + 12), endRight: segments.slice(s + 12, s + 16),
       start: segments.slice(s + 16, s + 18), end: segments.slice(s + 18, s + 20),
       startRadius: segments[s + 20], endRadius: segments[s + 21],
+      tear: segments[s + 22] === 2,
     };
     const along = length(fround(fround(segment.end[0] - segment.start[0]) * boxScale[0]),
                          fround(fround(segment.end[1] - segment.start[1]) * boxScale[1]));
@@ -1202,6 +1213,7 @@ function edgeQuads(segments, boxScale, texel, blendWidth, pieceLength) {
         startRight: mix4(segment.startRight, segment.endRight, a), endRight: mix4(segment.startRight, segment.endRight, b),
         startRadius: at(segment.startRadius, segment.endRadius, a),
         endRadius: at(segment.startRadius, segment.endRadius, b),
+        tear: segment.tear,
       });
     }
   }
@@ -1251,8 +1263,10 @@ function edgeQuads(segments, boxScale, texel, blendWidth, pieceLength) {
       joints.push([fround(miter[0] / scale), fround(miter[1] / scale)]);
     }
     run.forEach((segment, index) => {
-      const held = [Math.max(segment.startRadius, fround(twoSidedTexels * texel)),
-                    Math.max(segment.endRadius, fround(twoSidedTexels * texel))];
+      // A tear holds its colors on the texel either side of it; a band, out to its radius.
+      const held = segment.tear ? [texel, texel]
+        : [Math.max(segment.startRadius, fround(twoSidedTexels * texel)),
+           Math.max(segment.endRadius, fround(twoSidedTexels * texel))];
       const half = (a, b) => a.map((x, i) => fround(fround(x + b[i]) / 2));
       const edge = [half(segment.startLeft, segment.startRight), half(segment.endLeft, segment.endRight)];
       for (const sign of [1, -1]) {
