@@ -1,0 +1,46 @@
+circle: A closed circle, red inside and blue outside.
+  bands: range +0.117 to +1.000, 0.0% of values past 0 to 1; 2088 pixels held
+  tears: range +0.117 to +1.000, 0.0% of values past 0 to 1; 512 edges torn
+  tears, flat sides: range +0.117 to +1.000, 0.0% of values past 0 to 1
+  tears, flat sides, mirrored edges: range +0.118 to +1.000, 0.0% of values past 0 to 1
+  tears, mirrored edges: range +0.118 to +1.000, 0.0% of values past 0 to 1
+two-stops: Two points, black and white. A thin plate through two values is a linear ramp.
+  bands: range -0.131 to +1.131, 45.2% of values past 0 to 1; 40 pixels held
+  tears: range -0.744 to +1.742, 59.9% of values past 0 to 1; 0 edges torn
+  tears, flat sides: range -0.744 to +1.742, 59.9% of values past 0 to 1
+  tears, flat sides, mirrored edges: range -0.256 to +1.255, 52.3% of values past 0 to 1
+  tears, mirrored edges: range -0.256 to +1.255, 52.3% of values past 0 to 1
+  bands: at most 0.2128 from a plane
+  tears: at most 0.0025 from a plane
+three-stops: Three points. A thin plate through three values is a plane.
+  bands: range -0.156 to +1.124, 18.4% of values past 0 to 1; 60 pixels held
+  tears: range -0.854 to +1.918, 36.6% of values past 0 to 1; 0 edges torn
+  tears, flat sides: range -0.854 to +1.918, 36.6% of values past 0 to 1
+  tears, flat sides, mirrored edges: range -0.319 to +1.293, 24.0% of values past 0 to 1
+  tears, mirrored edges: range -0.319 to +1.293, 24.0% of values past 0 to 1
+  bands: at most 0.2731 from a plane
+  tears: at most 0.0026 from a plane
+open-line: One open line, purple on one side and yellow on the other.
+  bands: range -1.842 to +2.841, 83.9% of values past 0 to 1; 940 pixels held
+  tears: range -122.973 to +123.968, 99.2% of values past 0 to 1; 154 edges torn
+  tears, flat sides: range -3.938 to +4.934, 87.0% of values past 0 to 1
+  tears, flat sides, mirrored edges: range -1.737 to +2.736, 83.7% of values past 0 to 1
+  tears, mirrored edges: range -16.669 to +17.667, 98.2% of values past 0 to 1
+thin-stripe: Two lines 0.8% of the box apart: black outside, white between. Thinner than today's bands.
+  bands: range -0.382 to +1.000, 96.6% of values past 0 to 1; 1256 pixels held
+  tears: range -3.916 to +1.000, 95.1% of values past 0 to 1; 308 edges torn
+  tears, flat sides: range -0.515 to +1.000, 95.8% of values past 0 to 1
+  tears, flat sides, mirrored edges: range -0.258 to +1.000, 95.5% of values past 0 to 1
+  tears, mirrored edges: range -1.481 to +1.000, 98.3% of values past 0 to 1
+crossing: Two lines that cross, each with its own two colors.
+  bands: range -2.144 to +3.223, 39.5% of values past 0 to 1; 1836 pixels held
+  tears: range -5.231 to +4.992, 47.2% of values past 0 to 1; 511 edges torn
+  tears, flat sides: range -2.865 to +4.118, 43.4% of values past 0 to 1
+  tears, flat sides, mirrored edges: range -1.202 to +2.434, 35.9% of values past 0 to 1
+  tears, mirrored edges: range -2.518 to +2.985, 38.9% of values past 0 to 1
+shapes: A circle, red inside and blue outside, over a gray box with a white highlight line.
+  bands: range +0.117 to +1.008, 0.5% of values past 0 to 1; 5371 pixels held
+  tears: range +0.118 to +1.098, 1.6% of values past 0 to 1; 1088 edges torn
+  tears, flat sides: range +0.118 to +1.123, 1.5% of values past 0 to 1
+  tears, flat sides, mirrored edges: range +0.118 to +1.123, 1.5% of values past 0 to 1
+  tears, mirrored edges: range +0.118 to +1.098, 1.6% of values past 0 to 1
