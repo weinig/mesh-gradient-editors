@@ -110,6 +110,7 @@ function updateCommonControls() {
     $("preset").value = preset < 0 ? "" : String(preset);
     $("presetNote").textContent = PRESETS[preset]?.note ?? "";
     $("presetNote").hidden = !PRESETS[preset]?.note;
+    $("presetInfo").disabled = !PRESETS[preset]?.note;
 
     $("view").value = state.view;
     for (const option of $("view").options)
@@ -200,6 +201,17 @@ $("copyLink").addEventListener("click", () => {
     writeHash();
     copy(location.href, "the link");
 });
+
+// An info button shows and hides the notes it controls, which start hidden so that the controls stay put as the
+// notes change. Whether they're shown is the page's own, not the link's.
+for (const button of document.querySelectorAll("button.info")) {
+    button.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.75" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="4.9" r="0.95" fill="currentColor"/><path d="M8 7.3v4.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+    button.addEventListener("click", () => {
+        const notes = $(button.getAttribute("aria-controls"));
+        notes.hidden = !notes.hidden;
+        button.setAttribute("aria-expanded", String(!notes.hidden));
+    });
+}
 
 $("preset").addEventListener("change", () => {
     if ($("preset").value === "")

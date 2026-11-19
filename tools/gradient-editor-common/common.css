@@ -100,3 +100,4 @@ aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transf
     border: 1px solid var(--border);
     border-radius: 4px;
 }
+#preset, #view { flex: 1; min-width: 0; }

@@ -3,11 +3,11 @@ __COMMON_HEAD__
 // MARK: - State
 
 // Stops hold colors at points. A stop's position is a fraction of the box, 0 to 1 across and down, and can be outside
-// it; its opacity and spread are percentages. Its weight is the optional number CSS has after a stop's position,
+// it; its spread is a percentage. Its weight is the optional number CSS has after a stop's position,
 // which nothing uses yet.
 let state = null;
 
-const stop = (x, y, color, spread = 0, opacity = 100) => ({ p: [x, y], color, opacity, spread, weight: null });
+const stop = (x, y, color, spread = 0) => ({ p: [x, y], color, spread, weight: null });
 
 // A stop of each color in a ring around (cx, cy), going clockwise from the top. The radius is a fraction of the box,
 // so the ring is round only in a square box.
@@ -83,12 +83,12 @@ const PRESETS = [
     },
     {
         name: "Opacity",
-        note: "Stops that fade out: opacity is blended along with the color, premultiplied, so a color fades without going gray or dark on its way to transparent. Where a model's alpha overshoots past 0 or 1, it's clipped.",
+        note: "Stops that fade out: alpha is blended along with the color, premultiplied, so a color fades without going gray or dark on its way to transparent. Where a model's alpha overshoots past 0 or 1, it's clipped.",
         state: {
             width: 600, height: 400,
             stops: [
                 stop(0.15, 0.5, "#ff006e"), stop(0.5, 0.2, "#3a86ff"), stop(0.85, 0.5, "#ffbe0b"),
-                stop(0.5, 0.8, "#3a86ff", 0, 0), stop(0.5, 0.5, "#ffffff", 0, 0),
+                stop(0.5, 0.8, "#3a86ff00"), stop(0.5, 0.5, "#ffffff00"),
             ],
         },
     },
@@ -154,8 +154,9 @@ const PRESET_KEYS = ["stops"];
 const TWO_SIDED_LINES = false;
 const DEFAULT_PRESET = 0;
 
+// A preset, and the page as it opens, start with the first stop selected.
 function resetEditing() {
-    selection = null;
+    selection = state.stops.length ? 0 : null;
 }
 
 // After undo or redo, the selection stays if its stop is still there.
@@ -230,8 +231,7 @@ function acceptsState(data) {
         return false;
     const finite = v => typeof v === "number" && Number.isFinite(v);
     data.stops = data.stops.filter(stop => !!stop && Array.isArray(stop.p) && finite(stop.p[0]) && finite(stop.p[1]) && typeof stop.color === "string").map(stop => ({
-        p: stop.p.slice(0, 2), color: stop.color,
-        opacity: finite(stop.opacity) ? clamp(stop.opacity, 0, 100) : 100,
+        p: stop.p.slice(0, 2), color: fadedColor(stop.color, finite(stop.opacity) ? clamp(stop.opacity, 0, 100) : 100),
         spread: finite(stop.spread) ? clamp(stop.spread, 0, 100) : 0,
         weight: finite(stop.weight) ? stop.weight : null,
     }));
@@ -637,12 +637,8 @@ const spreadRadius = stop => {
     return least + (FULL_SPREAD - least) * stop.spread / 100;
 };
 
-// The stops' colors as the renderer takes them. A stop's opacity scales its color's own alpha.
-const stopColors = () => rendererColors(state.stops.map(stop => {
-    const components = interpolationComponents(stop.color);
-    components[3] *= stop.opacity / 100;
-    return components;
-}));
+// The stops' colors as the renderer takes them.
+const stopColors = () => rendererColors(state.stops.map(stop => interpolationComponents(stop.color)));
 
 // The spline a box's renderer takes: for the gradient, the part of it the view shows; for its second renderer, the
 // selected stop's influence, or U(r) around it.
@@ -854,7 +850,7 @@ function drawOverlay(view) {
         ctx.stroke();
         ctx.beginPath();
         ctx.arc(...at, radius, 0, 2 * Math.PI);
-        ctx.fillStyle = swatchColor(stop.color, stop.opacity / 100);
+        ctx.fillStyle = swatchColor(stop.color);
         ctx.fill();
         ctx.globalAlpha = 1;
     });
@@ -900,12 +896,11 @@ function hitTest(view, point) {
 // is.
 function colorAt(p) {
     if (!state.stops.length)
-        return { color: "#7f7f7f", opacity: 100 };
+        return "#7f7f7f";
     if (state.models.includes("spline")) {
         const { rgb, alpha } = appearance(splineColor(currentSpline(), p), state.space);
-        const opacity = Math.round(clamp(alpha, 0, 1) * 100);
-        if (opacity > 0)
-            return { color: "#" + rgb.map(v => Math.round(clamp(v, 0, 1) * 255).toString(16).padStart(2, "0")).join(""), opacity };
+        if (alpha > 1 / 255)
+            return hexWithAlpha({ space: "srgb", c: rgb.map(v => clamp(v, 0, 1)), alpha: clamp(alpha, 0, 1) });
     }
     const [sx, sy] = boxScale();
     let total = 0;
@@ -915,16 +910,14 @@ function colorAt(p) {
         const color = parseColor(stop.color) ?? parseColor("black");
         const srgb = fromXYZ("srgb", toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
         srgb.forEach((v, k) => sum[k] += weight * v);
-        sum[3] += weight * stop.opacity;
+        sum[3] += weight * (Number.isNaN(color.alpha) ? 0 : color.alpha);
         total += weight;
     }
-    const hex = sum.slice(0, 3).map(v => Math.round(clamp(v / total, 0, 1) * 255).toString(16).padStart(2, "0")).join("");
-    return { color: `#${hex}`, opacity: Math.round(sum[3] / total) };
+    return hexWithAlpha({ space: "srgb", c: sum.slice(0, 3).map(v => clamp(v / total, 0, 1)), alpha: sum[3] / total });
 }
 
 function addStop(p) {
-    const { color, opacity } = colorAt(p);
-    state.stops.push({ p, color, opacity, spread: 0, weight: null });
+    state.stops.push({ p, color: colorAt(p), spread: 0, weight: null });
     return state.stops.length - 1;
 }
 
@@ -1024,6 +1017,7 @@ function updateControls() {
     $("stopSize").value = state.stopSize;
     $("splineDrawing").value = state.splineDrawing;
     $("splineDrawingRow").hidden = !state.models.includes("spline");
+    $("splineHeading").hidden = !state.models.includes("spline");
     $("normalization").checked = state.normalization;
     $("normalizationRow").hidden = !state.models.includes("spline");
     $("normalizationNote").hidden = !state.normalization || !state.models.includes("spline");
@@ -1052,10 +1046,8 @@ function updateControls() {
             if (document.activeElement !== $(id))
                 $(id).value = Math.round(selected.p[axis] * 1000) / 10;
         }
-        for (const [id, value] of [["opacity", selected.opacity], ["spread", selected.spread]]) {
-            $(id).value = value;
-            $(id + "Value").textContent = value + "%";
-        }
+        $("spread").value = selected.spread;
+        $("spreadValue").textContent = selected.spread + "%";
         if (document.activeElement !== $("stopWeight"))
             $("stopWeight").value = selected.weight ?? "";
     }
@@ -1077,8 +1069,8 @@ function updateStopList() {
     }
     state.stops.forEach((stop, index) => {
         const button = list.children[index];
-        button.firstChild.style.background = swatchColor(stop.color, stop.opacity / 100);
-        button.title = `${stop.color}${stop.opacity < 100 ? `, ${stop.opacity}%` : ""}`;
+        button.firstChild.style.background = swatchColor(stop.color);
+        button.title = stop.color;
         button.classList.toggle("selected", index === selection);
     });
 }
@@ -1086,8 +1078,8 @@ function updateStopList() {
 $("stopPicker").addEventListener("input", () => {
     if (selection === null)
         return;
-    state.stops[selection].color = $("stopPicker").value;
-    $("stopText").value = $("stopPicker").value;
+    state.stops[selection].color = pickedColor($("stopPicker"));
+    $("stopText").value = state.stops[selection].color;
     changed();
 });
 $("stopText").addEventListener("input", () => {
@@ -1131,7 +1123,7 @@ $("stopSize").addEventListener("change", () => {
     state.stopSize = $("stopSize").value;
     changed();
 });
-for (const id of ["opacity", "spread"]) {
+for (const id of ["spread"]) {
     $(id).addEventListener("input", () => {
         if (selection === null)
             return;
@@ -1172,18 +1164,15 @@ __COMMON_CONTROLS__
 // With a grid model first, a made-up one:
 //
 //   freeform-gradient( [ biharmonic | harmonic ] in <space> , <stop># )
-//   <stop> = <color> <position> [ spread <percentage> ]? [ opacity <percentage> ]?
+//   <stop> = <color> <position> [ spread <percentage> ]?
 
 const number = v => String(Math.round(v * 100) / 100 || 0);
 const percent = v => `${number(v * 100)}%`;
 
-// A stop's color with its opacity, which CSS has no word for, as a relative color.
-const colorWithOpacity = stop => stop.opacity === 100 ? stop.color.trim() : `rgb(from ${stop.color.trim()} r g b / calc(alpha * ${number(stop.opacity / 100)}))`;
-
 // How WebCore stores a color, which decides the default interpolation method: 8-bit sRGB means sRGB, anything else
 // OKLab. (consumeFreeformGradient() in CSSPropertyParserConsumer+Image.cpp)
 function colorPrecision(stop) {
-    const color = stop.opacity === 100 ? parseColor(stop.color) : null;
+    const color = parseColor(stop.color);
     if (!color || color.resolvedByBrowser)
         return "unknown";
     return color.eightBit ? "8bit" : "float";
@@ -1198,7 +1187,7 @@ function splinePrelude() {
 }
 
 function splineCSS() {
-    const stops = state.stops.map(stop => `${colorWithOpacity(stop)} ${percent(stop.p[0])} ${percent(stop.p[1])}${stop.weight === null ? "" : ` / ${stop.weight}`}`);
+    const stops = state.stops.map(stop => `${stop.color.trim()} ${percent(stop.p[0])} ${percent(stop.p[1])}${stop.weight === null ? "" : ` / ${stop.weight}`}`);
     return `background-image: freeform-gradient(${[splinePrelude(), ...stops].filter(Boolean).join(",\n    ")});`;
 }
 
@@ -1206,8 +1195,6 @@ function stopText(stop, withSpread) {
     const parts = [stop.color.trim(), percent(stop.p[0]), percent(stop.p[1])];
     if (withSpread && stop.spread)
         parts.push(`spread ${stop.spread}%`);
-    if (stop.opacity !== 100)
-        parts.push(`opacity ${stop.opacity}%`);
     return parts.join(" ");
 }
 

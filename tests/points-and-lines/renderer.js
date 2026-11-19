@@ -1,7 +1,7 @@
 // What the renderer draws, measured from its solve. Colors run 0 to 1, and the tolerances are a few times what
 // these measured when they were written.
 
-const plainStop = (x, y, color) => ({ p: [x, y], color, opacity: 100, spread: 0 });
+const plainStop = (x, y, color) => ({ p: [x, y], color, spread: 0 });
 
 // The plane through three stops' colors.
 function planeThrough(stops) {

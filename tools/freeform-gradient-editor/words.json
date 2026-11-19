@@ -9,6 +9,6 @@
     "HOLDERS": "stops",
     "SHEET_NOTE": "One component as a height over the box. The thin plate spline is a stiff sheet through the stops that runs on past the box. The biharmonic model is the same sheet ending at the box's edges, and the harmonic model is a membrane pinned at the stops: it rises to a sharp peak or dips to a pit at each one. Drag to turn it.",
     "CSS_INTRO": "With the thin plate spline first among the boxes, the <code>freeform-gradient()</code> WebKit takes. With a grid model first, a made-up one.",
-    "CSS_GRAMMAR": "WebKit's: an interpolation method, unless it's the one WebKit would choose from the colors, then each stop's color, position and, if it has one, / weight. An opacity is written into the color as a relative color. The made-up one names the model, and gives each stop a spread and an opacity.",
+    "CSS_GRAMMAR": "WebKit's: an interpolation method, unless it's the one WebKit would choose from the colors, then each stop's color, position and, if it has one, / weight. The made-up one names the model, and gives each stop a spread.",
     "ITEM": "stop"
 }

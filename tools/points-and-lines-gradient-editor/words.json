@@ -7,6 +7,6 @@
     "HOLDERS": "stops",
     "SHEET_NOTE": "One component as a height over the box. The harmonic model is a membrane pinned at the stops: it rises to a sharp peak or dips to a pit at each point, and is creased along each line. The biharmonic model is a stiff sheet that bends smoothly through them, and past a stop it keeps going, above 1 or below 0. Drag to turn it.",
     "CSS_INTRO": "A made-up <code>freeform-gradient()</code> with lines: each point is a color and a position, and each line is <code>line()</code> around its stops.",
-    "CSS_GRAMMAR": "A point is its color and position, then spread and opacity unless they're 0 and 100%. A line is line() around its stops, with close at the end if it's closed; a stop that joins two lines is in both. A line shaped by hand gives each stop its two handles, as offsets from it. The biharmonic model is the default; harmonic picks the other one.",
+    "CSS_GRAMMAR": "A point is its color and position, then its spread unless it's 0. A line is line() around its stops, with close at the end if it's closed; a stop that joins two lines is in both. A line shaped by hand gives each stop its two handles, as offsets from it. The biharmonic model is the default; harmonic picks the other one.",
     "ITEM": "stop"
 }

@@ -3,13 +3,13 @@ __COMMON_HEAD__
 // MARK: - State
 
 // Stops hold colors: on their own as points, or along lines. A stop's position is a fraction of the box, 0 to 1
-// across and down; its opacity and spread are percentages. A line is the stops it runs through, in order, by index,
+// across and down; its spread is a percentage. A line is the stops it runs through, in order, by index,
 // and a stop at a line's end may also end another, joining them. A line curves through its stops on its own, or, once
 // it has `handles`, as they say: for each of its stops an `in` and an `out` Bézier handle, offsets from the stop in
 // fractions of the box.
 let state = null;
 
-const stop = (x, y, color, spread = 0, opacity = 100) => ({ p: [x, y], color, opacity, spread });
+const stop = (x, y, color, spread = 0) => ({ p: [x, y], color, spread });
 
 // A stop of each color in a ring around (cx, cy), going clockwise from the top. The radius is a fraction of the box,
 // so the ring is round only in a square box.
@@ -75,12 +75,12 @@ const PRESETS = [
     },
     {
         name: "Opacity",
-        note: "Points that fade out: opacity is blended along with the color, premultiplied, so a color fades without going gray or dark on its way to transparent.",
+        note: "Points that fade out: alpha is blended along with the color, premultiplied, so a color fades without going gray or dark on its way to transparent.",
         state: {
             width: 600, height: 400,
             stops: [
                 stop(0.15, 0.5, "#ff006e"), stop(0.5, 0.2, "#3a86ff"), stop(0.85, 0.5, "#ffbe0b"),
-                stop(0.5, 0.8, "#3a86ff", 0, 0), stop(0.5, 0.5, "#ffffff", 0, 0),
+                stop(0.5, 0.8, "#3a86ff00"), stop(0.5, 0.5, "#ffffff00"),
             ],
             lines: [],
         },
@@ -213,8 +213,7 @@ function acceptsState(data) {
     let next = 0;
     kept.forEach((keep, i) => index[i] = keep ? next++ : -1);
     data.stops = data.stops.filter((_, i) => kept[i]).map(stop => ({
-        p: stop.p.slice(0, 2), color: stop.color,
-        opacity: finite(stop.opacity) ? clamp(stop.opacity, 0, 100) : 100,
+        p: stop.p.slice(0, 2), color: fadedColor(stop.color, finite(stop.opacity) ? clamp(stop.opacity, 0, 100) : 100),
         spread: finite(stop.spread) ? clamp(stop.spread, 0, 100) : 0,
     }));
     if (!STOP_SIZES.includes(data.stopSize))
@@ -355,13 +354,8 @@ const spreadRadius = stop => {
 // The gradient as MeshShader2's renderer takes it: each stop on no line a point, held out to its spread, and each
 // line's pieces one-sided segments, their colors blended from stop to stop.
 function gradientData(model, influence = false) {
-    // A stop's opacity scales its color's own alpha.
     // For the influence, the selected stop is 1 and the others 0, in srgb-linear.
-    const colors = influence ? state.stops.map((_, i) => [...Array(3).fill(i === selection ? 1 : 0), 1]) : rendererColors(state.stops.map(stop => {
-        const components = interpolationComponents(stop.color);
-        components[3] *= stop.opacity / 100;
-        return components;
-    }));
+    const colors = influence ? state.stops.map((_, i) => [...Array(3).fill(i === selection ? 1 : 0), 1]) : rendererColors(state.stops.map(stop => interpolationComponents(stop.color)));
     const points = [], segments = [], lines = [];
     state.stops.forEach((stop, i) => {
         if (!linesThrough(i).length)
@@ -501,7 +495,7 @@ function drawOverlay(view) {
         ctx.stroke();
         ctx.beginPath();
         ctx.arc(...at, radius, 0, 2 * Math.PI);
-        ctx.fillStyle = swatchColor(stop.color, stop.opacity / 100);
+        ctx.fillStyle = swatchColor(stop.color);
         ctx.fill();
         ctx.globalAlpha = 1;
     });
@@ -605,7 +599,7 @@ function hitTest(view, point) {
 // The color a new stop takes: the stops' colors around it, weighted by the inverse square of how far each is.
 function colorAt(p) {
     if (!state.stops.length)
-        return { color: "#7f7f7f", opacity: 100 };
+        return "#7f7f7f";
     const [sx, sy] = boxScale();
     let total = 0;
     const sum = [0, 0, 0, 0];
@@ -614,16 +608,14 @@ function colorAt(p) {
         const color = parseColor(stop.color) ?? parseColor("black");
         const srgb = fromXYZ("srgb", toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
         srgb.forEach((v, k) => sum[k] += weight * v);
-        sum[3] += weight * stop.opacity;
+        sum[3] += weight * (Number.isNaN(color.alpha) ? 0 : color.alpha);
         total += weight;
     }
-    const hex = sum.slice(0, 3).map(v => Math.round(clamp(v / total, 0, 1) * 255).toString(16).padStart(2, "0")).join("");
-    return { color: `#${hex}`, opacity: Math.round(sum[3] / total) };
+    return hexWithAlpha({ space: "srgb", c: sum.slice(0, 3).map(v => clamp(v / total, 0, 1)), alpha: sum[3] / total });
 }
 
 function addStop(p) {
-    const { color, opacity } = colorAt(p);
-    state.stops.push({ p, color, opacity, spread: 0 });
+    state.stops.push({ p, color: colorAt(p), spread: 0 });
     return state.stops.length - 1;
 }
 
@@ -745,7 +737,7 @@ for (const view of views) {
             const p = bezier(hit.stretch.bezier, hit.t);
             const from = state.stops[hit.stretch.from], to = state.stops[hit.stretch.to];
             const color = colorMix(from.color, to.color, hit.t);
-            state.stops.push({ p, color, opacity: Math.round(from.opacity + (to.opacity - from.opacity) * hit.t), spread: 0 });
+            state.stops.push({ p, color, spread: 0 });
             const index = state.stops.length - 1;
             const position = hit.stretch.position + 1;
             line.stops.splice(position, 0, index);
@@ -920,10 +912,8 @@ function updateControls() {
             if (document.activeElement !== $(id))
                 $(id).value = Math.round(selected.p[axis] * 1000) / 10;
         }
-        for (const [id, value] of [["opacity", selected.opacity], ["spread", selected.spread]]) {
-            $(id).value = value;
-            $(id + "Value").textContent = value + "%";
-        }
+        $("spread").value = selected.spread;
+        $("spreadValue").textContent = selected.spread + "%";
         $("spreadRow").hidden = onLine;
         $("spreadNote").hidden = !onLine;
     }
@@ -981,8 +971,8 @@ function updateStopList() {
     }
     for (const button of list.querySelectorAll("button[data-stop]")) {
         const stop = state.stops[Number(button.dataset.stop)];
-        button.firstChild.style.background = swatchColor(stop.color, stop.opacity / 100);
-        button.title = `${stop.color}${stop.opacity < 100 ? `, ${stop.opacity}%` : ""}`;
+        button.firstChild.style.background = swatchColor(stop.color);
+        button.title = stop.color;
         button.classList.toggle("selected", Number(button.dataset.stop) === selection);
     }
     for (const row of list.children)
@@ -992,8 +982,8 @@ function updateStopList() {
 $("stopPicker").addEventListener("input", () => {
     if (selection === null)
         return;
-    state.stops[selection].color = $("stopPicker").value;
-    $("stopText").value = $("stopPicker").value;
+    state.stops[selection].color = pickedColor($("stopPicker"));
+    $("stopText").value = state.stops[selection].color;
     changed();
 });
 $("stopText").addEventListener("input", () => {
@@ -1022,7 +1012,7 @@ $("stopSize").addEventListener("change", () => {
     state.stopSize = $("stopSize").value;
     changed();
 });
-for (const id of ["opacity", "spread"]) {
+for (const id of ["spread"]) {
     $(id).addEventListener("input", () => {
         if (selection === null)
             return;
@@ -1067,8 +1057,8 @@ __COMMON_CONTROLS__
 // A made-up freeform-gradient() with lines:
 //
 //   freeform-gradient( [ harmonic || in <space> ]? , [ <stop> | line( <line-stop># [ , close ]? ) ]# )
-//   <stop> = <color> <position> [ spread <percentage> ]? [ opacity <percentage> ]?
-//   <line-stop> = <color> <position> [ handles <percentage>{4} ]? [ opacity <percentage> ]?
+//   <stop> = <color> <position> [ spread <percentage> ]?
+//   <line-stop> = <color> <position> [ handles <percentage>{4} ]?
 //
 // A line's stops have handles if the line has its own: the in handle's offset, then the out handle's.
 
@@ -1081,8 +1071,6 @@ function stopText(stop, withSpread, handle = null) {
         parts.push(`spread ${stop.spread}%`);
     if (handle)
         parts.push(`handles ${[...handle.in, ...handle.out].map(percent).join(" ")}`);
-    if (stop.opacity !== 100)
-        parts.push(`opacity ${stop.opacity}%`);
     return parts.join(" ");
 }
 

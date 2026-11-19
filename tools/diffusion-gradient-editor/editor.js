@@ -894,11 +894,13 @@ function finishPen() {
 
 // Opens a color picker for one side of a curve, where the pointer is.
 function pickColor(index, side, event) {
-    const input = Object.assign(document.createElement("input"), { type: "color", value: hexColor(state.curves[index][side]) });
+    const input = Object.assign(document.createElement("input"), { type: "color" });
+    input.setAttribute("alpha", "");
+    input.value = hexColor(state.curves[index][side]);
     Object.assign(input.style, { position: "fixed", left: `${event.clientX}px`, top: `${event.clientY}px`, width: "1px", height: "1px", opacity: "0" });
     document.body.append(input);
     input.addEventListener("input", () => {
-        state.curves[index][side] = input.value;
+        state.curves[index][side] = pickedColor(input);
         changed();
     });
     input.addEventListener("change", () => input.remove());
@@ -1126,8 +1128,8 @@ for (const view of views) {
 
 for (const button of document.querySelectorAll("#toolbar button[data-tool]"))
     button.addEventListener("click", () => setTool(button.dataset.tool));
-$("newFirst").addEventListener("input", () => newColors[0] = $("newFirst").value);
-$("newSecond").addEventListener("input", () => newColors[1] = $("newSecond").value);
+$("newFirst").addEventListener("input", () => newColors[0] = pickedColor($("newFirst")));
+$("newSecond").addEventListener("input", () => newColors[1] = pickedColor($("newSecond")));
 $("swapNewColors").addEventListener("click", () => {
     newColors = [newColors[1], newColors[0]];
     updateControls();
@@ -1247,7 +1249,7 @@ for (const which of ["first", "second"]) {
         curve[sides[which === "first" ? 0 : 1]] = text;
         changed();
     };
-    $(which + "Color").addEventListener("input", () => setColor($(which + "Color").value));
+    $(which + "Color").addEventListener("input", () => setColor(pickedColor($(which + "Color"))));
     $(which + "Text").addEventListener("input", () => {
         const text = $(which + "Text").value.trim();
         if (parseColor(text))
@@ -1277,10 +1279,11 @@ function curveRow(_, index) {
     });
     for (const which of ["first", "second"]) {
         const input = Object.assign(document.createElement("input"), { type: "color", className: which });
+        input.setAttribute("alpha", "");
         input.addEventListener("input", () => {
             const curve = state.curves[index];
             const sides = curve.closed ? ["inside", "outside"] : ["left", "right"];
-            curve[sides[which === "first" ? 0 : 1]] = input.value;
+            curve[sides[which === "first" ? 0 : 1]] = pickedColor(input);
             changed();
         });
         row.append(input);

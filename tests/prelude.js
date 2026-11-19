@@ -114,13 +114,13 @@ function pointer(view = 0) {
     };
 }
 
-// Whether an element is drawn at all.
-const shown = id => getComputedStyle($(id)).display !== "none";
+// Whether an element is drawn at all: neither it nor anything around it is hidden.
+const shown = id => $(id).getClientRects().length > 0;
 
 async function runCases() {
     await sleep(1500);
     const results = [];
-    // The page as it opened, to put back before each case. The freeform-gradient() editor has no resetEditing().
+    // The page as it opened, to put back before each case. The mesh-gradient() editor and the hue fixup explorer have no resetEditing().
     const initial = structuredClone(state);
     for (const { name, run } of cases) {
         document.title = `TESTS ${TEST_RUN} running ${name}`;

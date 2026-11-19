@@ -13,8 +13,11 @@
             <div class="row">
                 <label for="preset">Preset</label>
                 <select id="preset"></select>
+                <button id="presetInfo" class="info" aria-controls="presetNotes" title="About this preset" aria-label="About this preset" aria-expanded="false"></button>
             </div>
-            <p id="presetNote" class="note"></p>
+            <div id="presetNotes" hidden>
+                <p id="presetNote" class="note"></p>
+            </div>
             <div class="row">
                 <label>Box</label>
                 <input id="width" type="number" min="100" max="2000" step="10" title="Width"> ×
@@ -24,7 +27,29 @@
                 <label for="space">Interpolate in</label>
                 <select id="space"></select>
             </div>
-            <div class="row" title="How many texels the grid has along its longer side, at most. The grid is never finer than the box's pixels.">
+            <div class="row" title="Colors outside the screen's gamut are clipped, as WebKit does, or gamut mapped as CSS Color 4 says.">
+                <label for="gamutMapping">Out of gamut</label>
+                <select id="gamutMapping">
+                    <option value="clip">Clip</option>
+                    <option value="map">Gamut map (CSS Color 4)</option>
+                </select>
+            </div>
+            <div class="row" title="What is drawn behind the boxes, showing through wherever the gradient is transparent. It isn't part of the gradient.">
+                <label for="backdrop">Backdrop</label>
+                <select id="backdrop">
+                    <option value="checkerboard">Checkerboard</option>
+                    <option value="none">None</option>
+                    <option value="puppy">Puppy</option>
+                    <option value="image">Image</option>
+                </select>
+                <span id="backdropImageName" class="note"></span>
+                <button id="chooseBackdropImage" class="small" title="Choose an image, or drop one on a box">Choose…</button>
+                <input id="backdropFile" type="file" accept="image/*" hidden>
+            </div>
+            <div class="row">
+                <label><input type="checkbox" id="{{SHOW_ID}}" checked> {{SHOW_LABEL}}</label>
+            </div>
+{{MORE_SETTINGS}}            <div class="row" title="How many texels the grid has along its longer side, at most. The grid is never finer than the box's pixels.">
                 <label for="resolution">Grid</label>
                 <select id="resolution">
                     <option value="128">128</option>
@@ -50,27 +75,5 @@
                     <option value="natural">Natural</option>
 {{MORE_EDGES}}                </select>
             </div>
-            <div class="row" title="Colors outside the screen's gamut are clipped, as WebKit does, or gamut mapped as CSS Color 4 says.">
-                <label for="gamutMapping">Out of gamut</label>
-                <select id="gamutMapping">
-                    <option value="clip">Clip</option>
-                    <option value="map">Gamut map (CSS Color 4)</option>
-                </select>
-            </div>
-            <div class="row" title="What is drawn behind the boxes, showing through wherever the gradient is transparent. It isn't part of the gradient.">
-                <label for="backdrop">Backdrop</label>
-                <select id="backdrop">
-                    <option value="checkerboard">Checkerboard</option>
-                    <option value="none">None</option>
-                    <option value="puppy">Puppy</option>
-                    <option value="image">Image</option>
-                </select>
-                <span id="backdropImageName" class="note"></span>
-                <button id="chooseBackdropImage" class="small" title="Choose an image, or drop one on a box">Choose…</button>
-                <input id="backdropFile" type="file" accept="image/*" hidden>
-            </div>
-            <div class="row">
-                <label><input type="checkbox" id="{{SHOW_ID}}" checked> {{SHOW_LABEL}}</label>
-            </div>
-{{MORE_SETTINGS}}            <p id="gpuStatus" class="status"></p>
+{{MORE_GRID}}            <p id="gpuStatus" class="status"></p>
         </section>

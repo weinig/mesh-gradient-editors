@@ -27,6 +27,21 @@ test("three boxes, the thin plate spline first", async t => {
     t.equal(views.map(view => view.figure.querySelectorAll(".modelPros li").length).join(), "5,5,3", "each model's pros");
 });
 
+test("a preset's note shows when its info button is clicked", async t => {
+    await preset("Three stops");
+    t.ok(!shown("presetNote"), "the note is hidden to start with");
+    $("presetInfo").click();
+    t.ok(shown("presetNote") && /plane/.test($("presetNote").textContent), "the button shows it");
+    await preset("One stop");
+    t.ok(shown("presetNote") && /single stop/.test($("presetNote").textContent), "and it stays shown for the next preset");
+    $("presetInfo").click();
+    t.ok(!shown("presetNote"), "until the button is clicked again");
+    state.stops[0].p = [0.4, 0.4];
+    changed();
+    await sleep(200);
+    t.ok($("presetInfo").disabled, "a gradient that's no preset has no note");
+});
+
 test("every interpolation space and view draws", async t => {
     await preset("A color wheel");
     state.stops[6].color = "rgb(255 255 255 / 0.3)";
@@ -139,5 +154,16 @@ test("the spline's own views, numbers and shares", async t => {
     t.equal(EXTRA.sample(views[1], [0.5, 0.5]).length, 0, "the grid models' boxes have no shares");
     set("normalization", true);
     await sleep(200);
+    t.ok(!shown("normalizationNote"), "the normalization's note waits for its info button");
+    document.querySelector('[aria-controls="normalizationNotes"]').click();
     t.ok(shown("normalizationNote") && /farthest is at a distance of 1/.test($("normalizationNote").textContent), "the normalization's note");
+});
+
+test("a link's opacity from before colors carried their own alpha is folded into the color", async t => {
+    const decoded = decodeState(btoa(JSON.stringify({ v: 1, stops: [
+        { p: [0.2, 0.2], color: "#ff0000", opacity: 50 }, { p: [0.8, 0.2], color: "oklch(0.7 0.2 140)", opacity: 25 }, { p: [0.5, 0.8], color: "blue", opacity: 100 },
+    ] })));
+    t.equal(decoded.stops.map(stop => stop.color).join(" | "), "#ff000080 | rgb(from oklch(0.7 0.2 140) r g b / calc(alpha * 0.25)) | blue", "the colors");
+    t.ok(decoded.stops.every(stop => !("opacity" in stop)), "and no stop has an opacity");
+    t.below(Math.abs(parseColor(decoded.stops[1].color).alpha - 0.25), 0.01, "the relative color's alpha");
 });

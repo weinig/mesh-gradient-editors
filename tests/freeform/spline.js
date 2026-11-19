@@ -1,6 +1,6 @@
 // The thin plate spline's box, measured from what it draws. Colors run 0 to 1.
 
-const plainStop = (x, y, color, spread = 0) => ({ p: [x, y], color, opacity: 100, spread });
+const plainStop = (x, y, color, spread = 0) => ({ p: [x, y], color, spread });
 
 // The worst difference between the spline's box and `expected(x, y)`, a color at a point of the box, over its texels.
 function worstMiss({ width, height, values, window }, expected) {

@@ -3,7 +3,7 @@
 # mesh-gradient-editor.html, the parts in this directory, and its own parts in tools/<editor>/: editor.css,
 # editor.html and editor.js, which say where the shared parts go, and words.json, the editor's own words for the
 # shared HTML and, if it has models of its own, its MODELS. An editor can also add to the shared HTML from files in
-# its more/: settings.html, edges.html, views.html and visualize.html.
+# its more/: settings.html, grid.html, edges.html, views.html and visualize.html.
 import json
 import os
 import re

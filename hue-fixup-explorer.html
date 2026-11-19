@@ -144,6 +144,22 @@ h1 { font-size: 17px; margin: 0 0 4px; }
 h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 8px; }
 .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
 .row > label { min-width: 84px; color: var(--muted); }
+button.info {
+    flex: none;
+    display: flex;
+    margin-left: auto;
+    padding: 3px;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+}
+button.info svg { width: 16px; height: 16px; }
+button.info:hover:not(:disabled), button.info[aria-expanded=true] { color: var(--accent); }
+button.info:disabled { opacity: 0.35; cursor: default; }
+.heading { display: flex; align-items: center; margin-bottom: 8px; }
+.heading h2 { margin: 0; }
 input[type=number] { width: 64px; }
 input[type=text], select, textarea { font: inherit; }
 input[type=text] { flex: 1; min-width: 0; font-family: ui-monospace, Menlo, monospace; }
@@ -236,14 +252,14 @@ button.small { font-size: 12px; }
                 <select id="preset"></select>
             </div>
             <div class="row">
-                <label>Grid</label>
-                <input id="rows" type="number" min="2" max="8" title="Rows"> rows ×
-                <input id="cols" type="number" min="2" max="8" title="Columns"> columns
-            </div>
-            <div class="row">
                 <label>Box</label>
                 <input id="width" type="number" min="100" max="2000" step="10" title="Width"> ×
                 <input id="height" type="number" min="100" max="2000" step="10" title="Height"> px
+            </div>
+            <div class="row">
+                <label>Grid</label>
+                <input id="rows" type="number" min="2" max="8" title="Rows"> rows ×
+                <input id="cols" type="number" min="2" max="8" title="Columns"> columns
             </div>
             <div class="row">
                 <label for="space">Interpolate in</label>
@@ -263,6 +279,13 @@ button.small { font-size: 12px; }
                 </select>
                 <span class="note">Space swaps</span>
             </div>
+            <div class="row" title="Colors outside the canvas's gamut are clipped, as WebKit does, or gamut mapped as CSS Color 4 says.">
+                <label for="gamutMapping">Out of gamut</label>
+                <select id="gamutMapping">
+                    <option value="clip">Clip</option>
+                    <option value="map">Gamut map (CSS Color 4)</option>
+                </select>
+            </div>
             <div class="row">
                 <label for="background">Background</label>
                 <input id="background" type="text" placeholder="none (transparent)" spellcheck="false">
@@ -279,27 +302,8 @@ button.small { font-size: 12px; }
                 <button id="chooseBackdropImage" class="small" title="Choose an image, or drop one on the box">Choose…</button>
                 <input id="backdropFile" type="file" accept="image/*" hidden>
             </div>
-        </section>
-
-        <section>
-            <h2>Rendering</h2>
             <div class="row">
-                <label><input type="checkbox" id="overlayToggle" checked> Overlay</label>
-                <label title="Arrows show which point each hue is fixed up against, each point shows its hue after fixup, and each edge shows how far its hue sweeps. A red edge sweeps more than half a turn: there the color goes the long way around the hue circle."><input type="checkbox" id="hueOverlayToggle" checked> Hue fixup</label>
-                <label title="Show the color under the mouse, and how its hue is the sum of the patch's corner hues, each times its weight there."><input type="checkbox" id="sampleToggle" checked> Sample</label>
-            </div>
-            <ul id="hueLegend">
-                <li><span class="key"><span class="arrowKey">⟶</span></span><span>The fixup's path: each hue is fixed up against the hue the arrow comes from, so the two end up at most half a turn apart.</span></li>
-                <li><span class="key"><span class="pill point">−160°</span></span><span>A point's hue after fixup. The swatch is the point's color, which fixup doesn't change. "start" marks the hue everything else is fixed up against.</span></li>
-                <li><span class="key"><span class="pill edge">100°</span></span><span>How far the hue travels along that edge: the difference between the hues at its two ends.</span></li>
-                <li><span class="key"><span class="pill seam">260°</span></span><span>More than half a turn. No arrow checked this edge, so its colors go the long way around the hue circle.</span></li>
-            </ul>
-            <div class="row" title="Colors outside the canvas's gamut are clipped, as WebKit does, or gamut mapped as CSS Color 4 says.">
-                <label for="gamutMapping">Out of gamut</label>
-                <select id="gamutMapping">
-                    <option value="clip">Clip</option>
-                    <option value="map">Gamut map (CSS Color 4)</option>
-                </select>
+                <label><input type="checkbox" id="overlayToggle" checked> Show the points</label>
             </div>
             <p id="gpuStatus" class="status"></p>
         </section>
@@ -307,7 +311,7 @@ button.small { font-size: 12px; }
         <section>
             <h2 id="pointTitle">Point</h2>
             <div class="row">
-                <input id="pointPicker" type="color" title="Pick an sRGB color">
+                <input id="pointPicker" type="color" alpha title="Pick an sRGB color and its opacity">
                 <input id="pointText" type="text" spellcheck="false" title="Any CSS color, including missing (none) components">
             </div>
             <div class="row">
@@ -315,6 +319,23 @@ button.small { font-size: 12px; }
                 <button id="resetControls" class="small">Reset control points</button>
             </div>
             <div id="swatches"></div>
+        </section>
+
+        <section>
+            <h2>Visualize</h2>
+            <div class="row">
+                <label title="Arrows show which point each hue is fixed up against, each point shows its hue after fixup, and each edge shows how far its hue sweeps. A red edge sweeps more than half a turn: there the color goes the long way around the hue circle."><input type="checkbox" id="hueOverlayToggle" checked> Hue fixup</label>
+                <label title="Show the color under the mouse, and how its hue is the sum of the patch's corner hues, each times its weight there."><input type="checkbox" id="sampleToggle" checked> Sample</label>
+                <button class="info" aria-controls="hueLegendNotes" title="About the hue fixup overlay" aria-label="About the hue fixup overlay" aria-expanded="false"></button>
+            </div>
+            <div id="hueLegendNotes" hidden>
+            <ul id="hueLegend">
+                <li><span class="key"><span class="arrowKey">⟶</span></span><span>The fixup's path: each hue is fixed up against the hue the arrow comes from, so the two end up at most half a turn apart.</span></li>
+                <li><span class="key"><span class="pill point">−160°</span></span><span>A point's hue after fixup. The swatch is the point's color, which fixup doesn't change. "start" marks the hue everything else is fixed up against.</span></li>
+                <li><span class="key"><span class="pill edge">100°</span></span><span>How far the hue travels along that edge: the difference between the hues at its two ends.</span></li>
+                <li><span class="key"><span class="pill seam">260°</span></span><span>More than half a turn. No arrow checked this edge, so its colors go the long way around the hue circle.</span></li>
+            </ul>
+            </div>
         </section>
 
         <section>
@@ -735,6 +756,12 @@ function toOutput(color, outputSpace) {
 
 function hexForColor(color) {
     return "#" + toOutput(color, "srgb").slice(0, 3).map(v => Math.round(v * 255).toString(16).padStart(2, "0")).join("");
+}
+
+// A color as a color well with alpha takes and gives it: sRGB hex, with its alpha unless it's opaque.
+function hexWithAlpha(color) {
+    const alpha = Math.round((Number.isNaN(color.alpha) ? 0 : color.alpha) * 255);
+    return hexForColor(color) + (alpha < 255 ? alpha.toString(16).padStart(2, "0") : "");
 }
 
 // MARK: - Hue fixup (ColorInterpolation.cpp)
@@ -2659,7 +2686,7 @@ function updateControls() {
         $("pointText").value = point.color;
         $("pointText").classList.remove("invalid");
     }
-    $("pointPicker").value = hexForColor(parseColor(point.color) ?? BLACK);
+    $("pointPicker").value = hexWithAlpha(parseColor(point.color) ?? BLACK);
     $("resetPosition").disabled = !point.pos;
     $("resetControls").disabled = !point.cps;
 
@@ -2746,8 +2773,10 @@ $("preset").addEventListener("change", () => {
 
 $("pointPicker").addEventListener("input", () => {
     const [r, c] = selected;
-    pointAt(r, c).color = $("pointPicker").value;
-    $("pointText").value = $("pointPicker").value;
+    // The well gives color(srgb ...) once it has alpha.
+    const picked = hexWithAlpha(parseColor($("pointPicker").value) ?? BLACK);
+    pointAt(r, c).color = picked;
+    $("pointText").value = picked;
     $("pointText").classList.remove("invalid");
     picking = true;
     changed({ dragging: true });
@@ -2795,6 +2824,16 @@ async function copy(text, label) {
     }
     setTimeout(() => $("copyStatus").textContent = "", 1500);
 }
+// An info button shows and hides the notes it controls.
+for (const button of document.querySelectorAll("button.info")) {
+    button.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.75" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="4.9" r="0.95" fill="currentColor"/><path d="M8 7.3v4.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+    button.addEventListener("click", () => {
+        const notes = $(button.getAttribute("aria-controls"));
+        notes.hidden = !notes.hidden;
+        button.setAttribute("aria-expanded", String(!notes.hidden));
+    });
+}
+
 $("copyCSS").addEventListener("click", () => copy($("output").value, "the CSS"));
 $("copyLink").addEventListener("click", () => {
     writeHash();

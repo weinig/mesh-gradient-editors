@@ -8,21 +8,19 @@
     </nav>
 {{PAGE}}
         <section id="stops">
-            <h2 id="stopTitle">Stops</h2>
+            <div class="heading">
+                <h2 id="stopTitle">Stops</h2>
+                <button class="info" aria-controls="stopsNotes" title="About editing stops and lines" aria-label="About editing stops and lines" aria-expanded="false"></button>
+            </div>
             <div id="stopFields">
                 <div class="row">
-                    <input id="stopPicker" type="color" title="Pick an sRGB color">
+                    <input id="stopPicker" type="color" alpha title="Pick an sRGB color and its opacity">
                     <input id="stopText" type="text" spellcheck="false" title="Any CSS color, with alpha. Missing (none) components are 0 for now.">
                 </div>
                 <div class="row">
                     <label>Position</label>
                     <input id="stopX" class="percent" type="number" min="0" max="100" step="1" title="Horizontal position as a percentage of the box's width"> % ×
                     <input id="stopY" class="percent" type="number" min="0" max="100" step="1" title="Vertical position as a percentage of the box's height"> %
-                </div>
-                <div class="row">
-                    <label for="opacity">Opacity</label>
-                    <input id="opacity" type="range" min="0" max="100" step="1">
-                    <output id="opacityValue"></output>
                 </div>
                 <div class="row" id="spreadRow" title="How far the stop's color holds before it starts to blend. Drag the dashed circle to change it.">
                     <label for="spread">Spread</label>
@@ -38,17 +36,12 @@
                 <button id="resetHandles" class="small" title="The lines through this stop go back to curving through their stops on their own.">Reset handles</button>
                 <button id="clearStops" class="small">Remove all</button>
             </div>
-            <div class="row" title="A disc: a point with no spread holds a disc 1% of the box's shorter side across, which also holds the surface flat there. One texel: it holds only the texel it's in, so its color is held and its slope is free. With Natural edges and the biharmonic model, two such stops make a linear ramp and three a plane.">
-                <label for="stopSize">Points hold</label>
-                <select id="stopSize">
-                    <option value="disc">A disc</option>
-                    <option value="texel">One texel</option>
-                </select>
-            </div>
             <div id="stopList"></div>
             <p id="countNote" class="note"></p>
-            <p id="modeNote" class="note"></p>
-            <p class="note">Each stop holds its color. In Lines, the color runs along each line from stop to stop, and the line curves through its stops once it has three, or as its handles say.</p>
+            <div id="stopsNotes" hidden>
+                <p id="modeNote" class="note"></p>
+                <p class="note">Each stop holds its color. In Lines, the color runs along each line from stop to stop, and the line curves through its stops once it has three, or as its handles say.</p>
+            </div>
         </section>
 
 {{VISUALIZE}}

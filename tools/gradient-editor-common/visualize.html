@@ -13,6 +13,7 @@
                     <option value="level">One level of the grid pyramid</option>
                     <option value="relaxation">Relaxing without the pyramid</option>
 {{MORE_VIEWS}}                </select>
+                <button class="info" aria-controls="viewNotes" title="About this view" aria-label="About this view" aria-expanded="false"></button>
             </div>
             <div id="levelRow" class="row">
                 <label for="level">Level</label>
@@ -25,7 +26,9 @@
                 <output id="stepsValue"></output>
                 <button id="playSteps" class="small">Play</button>
             </div>
-            <p id="viewNote" class="note"></p>
+            <div id="viewNotes" hidden>
+                <p id="viewNote" class="note"></p>
+            </div>
             <div id="gamutRow" class="row" title="Which gamut Where it leaves the gamut, the numbers and the sample check the colors against. It only measures: the gradient is drawn the same, and Out of gamut, above, says how colors outside the screen's gamut are drawn.">
                 <label for="gamut">Check against</label>
                 <select id="gamut">
@@ -45,6 +48,7 @@
                 <label><input type="checkbox" id="crossSection"> Cross-section</label>
                 <label><input type="checkbox" id="sheet"> 3D</label>
                 <label><input type="checkbox" id="numbers"> Numbers</label>
+                <button class="info" aria-controls="panelNotes" title="About what's under each box" aria-label="About what's under each box" aria-expanded="false"></button>
             </div>
             <div id="sectionKindRow" class="row">
                 <label for="sectionKind">Along</label>
@@ -61,11 +65,13 @@
             <div id="otherCurvesRow" class="row">
                 <label><input type="checkbox" id="otherCurves"> Also the other model's curves, dashed</label>
             </div>
-            <p id="crossSectionNote" class="note">The color's red, green and blue along the dashed line from A to B, as encoded sRGB before it's clipped. Where they go past 0 or 1, in the shaded bands, the color is clipped. The bars along the bottom show how firmly the {{HOLDERS}} hold each point. <span id="sectionDrag"></span></p>
             <div id="sheetRow" class="row">
                 <label for="sheetHeight">Height</label>
                 <select id="sheetHeight" title="One of the components the solve works in, in the space it interpolates in"></select>
             </div>
-            <p id="sheetNote" class="note">{{SHEET_NOTE}}</p>
-            <p id="numbersNote" class="note">Under each box: its grid, how many texels the {{HOLDERS}} hold, how much of it is outside the gamut and how far, and its range of lightness.</p>
+            <div id="panelNotes" hidden>
+                <p id="crossSectionNote" class="note">The color's red, green and blue along the dashed line from A to B, as encoded sRGB before it's clipped. Where they go past 0 or 1, in the shaded bands, the color is clipped. The bars along the bottom show how firmly the {{HOLDERS}} hold each point. <span id="sectionDrag"></span></p>
+                <p id="sheetNote" class="note">{{SHEET_NOTE}}</p>
+                <p id="numbersNote" class="note">Under each box: its grid, how many texels the {{HOLDERS}} hold, how much of it is outside the gamut and how far, and its range of lightness.</p>
+            </div>
         </section>

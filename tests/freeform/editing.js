@@ -60,10 +60,16 @@ test("the stop's fields, the list, and the buttons", async t => {
     t.equal(state.stops[1].color, "oklch(0.7 0.2 140)", "a color typed in");
     set("stopX", "40");
     t.below(Math.abs(state.stops[1].p[0] - 0.4), 1e-9, "a position typed in");
-    set("opacity", "50");
     set("spread", "30");
-    t.equal(`${state.stops[1].opacity} ${state.stops[1].spread}`, "50 30", "opacity and spread");
-    t.ok(cssText().includes("rgb(from oklch(0.7 0.2 140) r g b / calc(alpha * 0.5)) 40% 22%,"), "the spline's CSS has the opacity in the color, and no spread");
+    t.equal(state.stops[1].spread, 30, "a spread");
+    t.ok(cssText().includes("oklch(0.7 0.2 140) 40% 22%,"), "the spline's CSS has no spread");
+    t.ok($("stopPicker").hasAttribute("alpha") && !$("opacity"), "the color well has alpha, and there's no opacity slider");
+    $("stopPicker").value = "#ff000080";
+    $("stopPicker").dispatchEvent(new Event("input"));
+    t.equal(state.stops[1].color, "#ff000080", "a color picked with alpha is hex with its alpha");
+    t.equal($("stopText").value, "#ff000080", "and shows in the text");
+    $("stopText").value = "oklch(0.7 0.2 140)";
+    $("stopText").dispatchEvent(new Event("input"));
     set("stopWeight", "2.5");
     t.equal(state.stops[1].weight, 2.5, "a weight typed in");
     t.ok(cssText().includes(" 40% 22% / 2.5,"), "is in the spline's CSS");
@@ -73,7 +79,7 @@ test("the stop's fields, the list, and the buttons", async t => {
     set("stopWeight", "");
     t.equal(state.stops[1].weight, null, "and the weight cleared");
     document.querySelector('#modelBar [data-model="spline"]').click();
-    t.ok(/oklch\(0\.7 0\.2 140\) 40% 22% spread 30% opacity 50%/.test(cssText()), "a grid model's has the spread");
+    t.ok(/oklch\(0\.7 0\.2 140\) 40% 22% spread 30%/.test(cssText()), "a grid model's has the spread");
     document.querySelector('#modelBar [data-model="spline"]').click();
     $("addStop").click();
     t.equal(state.stops.length, 5, "Add stop");

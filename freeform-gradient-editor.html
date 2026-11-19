@@ -102,6 +102,22 @@ h1 { font-size: 17px; margin: 0 0 4px; }
 h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 8px; }
 .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
 .row > label { min-width: 84px; color: var(--muted); }
+button.info {
+    flex: none;
+    display: flex;
+    margin-left: auto;
+    padding: 3px;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+}
+button.info svg { width: 16px; height: 16px; }
+button.info:hover:not(:disabled), button.info[aria-expanded=true] { color: var(--accent); }
+button.info:disabled { opacity: 0.35; cursor: default; }
+.heading { display: flex; align-items: center; margin-bottom: 8px; }
+.heading h2 { margin: 0; }
 input[type=number] { width: 64px; }
 input[type=text], select, textarea { font: inherit; }
 input[type=text] { flex: 1; min-width: 0; font-family: ui-monospace, Menlo, monospace; }
@@ -270,6 +286,7 @@ aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transf
     border: 1px solid var(--border);
     border-radius: 4px;
 }
+#preset, #view { flex: 1; min-width: 0; }
 #stops input[type=range] { flex: 1; }
 #stops output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
 #stops .row + .row, #stopFields + .row { margin-top: 4px; }
@@ -387,8 +404,11 @@ input.percent { width: 72px; }
             <div class="row">
                 <label for="preset">Preset</label>
                 <select id="preset"></select>
+                <button id="presetInfo" class="info" aria-controls="presetNotes" title="About this preset" aria-label="About this preset" aria-expanded="false"></button>
             </div>
-            <p id="presetNote" class="note"></p>
+            <div id="presetNotes" hidden>
+                <p id="presetNote" class="note"></p>
+            </div>
             <div class="row">
                 <label>Box</label>
                 <input id="width" type="number" min="100" max="2000" step="10" title="Width"> ×
@@ -398,6 +418,37 @@ input.percent { width: 72px; }
                 <label for="space">Interpolate in</label>
                 <select id="space"></select>
             </div>
+            <div class="row" title="Colors outside the screen's gamut are clipped, as WebKit does, or gamut mapped as CSS Color 4 says.">
+                <label for="gamutMapping">Out of gamut</label>
+                <select id="gamutMapping">
+                    <option value="clip">Clip</option>
+                    <option value="map">Gamut map (CSS Color 4)</option>
+                </select>
+            </div>
+            <div class="row" title="What is drawn behind the boxes, showing through wherever the gradient is transparent. It isn't part of the gradient.">
+                <label for="backdrop">Backdrop</label>
+                <select id="backdrop">
+                    <option value="checkerboard">Checkerboard</option>
+                    <option value="none">None</option>
+                    <option value="puppy">Puppy</option>
+                    <option value="image">Image</option>
+                </select>
+                <span id="backdropImageName" class="note"></span>
+                <button id="chooseBackdropImage" class="small" title="Choose an image, or drop one on a box">Choose…</button>
+                <input id="backdropFile" type="file" accept="image/*" hidden>
+            </div>
+            <div class="row">
+                <label><input type="checkbox" id="showStops" checked> Show the stops</label>
+            </div>
+            <h3 id="splineHeading" title="This only changes the thin plate spline, which has no grid.">Thin plate spline</h3>
+            <div id="splineDrawingRow" class="row" title="How the thin plate spline's gradient is drawn. At every pixel: the spline itself, worked out afresh at each pixel, as WebKit draws freeform-gradient(). From the grid: the spline at each texel of the grid the other models solve on, filtered up to the box as theirs are, so the three are compared like for like. The visualizations, the cross-section, 3D and the numbers read the grid either way.">
+                <label for="splineDrawing">Spline drawn</label>
+                <select id="splineDrawing">
+                    <option value="pixel">At every pixel</option>
+                    <option value="grid">From the grid</option>
+                </select>
+            </div>
+            <h3 title="These only change the biharmonic and harmonic models. The thin plate spline has no grid, no edges and no stop size.">Biharmonic and harmonic grids</h3>
             <div class="row" title="How many texels the grid has along its longer side, at most. The grid is never finer than the box's pixels.">
                 <label for="resolution">Grid</label>
                 <select id="resolution">
@@ -425,43 +476,24 @@ input.percent { width: 72px; }
                     <option value="free">Free</option>
                 </select>
             </div>
-            <div class="row" title="Colors outside the screen's gamut are clipped, as WebKit does, or gamut mapped as CSS Color 4 says.">
-                <label for="gamutMapping">Out of gamut</label>
-                <select id="gamutMapping">
-                    <option value="clip">Clip</option>
-                    <option value="map">Gamut map (CSS Color 4)</option>
-                </select>
-            </div>
-            <div class="row" title="What is drawn behind the boxes, showing through wherever the gradient is transparent. It isn't part of the gradient.">
-                <label for="backdrop">Backdrop</label>
-                <select id="backdrop">
-                    <option value="checkerboard">Checkerboard</option>
-                    <option value="none">None</option>
-                    <option value="puppy">Puppy</option>
-                    <option value="image">Image</option>
-                </select>
-                <span id="backdropImageName" class="note"></span>
-                <button id="chooseBackdropImage" class="small" title="Choose an image, or drop one on a box">Choose…</button>
-                <input id="backdropFile" type="file" accept="image/*" hidden>
-            </div>
-            <div class="row">
-                <label><input type="checkbox" id="showStops" checked> Show the stops</label>
-            </div>
-            <div id="splineDrawingRow" class="row" title="How the thin plate spline's gradient is drawn. At every pixel: the spline itself, worked out afresh at each pixel, as WebKit draws freeform-gradient(). From the grid: the spline at each texel of the grid the other models solve on, filtered up to the box as theirs are, so the three are compared like for like. The visualizations, the cross-section, 3D and the numbers read the grid either way.">
-                <label for="splineDrawing">Spline drawn</label>
-                <select id="splineDrawing">
-                    <option value="pixel">At every pixel, as WebKit does</option>
-                    <option value="grid">From the grid</option>
+            <div class="row" title="What a stop holds in the two grid models. A disc: a stop with no spread holds a disc 1% of the box's shorter side across, which also holds the surface flat there. One texel: it holds only the texel it's in, so its color is held and its slope is free, as the thin plate spline's is. With Natural edges nothing holds the biharmonic model at the box's sides either, which is as close as it comes to the spline: with three stops, both are the same plane.">
+                <label for="stopSize">Stops hold</label>
+                <select id="stopSize">
+                    <option value="disc">A disc</option>
+                    <option value="texel">One texel</option>
                 </select>
             </div>
             <p id="gpuStatus" class="status"></p>
         </section>
 
         <section id="stops">
-            <h2 id="stopTitle">Stops</h2>
+            <div class="heading">
+                <h2 id="stopTitle">Stops</h2>
+                <button class="info" aria-controls="stopsNotes" title="About editing stops" aria-label="About editing stops" aria-expanded="false"></button>
+            </div>
             <div id="stopFields">
                 <div class="row">
-                    <input id="stopPicker" type="color" title="Pick an sRGB color">
+                    <input id="stopPicker" type="color" alpha title="Pick an sRGB color and its opacity">
                     <input id="stopText" type="text" spellcheck="false" title="Any CSS color, with alpha. Missing (none) components are 0 for now.">
                 </div>
                 <div class="row">
@@ -474,11 +506,6 @@ input.percent { width: 72px; }
                     <input id="stopWeight" class="percent" type="number" step="0.1" placeholder="none">
                     <span class="note">Not used yet</span>
                 </div>
-                <div class="row">
-                    <label for="opacity">Opacity</label>
-                    <input id="opacity" type="range" min="0" max="100" step="1">
-                    <output id="opacityValue"></output>
-                </div>
                 <div class="row" id="spreadRow" title="How far the stop's color holds before it starts to blend. Drag the dashed circle to change it.">
                     <label for="spread">Spread</label>
                     <input id="spread" type="range" min="0" max="100" step="1">
@@ -490,16 +517,11 @@ input.percent { width: 72px; }
                 <button id="deleteStop" class="small">Remove stop</button>
                 <button id="clearStops" class="small">Remove all</button>
             </div>
-            <div class="row" title="What a stop holds in the two grid models. A disc: a stop with no spread holds a disc 1% of the box's shorter side across, which also holds the surface flat there. One texel: it holds only the texel it's in, so its color is held and its slope is free, as the thin plate spline's is. With Natural edges nothing holds the biharmonic model at the box's sides either, which is as close as it comes to the spline: with three stops, both are the same plane.">
-                <label for="stopSize">Stops hold</label>
-                <select id="stopSize">
-                    <option value="disc">A disc</option>
-                    <option value="texel">One texel</option>
-                </select>
-            </div>
             <div id="stopList"></div>
             <p id="countNote" class="note"></p>
-            <p class="note">Click a box to add a stop, in the color already there, and drag stops to move them, even a little outside the box. The arrow keys nudge the selected stop, Delete removes it, and Escape selects nothing. Drag a stop well clear of the box to remove it. Drag the dashed circle around a selected stop to change its spread, which the thin plate spline has no use for.</p>
+            <div id="stopsNotes" hidden>
+                <p class="note">Click a box to add a stop, in the color already there, and drag stops to move them, even a little outside the box. The arrow keys nudge the selected stop, Delete removes it, and Escape selects nothing. Drag a stop well clear of the box to remove it. Drag the dashed circle around a selected stop to change its spread, which the thin plate spline has no use for.</p>
+            </div>
         </section>
 
         <section>
@@ -522,6 +544,7 @@ input.percent { width: 72px; }
                         <option value="basis">U(r) around the selected stop</option>
                     </optgroup>
                 </select>
+                <button class="info" aria-controls="viewNotes" title="About this view" aria-label="About this view" aria-expanded="false"></button>
             </div>
             <div id="levelRow" class="row">
                 <label for="level">Level</label>
@@ -534,7 +557,9 @@ input.percent { width: 72px; }
                 <output id="stepsValue"></output>
                 <button id="playSteps" class="small">Play</button>
             </div>
-            <p id="viewNote" class="note"></p>
+            <div id="viewNotes" hidden>
+                <p id="viewNote" class="note"></p>
+            </div>
             <div id="gamutRow" class="row" title="Which gamut Where it leaves the gamut, the numbers and the sample check the colors against. It only measures: the gradient is drawn the same, and Out of gamut, above, says how colors outside the screen's gamut are drawn.">
                 <label for="gamut">Check against</label>
                 <select id="gamut">
@@ -551,13 +576,17 @@ input.percent { width: 72px; }
             </div>
             <div id="normalizationRow" class="row">
                 <label><input type="checkbox" id="normalization"> The thin plate spline's normalization</label>
+                <button class="info" aria-controls="normalizationNotes" title="About the spline's normalization" aria-label="About the spline's normalization" aria-expanded="false"></button>
             </div>
-            <p id="normalizationNote" class="note"></p>
+            <div id="normalizationNotes" hidden>
+                <p id="normalizationNote" class="note"></p>
+            </div>
             <h3>Under each box</h3>
             <div class="row">
                 <label><input type="checkbox" id="crossSection"> Cross-section</label>
                 <label><input type="checkbox" id="sheet"> 3D</label>
                 <label><input type="checkbox" id="numbers"> Numbers</label>
+                <button class="info" aria-controls="panelNotes" title="About what's under each box" aria-label="About what's under each box" aria-expanded="false"></button>
             </div>
             <div id="sectionKindRow" class="row">
                 <label for="sectionKind">Along</label>
@@ -574,18 +603,20 @@ input.percent { width: 72px; }
             <div id="otherCurvesRow" class="row">
                 <label><input type="checkbox" id="otherCurves"> Also the other model's curves, dashed</label>
             </div>
-            <p id="crossSectionNote" class="note">The color's red, green and blue along the dashed line from A to B, as encoded sRGB before it's clipped. Where they go past 0 or 1, in the shaded bands, the color is clipped. The bars along the bottom show how firmly the stops hold each point. <span id="sectionDrag"></span></p>
             <div id="sheetRow" class="row">
                 <label for="sheetHeight">Height</label>
                 <select id="sheetHeight" title="One of the components the solve works in, in the space it interpolates in"></select>
             </div>
-            <p id="sheetNote" class="note">One component as a height over the box. The thin plate spline is a stiff sheet through the stops that runs on past the box. The biharmonic model is the same sheet ending at the box's edges, and the harmonic model is a membrane pinned at the stops: it rises to a sharp peak or dips to a pit at each one. Drag to turn it.</p>
-            <p id="numbersNote" class="note">Under each box: its grid, how many texels the stops hold, how much of it is outside the gamut and how far, and its range of lightness.</p>
+            <div id="panelNotes" hidden>
+                <p id="crossSectionNote" class="note">The color's red, green and blue along the dashed line from A to B, as encoded sRGB before it's clipped. Where they go past 0 or 1, in the shaded bands, the color is clipped. The bars along the bottom show how firmly the stops hold each point. <span id="sectionDrag"></span></p>
+                <p id="sheetNote" class="note">One component as a height over the box. The thin plate spline is a stiff sheet through the stops that runs on past the box. The biharmonic model is the same sheet ending at the box's edges, and the harmonic model is a membrane pinned at the stops: it rises to a sharp peak or dips to a pit at each one. Drag to turn it.</p>
+                <p id="numbersNote" class="note">Under each box: its grid, how many texels the stops hold, how much of it is outside the gamut and how far, and its range of lightness.</p>
+            </div>
         </section>
 
         <section>
             <h2>CSS</h2>
-            <p class="note" title="WebKit's: an interpolation method, unless it's the one WebKit would choose from the colors, then each stop's color, position and, if it has one, / weight. An opacity is written into the color as a relative color. The made-up one names the model, and gives each stop a spread and an opacity.">With the thin plate spline first among the boxes, the <code>freeform-gradient()</code> WebKit takes. With a grid model first, a made-up one.</p>
+            <p class="note" title="WebKit's: an interpolation method, unless it's the one WebKit would choose from the colors, then each stop's color, position and, if it has one, / weight. The made-up one names the model, and gives each stop a spread.">With the thin plate spline first among the boxes, the <code>freeform-gradient()</code> WebKit takes. With a grid model first, a made-up one.</p>
             <textarea id="output" readonly spellcheck="false"></textarea>
             <div class="row">
                 <button id="copyCSS">Copy CSS</button>
@@ -990,6 +1021,12 @@ function toOutput(color, outputSpace) {
 
 function hexForColor(color) {
     return "#" + toOutput(color, "srgb").slice(0, 3).map(v => Math.round(v * 255).toString(16).padStart(2, "0")).join("");
+}
+
+// A color as a color well with alpha takes and gives it: sRGB hex, with its alpha unless it's opaque.
+function hexWithAlpha(color) {
+    const alpha = Math.round((Number.isNaN(color.alpha) ? 0 : color.alpha) * 255);
+    return hexForColor(color) + (alpha < 255 ? alpha.toString(16).padStart(2, "0") : "");
 }
 
 
@@ -2547,11 +2584,11 @@ const EXTRA = {};
 // MARK: - State
 
 // Stops hold colors at points. A stop's position is a fraction of the box, 0 to 1 across and down, and can be outside
-// it; its opacity and spread are percentages. Its weight is the optional number CSS has after a stop's position,
+// it; its spread is a percentage. Its weight is the optional number CSS has after a stop's position,
 // which nothing uses yet.
 let state = null;
 
-const stop = (x, y, color, spread = 0, opacity = 100) => ({ p: [x, y], color, opacity, spread, weight: null });
+const stop = (x, y, color, spread = 0) => ({ p: [x, y], color, spread, weight: null });
 
 // A stop of each color in a ring around (cx, cy), going clockwise from the top. The radius is a fraction of the box,
 // so the ring is round only in a square box.
@@ -2627,12 +2664,12 @@ const PRESETS = [
     },
     {
         name: "Opacity",
-        note: "Stops that fade out: opacity is blended along with the color, premultiplied, so a color fades without going gray or dark on its way to transparent. Where a model's alpha overshoots past 0 or 1, it's clipped.",
+        note: "Stops that fade out: alpha is blended along with the color, premultiplied, so a color fades without going gray or dark on its way to transparent. Where a model's alpha overshoots past 0 or 1, it's clipped.",
         state: {
             width: 600, height: 400,
             stops: [
                 stop(0.15, 0.5, "#ff006e"), stop(0.5, 0.2, "#3a86ff"), stop(0.85, 0.5, "#ffbe0b"),
-                stop(0.5, 0.8, "#3a86ff", 0, 0), stop(0.5, 0.5, "#ffffff", 0, 0),
+                stop(0.5, 0.8, "#3a86ff00"), stop(0.5, 0.5, "#ffffff00"),
             ],
         },
     },
@@ -2698,8 +2735,9 @@ const PRESET_KEYS = ["stops"];
 const TWO_SIDED_LINES = false;
 const DEFAULT_PRESET = 0;
 
+// A preset, and the page as it opens, start with the first stop selected.
 function resetEditing() {
-    selection = null;
+    selection = state.stops.length ? 0 : null;
 }
 
 // After undo or redo, the selection stays if its stop is still there.
@@ -2774,8 +2812,7 @@ function acceptsState(data) {
         return false;
     const finite = v => typeof v === "number" && Number.isFinite(v);
     data.stops = data.stops.filter(stop => !!stop && Array.isArray(stop.p) && finite(stop.p[0]) && finite(stop.p[1]) && typeof stop.color === "string").map(stop => ({
-        p: stop.p.slice(0, 2), color: stop.color,
-        opacity: finite(stop.opacity) ? clamp(stop.opacity, 0, 100) : 100,
+        p: stop.p.slice(0, 2), color: fadedColor(stop.color, finite(stop.opacity) ? clamp(stop.opacity, 0, 100) : 100),
         spread: finite(stop.spread) ? clamp(stop.spread, 0, 100) : 0,
         weight: finite(stop.weight) ? stop.weight : null,
     }));
@@ -3181,12 +3218,8 @@ const spreadRadius = stop => {
     return least + (FULL_SPREAD - least) * stop.spread / 100;
 };
 
-// The stops' colors as the renderer takes them. A stop's opacity scales its color's own alpha.
-const stopColors = () => rendererColors(state.stops.map(stop => {
-    const components = interpolationComponents(stop.color);
-    components[3] *= stop.opacity / 100;
-    return components;
-}));
+// The stops' colors as the renderer takes them.
+const stopColors = () => rendererColors(state.stops.map(stop => interpolationComponents(stop.color)));
 
 // The spline a box's renderer takes: for the gradient, the part of it the view shows; for its second renderer, the
 // selected stop's influence, or U(r) around it.
@@ -3252,11 +3285,20 @@ function rendererColors(colors) {
     return colors;
 }
 
-// A CSS color in sRGB, clipped, as a color well's hex, without alpha.
-function hexColor(text) {
-    const color = parseColor(text) ?? parseColor("black");
-    const srgb = fromXYZ("srgb", toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
-    return "#" + srgb.map(v => Math.round(clamp(v, 0, 1) * 255).toString(16).padStart(2, "0")).join("");
+// A CSS color as a color well with alpha takes it: sRGB hex, clipped, with its alpha unless it's opaque.
+const hexColor = text => hexWithAlpha(parseColor(text) ?? parseColor("black"));
+
+// What a color well holds, as that hex: with alpha, a well gives color(srgb ...).
+const pickedColor = well => hexColor(well.value);
+
+// A color with the opacity a link from before colors carried their own alpha gave beside it, in percent.
+function fadedColor(text, opacity) {
+    const color = parseColor(text);
+    if (!color || opacity >= 100)
+        return text;
+    if (color.eightBit)
+        return hexWithAlpha({ ...color, alpha: (Number.isNaN(color.alpha) ? 0 : color.alpha) * opacity / 100 });
+    return `rgb(from ${text.trim()} r g b / calc(alpha * ${opacity / 100}))`;
 }
 
 // A CSS color as a swatch draws it: in sRGB, clipped, with its alpha, missing components as 0.
@@ -4658,7 +4700,7 @@ function drawOverlay(view) {
         ctx.stroke();
         ctx.beginPath();
         ctx.arc(...at, radius, 0, 2 * Math.PI);
-        ctx.fillStyle = swatchColor(stop.color, stop.opacity / 100);
+        ctx.fillStyle = swatchColor(stop.color);
         ctx.fill();
         ctx.globalAlpha = 1;
     });
@@ -4704,12 +4746,11 @@ function hitTest(view, point) {
 // is.
 function colorAt(p) {
     if (!state.stops.length)
-        return { color: "#7f7f7f", opacity: 100 };
+        return "#7f7f7f";
     if (state.models.includes("spline")) {
         const { rgb, alpha } = appearance(splineColor(currentSpline(), p), state.space);
-        const opacity = Math.round(clamp(alpha, 0, 1) * 100);
-        if (opacity > 0)
-            return { color: "#" + rgb.map(v => Math.round(clamp(v, 0, 1) * 255).toString(16).padStart(2, "0")).join(""), opacity };
+        if (alpha > 1 / 255)
+            return hexWithAlpha({ space: "srgb", c: rgb.map(v => clamp(v, 0, 1)), alpha: clamp(alpha, 0, 1) });
     }
     const [sx, sy] = boxScale();
     let total = 0;
@@ -4719,16 +4760,14 @@ function colorAt(p) {
         const color = parseColor(stop.color) ?? parseColor("black");
         const srgb = fromXYZ("srgb", toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
         srgb.forEach((v, k) => sum[k] += weight * v);
-        sum[3] += weight * stop.opacity;
+        sum[3] += weight * (Number.isNaN(color.alpha) ? 0 : color.alpha);
         total += weight;
     }
-    const hex = sum.slice(0, 3).map(v => Math.round(clamp(v / total, 0, 1) * 255).toString(16).padStart(2, "0")).join("");
-    return { color: `#${hex}`, opacity: Math.round(sum[3] / total) };
+    return hexWithAlpha({ space: "srgb", c: sum.slice(0, 3).map(v => clamp(v / total, 0, 1)), alpha: sum[3] / total });
 }
 
 function addStop(p) {
-    const { color, opacity } = colorAt(p);
-    state.stops.push({ p, color, opacity, spread: 0, weight: null });
+    state.stops.push({ p, color: colorAt(p), spread: 0, weight: null });
     return state.stops.length - 1;
 }
 
@@ -4828,6 +4867,7 @@ function updateControls() {
     $("stopSize").value = state.stopSize;
     $("splineDrawing").value = state.splineDrawing;
     $("splineDrawingRow").hidden = !state.models.includes("spline");
+    $("splineHeading").hidden = !state.models.includes("spline");
     $("normalization").checked = state.normalization;
     $("normalizationRow").hidden = !state.models.includes("spline");
     $("normalizationNote").hidden = !state.normalization || !state.models.includes("spline");
@@ -4856,10 +4896,8 @@ function updateControls() {
             if (document.activeElement !== $(id))
                 $(id).value = Math.round(selected.p[axis] * 1000) / 10;
         }
-        for (const [id, value] of [["opacity", selected.opacity], ["spread", selected.spread]]) {
-            $(id).value = value;
-            $(id + "Value").textContent = value + "%";
-        }
+        $("spread").value = selected.spread;
+        $("spreadValue").textContent = selected.spread + "%";
         if (document.activeElement !== $("stopWeight"))
             $("stopWeight").value = selected.weight ?? "";
     }
@@ -4881,8 +4919,8 @@ function updateStopList() {
     }
     state.stops.forEach((stop, index) => {
         const button = list.children[index];
-        button.firstChild.style.background = swatchColor(stop.color, stop.opacity / 100);
-        button.title = `${stop.color}${stop.opacity < 100 ? `, ${stop.opacity}%` : ""}`;
+        button.firstChild.style.background = swatchColor(stop.color);
+        button.title = stop.color;
         button.classList.toggle("selected", index === selection);
     });
 }
@@ -4890,8 +4928,8 @@ function updateStopList() {
 $("stopPicker").addEventListener("input", () => {
     if (selection === null)
         return;
-    state.stops[selection].color = $("stopPicker").value;
-    $("stopText").value = $("stopPicker").value;
+    state.stops[selection].color = pickedColor($("stopPicker"));
+    $("stopText").value = state.stops[selection].color;
     changed();
 });
 $("stopText").addEventListener("input", () => {
@@ -4935,7 +4973,7 @@ $("stopSize").addEventListener("change", () => {
     state.stopSize = $("stopSize").value;
     changed();
 });
-for (const id of ["opacity", "spread"]) {
+for (const id of ["spread"]) {
     $(id).addEventListener("input", () => {
         if (selection === null)
             return;
@@ -5076,6 +5114,7 @@ function updateCommonControls() {
     $("preset").value = preset < 0 ? "" : String(preset);
     $("presetNote").textContent = PRESETS[preset]?.note ?? "";
     $("presetNote").hidden = !PRESETS[preset]?.note;
+    $("presetInfo").disabled = !PRESETS[preset]?.note;
 
     $("view").value = state.view;
     for (const option of $("view").options)
@@ -5166,6 +5205,17 @@ $("copyLink").addEventListener("click", () => {
     writeHash();
     copy(location.href, "the link");
 });
+
+// An info button shows and hides the notes it controls, which start hidden so that the controls stay put as the
+// notes change. Whether they're shown is the page's own, not the link's.
+for (const button of document.querySelectorAll("button.info")) {
+    button.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.75" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="4.9" r="0.95" fill="currentColor"/><path d="M8 7.3v4.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+    button.addEventListener("click", () => {
+        const notes = $(button.getAttribute("aria-controls"));
+        notes.hidden = !notes.hidden;
+        button.setAttribute("aria-expanded", String(!notes.hidden));
+    });
+}
 
 $("preset").addEventListener("change", () => {
     if ($("preset").value === "")
@@ -5373,18 +5423,15 @@ dropTarget.addEventListener("drop", event => {
 // With a grid model first, a made-up one:
 //
 //   freeform-gradient( [ biharmonic | harmonic ] in <space> , <stop># )
-//   <stop> = <color> <position> [ spread <percentage> ]? [ opacity <percentage> ]?
+//   <stop> = <color> <position> [ spread <percentage> ]?
 
 const number = v => String(Math.round(v * 100) / 100 || 0);
 const percent = v => `${number(v * 100)}%`;
 
-// A stop's color with its opacity, which CSS has no word for, as a relative color.
-const colorWithOpacity = stop => stop.opacity === 100 ? stop.color.trim() : `rgb(from ${stop.color.trim()} r g b / calc(alpha * ${number(stop.opacity / 100)}))`;
-
 // How WebCore stores a color, which decides the default interpolation method: 8-bit sRGB means sRGB, anything else
 // OKLab. (consumeFreeformGradient() in CSSPropertyParserConsumer+Image.cpp)
 function colorPrecision(stop) {
-    const color = stop.opacity === 100 ? parseColor(stop.color) : null;
+    const color = parseColor(stop.color);
     if (!color || color.resolvedByBrowser)
         return "unknown";
     return color.eightBit ? "8bit" : "float";
@@ -5399,7 +5446,7 @@ function splinePrelude() {
 }
 
 function splineCSS() {
-    const stops = state.stops.map(stop => `${colorWithOpacity(stop)} ${percent(stop.p[0])} ${percent(stop.p[1])}${stop.weight === null ? "" : ` / ${stop.weight}`}`);
+    const stops = state.stops.map(stop => `${stop.color.trim()} ${percent(stop.p[0])} ${percent(stop.p[1])}${stop.weight === null ? "" : ` / ${stop.weight}`}`);
     return `background-image: freeform-gradient(${[splinePrelude(), ...stops].filter(Boolean).join(",\n    ")});`;
 }
 
@@ -5407,8 +5454,6 @@ function stopText(stop, withSpread) {
     const parts = [stop.color.trim(), percent(stop.p[0]), percent(stop.p[1])];
     if (withSpread && stop.spread)
         parts.push(`spread ${stop.spread}%`);
-    if (stop.opacity !== 100)
-        parts.push(`opacity ${stop.opacity}%`);
     return parts.join(" ");
 }
 
@@ -5619,6 +5664,7 @@ function scheduleHashWrite() {
 
 new ResizeObserver(() => scheduleRender()).observe($("views"));
 state = decodeState(location.hash.slice(1)) ?? presetState(DEFAULT_PRESET);
+resetEditing();
 render();
 setUpGPU().then(() => scheduleRender(), error => {
     gpuError = error.message;

@@ -91,6 +91,7 @@ function scheduleHashWrite() {
 
 new ResizeObserver(() => scheduleRender()).observe($("views"));
 state = decodeState(location.hash.slice(1)) ?? presetState(DEFAULT_PRESET);
+resetEditing();
 render();
 setUpGPU().then(() => scheduleRender(), error => {
     gpuError = error.message;

@@ -37,11 +37,20 @@ function rendererColors(colors) {
     return colors;
 }
 
-// A CSS color in sRGB, clipped, as a color well's hex, without alpha.
-function hexColor(text) {
-    const color = parseColor(text) ?? parseColor("black");
-    const srgb = fromXYZ("srgb", toXYZ(color.space, color.c.map(v => Number.isNaN(v) ? 0 : v)));
-    return "#" + srgb.map(v => Math.round(clamp(v, 0, 1) * 255).toString(16).padStart(2, "0")).join("");
+// A CSS color as a color well with alpha takes it: sRGB hex, clipped, with its alpha unless it's opaque.
+const hexColor = text => hexWithAlpha(parseColor(text) ?? parseColor("black"));
+
+// What a color well holds, as that hex: with alpha, a well gives color(srgb ...).
+const pickedColor = well => hexColor(well.value);
+
+// A color with the opacity a link from before colors carried their own alpha gave beside it, in percent.
+function fadedColor(text, opacity) {
+    const color = parseColor(text);
+    if (!color || opacity >= 100)
+        return text;
+    if (color.eightBit)
+        return hexWithAlpha({ ...color, alpha: (Number.isNaN(color.alpha) ? 0 : color.alpha) * opacity / 100 });
+    return `rgb(from ${text.trim()} r g b / calc(alpha * ${opacity / 100}))`;
 }
 
 // A CSS color as a swatch draws it: in sRGB, clipped, with its alpha, missing components as 0.

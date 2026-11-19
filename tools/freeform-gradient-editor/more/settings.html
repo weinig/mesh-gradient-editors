@@ -1,7 +1,9 @@
+            <h3 id="splineHeading" title="This only changes the thin plate spline, which has no grid.">Thin plate spline</h3>
             <div id="splineDrawingRow" class="row" title="How the thin plate spline's gradient is drawn. At every pixel: the spline itself, worked out afresh at each pixel, as WebKit draws freeform-gradient(). From the grid: the spline at each texel of the grid the other models solve on, filtered up to the box as theirs are, so the three are compared like for like. The visualizations, the cross-section, 3D and the numbers read the grid either way.">
                 <label for="splineDrawing">Spline drawn</label>
                 <select id="splineDrawing">
-                    <option value="pixel">At every pixel, as WebKit does</option>
+                    <option value="pixel">At every pixel</option>
                     <option value="grid">From the grid</option>
                 </select>
             </div>
+            <h3 title="These only change the biharmonic and harmonic models. The thin plate spline has no grid, no edges and no stop size.">Biharmonic and harmonic grids</h3>
