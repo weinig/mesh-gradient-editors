@@ -126,10 +126,8 @@ function updateCommonControls() {
     $("steps").value = String(state.steps);
     $("stepsValue").textContent = (2 ** state.steps).toLocaleString();
     $("playSteps").textContent = playing ? "Stop" : "Play";
-    for (const id of ["crossSection", "sheet", "numbers"]) {
+    for (const id of ["crossSection", "sheet", "numbers"])
         $(id).checked = state[id];
-        $(id + "Note").hidden = !state[id];
-    }
     $("sheetRow").hidden = !state.sheet;
     $("sectionKindRow").hidden = !state.crossSection;
     $("sectionKind").value = state.sectionKind;

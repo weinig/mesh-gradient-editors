@@ -608,9 +608,9 @@ input.percent { width: 72px; }
                 <select id="sheetHeight" title="One of the components the solve works in, in the space it interpolates in"></select>
             </div>
             <div id="panelNotes" hidden>
-                <p id="crossSectionNote" class="note">The color's red, green and blue along the dashed line from A to B, as encoded sRGB before it's clipped. Where they go past 0 or 1, in the shaded bands, the color is clipped. The bars along the bottom show how firmly the stops hold each point. <span id="sectionDrag"></span></p>
-                <p id="sheetNote" class="note">One component as a height over the box. The thin plate spline is a stiff sheet through the stops that runs on past the box. The biharmonic model is the same sheet ending at the box's edges, and the harmonic model is a membrane pinned at the stops: it rises to a sharp peak or dips to a pit at each one. Drag to turn it.</p>
-                <p id="numbersNote" class="note">Under each box: its grid, how many texels the stops hold, how much of it is outside the gamut and how far, and its range of lightness.</p>
+                <p id="crossSectionNote" class="note"><b>Cross-section.</b> The color's red, green and blue along the dashed line from A to B, as encoded sRGB before it's clipped. Where they go past 0 or 1, in the shaded bands, the color is clipped. The bars along the bottom show how firmly the stops hold each point. <span id="sectionDrag"></span></p>
+                <p id="sheetNote" class="note"><b>3D.</b> One component as a height over the box. The thin plate spline is a stiff sheet through the stops that runs on past the box. The biharmonic model is the same sheet ending at the box's edges, and the harmonic model is a membrane pinned at the stops: it rises to a sharp peak or dips to a pit at each one. Drag to turn it.</p>
+                <p id="numbersNote" class="note"><b>Numbers.</b> Under each box: its grid, how many texels the stops hold, how much of it is outside the gamut and how far, and its range of lightness.</p>
             </div>
         </section>
 
@@ -4870,8 +4870,8 @@ function updateControls() {
     $("splineHeading").hidden = !state.models.includes("spline");
     $("normalization").checked = state.normalization;
     $("normalizationRow").hidden = !state.models.includes("spline");
-    $("normalizationNote").hidden = !state.normalization || !state.models.includes("spline");
-    if (!$("normalizationNote").hidden) {
+    // The note is the info button's to show, whether or not the normalization is drawn.
+    if (state.models.includes("spline")) {
         const spline = currentSpline();
         let text = `The spline is fit after moving the stops so their center is at (0, 0), and scaling them so the farthest is at a distance of 1: here ${(spline.scale * 100).toFixed(1)}% of the box's shorter side. This doesn't change the result. It keeps the numbers in the solve a similar size.`;
         if (spline.line)
@@ -5130,10 +5130,8 @@ function updateCommonControls() {
     $("steps").value = String(state.steps);
     $("stepsValue").textContent = (2 ** state.steps).toLocaleString();
     $("playSteps").textContent = playing ? "Stop" : "Play";
-    for (const id of ["crossSection", "sheet", "numbers"]) {
+    for (const id of ["crossSection", "sheet", "numbers"])
         $(id).checked = state[id];
-        $(id + "Note").hidden = !state[id];
-    }
     $("sheetRow").hidden = !state.sheet;
     $("sectionKindRow").hidden = !state.crossSection;
     $("sectionKind").value = state.sectionKind;

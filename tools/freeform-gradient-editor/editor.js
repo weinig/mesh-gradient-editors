@@ -1020,8 +1020,8 @@ function updateControls() {
     $("splineHeading").hidden = !state.models.includes("spline");
     $("normalization").checked = state.normalization;
     $("normalizationRow").hidden = !state.models.includes("spline");
-    $("normalizationNote").hidden = !state.normalization || !state.models.includes("spline");
-    if (!$("normalizationNote").hidden) {
+    // The note is the info button's to show, whether or not the normalization is drawn.
+    if (state.models.includes("spline")) {
         const spline = currentSpline();
         let text = `The spline is fit after moving the stops so their center is at (0, 0), and scaling them so the farthest is at a distance of 1: here ${(spline.scale * 100).toFixed(1)}% of the box's shorter side. This doesn't change the result. It keeps the numbers in the solve a similar size.`;
         if (spline.line)

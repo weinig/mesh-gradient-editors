@@ -568,9 +568,9 @@ aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transf
                 <select id="sheetHeight" title="One of the components the solve works in, in the space it interpolates in"></select>
             </div>
             <div id="panelNotes" hidden>
-                <p id="crossSectionNote" class="note">The color's red, green and blue along the dashed line from A to B, as encoded sRGB before it's clipped. Where they go past 0 or 1, in the shaded bands, the color is clipped. The bars along the bottom show how firmly the curves hold each point. <span id="sectionDrag"></span></p>
-                <p id="sheetNote" class="note">One component as a height over the box. The harmonic model is a membrane, stretched between the curves that hold it: it's creased along them and peaked at their ends. The biharmonic model is a stiff sheet that bends smoothly through them, and past a jump it keeps going, above 1 or below 0. Drag to turn it.</p>
-                <p id="numbersNote" class="note">Under each box: its grid, how many texels the curves hold, how much of it is outside the gamut and how far, and its range of lightness.</p>
+                <p id="crossSectionNote" class="note"><b>Cross-section.</b> The color's red, green and blue along the dashed line from A to B, as encoded sRGB before it's clipped. Where they go past 0 or 1, in the shaded bands, the color is clipped. The bars along the bottom show how firmly the curves hold each point. <span id="sectionDrag"></span></p>
+                <p id="sheetNote" class="note"><b>3D.</b> One component as a height over the box. The harmonic model is a membrane, stretched between the curves that hold it: it's creased along them and peaked at their ends. The biharmonic model is a stiff sheet that bends smoothly through them, and past a jump it keeps going, above 1 or below 0. Drag to turn it.</p>
+                <p id="numbersNote" class="note"><b>Numbers.</b> Under each box: its grid, how many texels the curves hold, how much of it is outside the gamut and how far, and its range of lightness.</p>
             </div>
         </section>
 
@@ -5283,10 +5283,8 @@ function updateCommonControls() {
     $("steps").value = String(state.steps);
     $("stepsValue").textContent = (2 ** state.steps).toLocaleString();
     $("playSteps").textContent = playing ? "Stop" : "Play";
-    for (const id of ["crossSection", "sheet", "numbers"]) {
+    for (const id of ["crossSection", "sheet", "numbers"])
         $(id).checked = state[id];
-        $(id + "Note").hidden = !state[id];
-    }
     $("sheetRow").hidden = !state.sheet;
     $("sectionKindRow").hidden = !state.crossSection;
     $("sectionKind").value = state.sectionKind;

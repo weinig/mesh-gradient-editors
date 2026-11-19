@@ -42,6 +42,24 @@ test("a preset's note shows when its info button is clicked", async t => {
     t.ok($("presetInfo").disabled, "a gradient that's no preset has no note");
 });
 
+test("every info button shows something, whatever is checked", async t => {
+    for (const id of ["crossSection", "sheet", "numbers", "normalization"])
+        t.ok(!state[id], `${id} is off`);
+    for (const button of document.querySelectorAll("button.info")) {
+        if (button.disabled)
+            continue;
+        const notes = $(button.getAttribute("aria-controls"));
+        const wasHidden = notes.hidden;
+        if (wasHidden)
+            button.click();
+        await sleep(100);
+        t.above(notes.getBoundingClientRect().height, 10, `${button.title}: the height of what it shows`);
+        t.above(notes.textContent.trim().length, 20, `${button.title}: the length of its text`);
+        if (wasHidden)
+            button.click();
+    }
+});
+
 test("every interpolation space and view draws", async t => {
     await preset("A color wheel");
     state.stops[6].color = "rgb(255 255 255 / 0.3)";
@@ -152,10 +170,10 @@ test("the spline's own views, numbers and shares", async t => {
     const shares = EXTRA.sample(views[0], state.stops[1].p)[0];
     t.equal(shares, "Each stop's share: 1: 0%, 2: 100%, 3: 0%, 4: 0%", "at a stop, the color is all that stop's");
     t.equal(EXTRA.sample(views[1], [0.5, 0.5]).length, 0, "the grid models' boxes have no shares");
-    set("normalization", true);
-    await sleep(200);
     t.ok(!shown("normalizationNote"), "the normalization's note waits for its info button");
     document.querySelector('[aria-controls="normalizationNotes"]').click();
+    await sleep(200);
+    t.ok(!state.normalization, "which shows it whether or not the normalization is drawn");
     t.ok(shown("normalizationNote") && /farthest is at a distance of 1/.test($("normalizationNote").textContent), "the normalization's note");
 });
 
