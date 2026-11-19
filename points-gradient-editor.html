@@ -133,9 +133,34 @@ textarea {
 #swatches button span { position: absolute; inset: 0; border-radius: 4px; }
 #swatches button.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
 button.small { font-size: 12px; }
-.row > button.icon { padding: 1px 5px; }
-.row > button.icon svg { width: 16px; height: 16px; display: block; }
+#toolbar {
+    flex: none;
+    position: sticky;
+    top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+#toolbar > button {
+    width: 34px;
+    height: 34px;
+    padding: 5px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--fg);
+    cursor: pointer;
+}
+#toolbar > button:disabled { opacity: 0.3; }
+#toolbar > button:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+#toolbar > button[aria-pressed=true] { background: var(--accent); color: #fff; }
+#toolbar svg { width: 24px; height: 24px; display: block; }
 @media (max-width: 720px) {
+    #toolbar { flex-direction: row; flex-wrap: wrap; position: static; flex: 1 1 100%; }
     main { padding: 8px; gap: 8px; }
     #stageScroller { flex: 1 1 100%; height: auto; position: static; overflow: hidden; }
     #stageWrap { transform-origin: 0 0; }
@@ -187,32 +212,6 @@ button.small { font-size: 12px; }
 .stage .overlay { touch-action: none; }
 .view figcaption { font-size: 12px; margin-top: 6px; }
 .view figcaption .note { display: block; margin-top: 2px; }
-#toolbar {
-    flex: none;
-    position: sticky;
-    top: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 6px;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-}
-#toolbar > button {
-    width: 34px;
-    height: 34px;
-    padding: 5px;
-    border: none;
-    border-radius: 6px;
-    background: none;
-    color: var(--fg);
-    cursor: pointer;
-}
-#toolbar > button:disabled { opacity: 0.3; }
-#toolbar > button:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
-#toolbar > button[aria-pressed=true] { background: var(--accent); color: #fff; }
-#toolbar svg { width: 24px; height: 24px; display: block; }
 #presetNote[hidden], .row[hidden], aside .note[hidden] { display: none; }
 #levelRow input[type=range], #stepsRow input[type=range] { flex: 1; }
 #levelValue, #stepsValue { min-width: 5.5em; text-align: right; font-variant-numeric: tabular-nums; }
@@ -230,7 +229,6 @@ aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transf
 .view .plot[hidden], .view .sheet[hidden], .view .numbers[hidden] { display: none; }
 .view .numbers { font-variant-numeric: tabular-nums; }
 @media (max-width: 720px) {
-    #toolbar { flex-direction: row; flex-wrap: wrap; position: static; flex: 1 1 100%; }
     #views { flex-direction: column; }
     .view { flex: none; width: 100%; }
 }
