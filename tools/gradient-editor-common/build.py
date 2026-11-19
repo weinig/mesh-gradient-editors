@@ -1,7 +1,8 @@
-# Builds an editor that solves its gradient with MeshShader2's WebGPU renderer: the diffusion gradient editor or the
-# points and lines gradient editor. Each is made of the shared parts of mesh-gradient-editor.html, the parts in this
-# directory, and its own parts in tools/<editor>/: editor.css, editor.html and editor.js, which say where the shared
-# parts go, and words.json, the editor's own words for the shared HTML.
+# Builds an editor that solves its gradient with MeshShader2's WebGPU renderer: the diffusion gradient editor, the
+# points and lines gradient editor or the points gradient editor. Each is made of the shared parts of
+# mesh-gradient-editor.html, the parts in this directory, and its own parts in tools/<editor>/: editor.css,
+# editor.html and editor.js, which say where the shared parts go, and words.json, the editor's own words for the
+# shared HTML and, if it has models of its own, its MODELS.
 import json
 import os
 import re
@@ -91,8 +92,16 @@ def build(parts, output_path, source_path):
     assert style.count("<title>mesh-gradient() Editor</title>") == 1
     style = style.replace("<title>mesh-gradient() Editor</title>", f"<title>{words['TITLE']}</title>")
 
+    # A box for each model, and a button to show or hide it. An editor with models of its own lists them as MODELS:
+    # each an id, a name, and the words key of the note under its box.
+    models = words.pop("MODELS", [["biharmonic", "Biharmonic", "BIHARMONIC_NOTE"], ["harmonic", "Harmonic", "HARMONIC_NOTE"]])
+    view = read(os.path.join(common, "view.html"))
+    page = fill(read(os.path.join(common, "page.html")), {
+        "{{MODEL_BUTTONS}}": "".join(f'                <button data-model="{model}">{name}</button>\n' for model, name, _ in models),
+        "{{VIEWS}}": "".join(fill(view, {"{{MODEL}}": model, "{{NAME}}": name, "{{NOTE}}": "{{" + note + "}}"}) for model, name, note in models),
+    })
     html = fill(read(os.path.join(parts, "editor.html")), {
-        "{{PAGE}}": read(os.path.join(common, "page.html")),
+        "{{PAGE}}": page,
         "{{VISUALIZE}}": read(os.path.join(common, "visualize.html")),
         "{{CSS}}": read(os.path.join(common, "css.html")),
     })

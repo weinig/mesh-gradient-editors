@@ -32,3 +32,6 @@ __SHADER_COLOR__
 `.replaceAll("uniforms.", `${uniforms}.`);
 
 const SHADER = __SHADER__ + COLOR_SHADER("display");
+
+// An editor's own models, by name, each solved by a renderer of its own in place of this one.
+const MODEL_RENDERERS = {};

@@ -90,6 +90,25 @@ they stop mattering.
   one-texel stops with natural edges come within 0.003 of the colors' range at a 128 grid, 0.017 at 512 and 0.033 at
   804.
 
+## The thin plate spline
+
+The points gradient editor draws a third model beside these two, from stops alone: the thin plate spline, which is
+what WebKit's `freeform-gradient()` draws. It minimizes the biharmonic's energy over the whole plane rather than the
+box, held at each stop's point, so it has a formula and nothing here depends on a grid:
+
+*u*(p) = a + b·p + Σ wᵢ U(|p − pᵢ|), with U(r) = r² log r
+
+The weights *wᵢ* and the plane *a + b·p* are the ones that give each stop its color, with Σ wᵢ = 0 and Σ wᵢ pᵢ = 0.
+One stop is its color everywhere; stops all on one line give a spline with no tilt across the line, the same on both sides of it; of stops in the same place, the last is
+used. Spread means nothing to it.
+
+The biharmonic model with natural edges and one-texel stops is the nearest to it: the same energy held at the same
+points, but over the box. The two agree where the answer is a plane, with three stops or fewer, and differ otherwise,
+since the spline's sheet still bends where it crosses the box's sides.
+
+The editor fits the spline in double precision and evaluates it at each texel of the grid in single precision, to
+within 0.00002 of the colors' range, so its box is the spline sampled on the grid, not solved on it.
+
 ## A reference
 
 `prototypes/tears/tears.py` solves the biharmonic model exactly on a grid, in double precision with a direct solver,

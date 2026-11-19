@@ -133,6 +133,8 @@ const views = [...document.querySelectorAll(".view")].map(figure => ({
     influence: null,
     influenceKey: null,
 }));
+// The models, in the order of their boxes.
+const MODELS = views.map(view => view.model);
 
 let device = null;
 let gpuError = null;
@@ -163,8 +165,10 @@ async function setUpGPU() {
     for (const view of views) {
         view.context = view.gpu.getContext("webgpu");
         view.context.configure({ device, format, alphaMode: "premultiplied" });
-        view.renderer = new WebGPUFreeformGradientRenderer(device, { shader: SHADER, format });
-        view.influence = new WebGPUFreeformGradientRenderer(device, { shader: SHADER, format });
+        // An editor's own model solves with its own renderer, from MODEL_RENDERERS.
+        const Renderer = MODEL_RENDERERS[view.model] ?? WebGPUFreeformGradientRenderer;
+        view.renderer = new Renderer(device, { shader: SHADER, format });
+        view.influence = new Renderer(device, { shader: SHADER, format });
         view.uniforms = device.createBuffer({ size: 48, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     }
     const module = device.createShaderModule({ code: VISUALIZE_SHADER });
@@ -1118,7 +1122,7 @@ function commonState() {
         gamutMapping: state?.gamutMapping ?? "clip",
         backdrop: state?.backdrop ?? "checkerboard",
         resolution: state?.resolution ?? 512,
-        models: state?.models ?? ["biharmonic", "harmonic"],
+        models: state?.models ?? MODELS.slice(),
         view: state?.view ?? "gradient",
         level: state?.level ?? 2,
         steps: state?.steps ?? 6,

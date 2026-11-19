@@ -31,7 +31,7 @@ async function preset(name) {
     await sleep(300);
 }
 
-// The solve of box `view` (0 the biharmonic, 1 the harmonic) read back afresh: needs Numbers, Cross-section or 3D on.
+// The solve of box `view`, by its place among the boxes, read back afresh: needs Numbers, Cross-section or 3D on.
 async function grab(view = 0) {
     // Drawn here and now: a window that's covered gets no frames of its own, and the page would wait for one.
     changed();
@@ -110,7 +110,7 @@ async function runCases() {
     // The page as it opened, to put back before each case. The freeform-gradient() editor has no resetEditing().
     const initial = structuredClone(state);
     for (const { name, run } of cases) {
-        document.title = `TESTS running ${name}`;
+        document.title = `TESTS ${TEST_RUN} running ${name}`;
         const failures = [];
         const t = {
             ok: (condition, message) => condition || failures.push(message),
@@ -136,5 +136,14 @@ async function runCases() {
             failures.push(`WebGPU error: ${gpuError}`);
         results.push([name, failures]);
     }
-    document.title = `TESTS done ${JSON.stringify(results)}`;
+    // A window's title is cut short near a thousand characters, so the results are shown a part at a time, over and
+    // over, each with its place and how many there are, for run.py to gather.
+    // In base64, since a title's runs of spaces don't survive it.
+    const text = btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(results)))), parts = [];
+    for (let i = 0; i < text.length; i += 600)
+        parts.push(text.slice(i, i + 600));
+    for (let i = 0; ; i = (i + 1) % parts.length) {
+        document.title = `TESTS ${TEST_RUN} done ${i + 1}/${parts.length} ${parts[i]}`;
+        await sleep(250);
+    }
 }

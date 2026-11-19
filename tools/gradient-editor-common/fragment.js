@@ -21,7 +21,7 @@ function soundState(data) {
     const resolutions = [...$("resolution").options].map(option => Number(option.value));
     if (!resolutions.includes(data.resolution))
         data.resolution = defaults.resolution;
-    const models = Array.isArray(data.models) ? ["biharmonic", "harmonic"].filter(model => data.models.includes(model)) : [];
+    const models = Array.isArray(data.models) ? MODELS.filter(model => data.models.includes(model)) : [];
     data.models = models.length ? models : defaults.models;
     if (![...$("view").options].some(option => option.value === data.view))
         data.view = "gradient";

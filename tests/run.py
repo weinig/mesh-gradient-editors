@@ -7,6 +7,7 @@
 #   python3 tests/run.py diffusion       one editor's cases
 #   python3 tests/run.py -k strength     the cases whose names have "strength" in them
 import argparse
+import base64
 import json
 import os
 import subprocess
@@ -21,6 +22,7 @@ root = os.path.dirname(here)
 EDITORS = {
     "diffusion": "diffusion-gradient-editor.html",
     "points-and-lines": "points-and-lines-gradient-editor.html",
+    "points": "points-gradient-editor.html",
     "freeform": "freeform-gradient-editor.html",
 }
 
@@ -35,11 +37,12 @@ def screen_is_locked():
     return "locked: 1" in result.stdout
 
 
-def page_for(editor, only):
+def page_for(editor, only, name):
     page = open(os.path.join(root, EDITORS[editor])).read()
     assert page.count("</body>") == 1, f"{EDITORS[editor]} has more than one </body>"
     folder = os.path.join(here, editor)
-    scripts = [open(os.path.join(here, "prelude.js")).read()]
+    # The run's name is in the page's title, so its window can be told from any other.
+    scripts = [f"const TEST_RUN = {json.dumps(name)};", open(os.path.join(here, "prelude.js")).read()]
     scripts += [open(os.path.join(folder, name)).read() for name in sorted(os.listdir(folder)) if name.endswith(".js")]
     scripts.append(f"cases.splice(0, cases.length, ...cases.filter(c => c.name.includes({json.dumps(only)})));" if only else "")
     scripts.append("runCases();")
@@ -49,21 +52,26 @@ def page_for(editor, only):
 def run(editor, only, timeout):
     directory = tempfile.mkdtemp(prefix="gradient-editor-tests-")
     path = os.path.join(directory, f"{editor}.html")
-    open(path, "w").write(page_for(editor, only))
+    name = f"{editor}-{os.getpid()}"
+    window = f'(first window whose name starts with "TESTS {name} ")'
+    open(path, "w").write(page_for(editor, only, name))
     osascript(f'tell application "Safari" to make new document with properties {{URL:"file://{path}"}}',
               'tell application "Safari" to activate')
-    title, started = "", time.time()
-    while time.time() - started < timeout:
-        title = osascript('tell application "Safari" to get name of (first window whose name starts with "TESTS ")')
-        if title.startswith("TESTS done "):
-            break
-        time.sleep(0.5)
-    osascript('tell application "Safari" to close (first window whose name starts with "TESTS ")')
+    # The results come a part at a time, each "TESTS <run> done <place>/<count> <part>", over and over.
+    title, started, parts, count = "", time.time(), {}, None
+    while time.time() - started < timeout and (count is None or len(parts) < count):
+        title = osascript(f'tell application "Safari" to get name of {window}')
+        if title.startswith(f"TESTS {name} done "):
+            place, _, part = title[len(f"TESTS {name} done "):].partition(" ")
+            index, _, total = place.partition("/")
+            parts[int(index)], count = part, int(total)
+        time.sleep(0.1 if count else 0.5)
+    osascript(f'tell application "Safari" to close {window}')
     os.remove(path)
     os.rmdir(directory)
-    if not title.startswith("TESTS done "):
+    if count is None or len(parts) < count:
         return [(f"{editor}: did not finish", [f"timed out after {timeout} s, at: {title or 'no page'}"])]
-    return [(name, failures) for name, failures in json.loads(title[len("TESTS done "):])]
+    return [(name, failures) for name, failures in json.loads(base64.b64decode("".join(parts[i] for i in range(1, count + 1))))]
 
 
 def main():

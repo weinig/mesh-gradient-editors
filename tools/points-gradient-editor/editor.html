@@ -1,0 +1,50 @@
+<body>
+<main>
+    <nav id="toolbar" aria-label="Edit">
+        <button id="undo" title="Undo (⌘Z)" aria-label="Undo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7L4 12l5 5M4 12h10a5 5 0 0 1 0 10h-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -3)"/></svg></button>
+        <button id="redo" title="Redo (⇧⌘Z)" aria-label="Redo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7l5 5-5 5M20 12H10a5 5 0 0 0 0 10h2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -3)"/></svg></button>
+    </nav>
+{{PAGE}}
+        <section id="stops">
+            <h2 id="stopTitle">Stops</h2>
+            <div id="stopFields">
+                <div class="row">
+                    <input id="stopPicker" type="color" title="Pick an sRGB color">
+                    <input id="stopText" type="text" spellcheck="false" title="Any CSS color, with alpha. Missing (none) components are 0 for now.">
+                </div>
+                <div class="row">
+                    <label>Position</label>
+                    <input id="stopX" class="percent" type="number" min="0" max="100" step="1" title="Horizontal position as a percentage of the box's width"> % ×
+                    <input id="stopY" class="percent" type="number" min="0" max="100" step="1" title="Vertical position as a percentage of the box's height"> %
+                </div>
+                <div class="row">
+                    <label for="opacity">Opacity</label>
+                    <input id="opacity" type="range" min="0" max="100" step="1">
+                    <output id="opacityValue"></output>
+                </div>
+                <div class="row" id="spreadRow" title="How far the stop's color holds before it starts to blend. Drag the dashed circle to change it.">
+                    <label for="spread">Spread</label>
+                    <input id="spread" type="range" min="0" max="100" step="1">
+                    <output id="spreadValue"></output>
+                </div>
+            </div>
+            <div class="row">
+                <button id="addStop" class="small">Add stop</button>
+                <button id="deleteStop" class="small">Remove stop</button>
+                <button id="clearStops" class="small">Remove all</button>
+            </div>
+            <div class="row" title="What a stop holds in the two grid models. A disc: a stop with no spread holds a disc 1% of the box's shorter side across, which also holds the surface flat there. One texel: it holds only the texel it's in, so its color is held and its slope is free, as the thin plate spline's is. With Natural edges nothing holds the biharmonic model at the box's sides either, which is as close as it comes to the spline: with three stops, both are the same plane.">
+                <label for="stopSize">Stops hold</label>
+                <select id="stopSize">
+                    <option value="disc">A disc</option>
+                    <option value="texel">One texel</option>
+                </select>
+            </div>
+            <div id="stopList"></div>
+            <p id="countNote" class="note"></p>
+            <p class="note">Click a box to add a stop, in the color around it, and drag stops to move them. The arrow keys nudge the selected stop, Delete removes it, and Escape selects nothing. Drag a stop out of the box to remove it. Drag the dashed circle around a selected stop to change its spread, which the thin plate spline has no use for.</p>
+        </section>
+
+{{VISUALIZE}}
+{{CSS}}    </aside>
+</main>

@@ -234,14 +234,14 @@ $("resolution").addEventListener("change", () => {
     state.resolution = Number($("resolution").value);
     changed();
 });
-// Either model, or both side by side, but at least one.
+// Any of the models side by side, but at least one.
 for (const button of document.querySelectorAll("#modelBar button")) {
     button.addEventListener("click", () => {
         const model = button.dataset.model;
         const on = state.models.includes(model);
         if (on && state.models.length === 1)
             return;
-        state.models = ["biharmonic", "harmonic"].filter(other => other === model ? !on : state.models.includes(other));
+        state.models = MODELS.filter(other => other === model ? !on : state.models.includes(other));
         if (!viewAvailable(state.view))
             state.view = "gradient";
         changed();
