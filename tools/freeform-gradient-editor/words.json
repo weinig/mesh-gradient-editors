@@ -1,14 +1,14 @@
 {
-    "TITLE": "Points Gradient Editor",
+    "TITLE": "freeform-gradient() Editor",
     "MODELS": [["spline", "Thin plate spline", "SPLINE_NOTE"], ["biharmonic", "Biharmonic", "BIHARMONIC_NOTE"], ["harmonic", "Harmonic", "HARMONIC_NOTE"]],
     "SHOW_ID": "showStops",
     "SHOW_LABEL": "Show the stops",
-    "SPLINE_NOTE": "A stiff sheet over the whole plane, through every stop exactly: a formula, with no grid and no edges. Past the stops it keeps going in a straight line.",
+    "SPLINE_NOTE": "What WebKit draws. A stiff sheet over the whole plane, through every stop exactly: a formula, with no grid and no edges. Past the stops it keeps going in a straight line.",
     "BIHARMONIC_NOTE": "The same stiff sheet cut to the box and solved on a grid: smooth everywhere, overshooting past the stops' colors where it bends, most of all near the edges.",
     "HARMONIC_NOTE": "A stretched membrane held at the stops: never overshoots, but creased at each one.",
     "HOLDERS": "stops",
     "SHEET_NOTE": "One component as a height over the box. The thin plate spline is a stiff sheet through the stops that runs on past the box. The biharmonic model is the same sheet ending at the box's edges, and the harmonic model is a membrane pinned at the stops: it rises to a sharp peak or dips to a pit at each one. Drag to turn it.",
-    "CSS_INTRO": "A made-up <code>freeform-gradient()</code>: each stop is a color and a position.",
-    "CSS_GRAMMAR": "A stop is its color and position, then spread and opacity unless they're 0 and 100%. The thin plate spline is the default, and has no use for spread; biharmonic or harmonic picks a grid model.",
+    "CSS_INTRO": "With the thin plate spline first among the boxes, the <code>freeform-gradient()</code> WebKit takes. With a grid model first, a made-up one.",
+    "CSS_GRAMMAR": "WebKit's: an interpolation method, unless it's the one WebKit would choose from the colors, then each stop's color, position and, if it has one, / weight. An opacity is written into the color as a relative color. The made-up one names the model, and gives each stop a spread and an opacity.",
     "ITEM": "stop"
 }

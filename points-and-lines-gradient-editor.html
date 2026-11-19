@@ -2497,6 +2497,14 @@ const SHADER = "// A freeform gradient with WebGPU: a port of MetalFreeformGradi
 // An editor's own models, by name, each solved by a renderer of its own in place of this one.
 const MODEL_RENDERERS = {};
 
+// An editor's own views that draw one number as the influence is drawn, by name, each with the model whose box shows
+// it. The other boxes show the gradient.
+const SCALAR_VIEWS = {};
+
+// What an editor adds to the shared page: viewAvailable(name), for its own views; numbers(view, readout), more text
+// under a box; sample(view, p), more lines for the color under the pointer.
+const EXTRA = {};
+
 // MARK: - State
 
 // Stops hold colors: on their own as points, or along lines. A stop's position is a fraction of the box, 0 to 1
@@ -2959,8 +2967,10 @@ function solveResolution() {
 // middle. Its texels are bigger as a result.
 // With natural edges nothing holds the surface at the box's sides, so the biharmonic model keeps its slope there:
 // the thin plate's own boundary. The harmonic model's is the same as mirrored.
-const EDGES = ["mirrored", "open", "natural"];
-const openEdges = () => state.edges === "open";
+// Free edges are both: the bigger grid, with nothing holding the surface at its sides.
+const EDGES = ["mirrored", "open", "natural", "free"];
+const openEdges = () => state.edges === "open" || state.edges === "free";
+const naturalEdges = () => state.edges === "natural" || state.edges === "free";
 
 // The part of the solved box the view shows: its origin and size, 0 to 1 across and down the box.
 const viewWindow = () => openEdges() ? [0.25, 0.25, 0.5, 0.5] : [0, 0, 1, 1];
@@ -3116,9 +3126,11 @@ function render() {
             continue;
         view.stage.style.aspectRatio = `${state.width} / ${state.height}`;
         const width = Math.max(1, Math.round(view.stage.clientWidth * dpr)), height = Math.max(1, Math.round(view.stage.clientHeight * dpr));
-        if (view.overlay.width !== width || view.overlay.height !== height) {
-            view.overlay.width = width;
-            view.overlay.height = height;
+        // An editor's overlay can reach past its box.
+        const overlayWidth = Math.max(1, Math.round(view.overlay.clientWidth * dpr)), overlayHeight = Math.max(1, Math.round(view.overlay.clientHeight * dpr));
+        if (view.overlay.width !== overlayWidth || view.overlay.height !== overlayHeight) {
+            view.overlay.width = overlayWidth;
+            view.overlay.height = overlayHeight;
         }
         if (ready && view.renderer)
             shown.push({ view, width, height });
@@ -3139,7 +3151,7 @@ function render() {
             view.target = view.context.getCurrentTexture().createView();
             renderer.encode(encoder, view.target, ...renderer.solvedSize);
             // The influence is solved as a gradient of its own, drawn over by the visualization.
-            if (state.view === "influence" && influenceAvailable() && influence.gradient && influence.solvedSize)
+            if (scalarShown(view) && influence.gradient && influence.solvedSize)
                 influence.encode(encoder, view.target, ...influence.solvedSize);
             drawn.push(view);
         }
@@ -3184,7 +3196,7 @@ function encodeSolve(renderer, encoder, width, height) {
 // curve's or stop's influence if that's shown. Returns whether anything was solved.
 function encodeSolves(view, encoder, viewWidth, viewHeight) {
     const data = { ...windowed(gradientData(view.model)), gamutMapping: state.gamutMapping === "map" ? 1 : 0, edgeStrips: state.edgeStrips,
-        naturalEdges: state.edges === "natural" };
+        naturalEdges: naturalEdges() };
     // The box the renderer solves: the view's, or twice it for open edges.
     const width = openEdges() ? 2 * viewWidth : viewWidth, height = openEdges() ? 2 * viewHeight : viewHeight;
     const relaxing = state.view === "relaxation" && view.model === "harmonic";
@@ -3208,8 +3220,8 @@ function encodeSolves(view, encoder, viewWidth, viewHeight) {
     // What a readback of this solve decodes it with.
     view.solveSpace = state.space;
     view.solveWindow = viewWindow();
-    if (state.view === "influence" && influenceAvailable()) {
-        const influence = { ...windowed(gradientData(view.model, true)), naturalEdges: state.edges === "natural" };
+    if (scalarShown(view)) {
+        const influence = { ...windowed(gradientData(view.model, true)), naturalEdges: naturalEdges() };
         const influenceKey = JSON.stringify(influence);
         if (influenceKey !== view.influenceKey) {
             view.influence.setGradient(influence);
@@ -3342,7 +3354,7 @@ fn excess(c: vec4<f32>) -> f32 {
 }
 
 // An influence, solved in srgb-linear as a gray from 0 to 1: white at 0, orange at 1, dark red past it, and blue
-// below 0, as the freeform-gradient() editor shows it.
+// below 0.
 fn influenceColor(value: f32) -> vec4<f32> {
     if (value < 0.0) {
         return vec4<f32>(mix(vec3<f32>(1.0), vec3<f32>(0.16, 0.42, 0.95), saturate(-value * 4.0)), 1.0);
@@ -3450,9 +3462,17 @@ fn readSolution(@builtin(global_invocation_id) id: vec3<u32>) {
 let visualizePipeline = null;
 let readPipeline = null;
 
-const VIEW_MODES = { holds: 1, gamut: 2, isolines: 3, difference: 4, level: 5, influence: 6 };
+const VIEW_MODES = { holds: 1, gamut: 2, isolines: 3, difference: 4, level: 5 };
+const SCALAR_MODE = 6;
+
+// Whether a box shows one number, solved by its second renderer: the selected curve's or stop's influence, or one of
+// the editor's own SCALAR_VIEWS in its model's box.
+const scalarShown = view => (state.view === "influence" || SCALAR_VIEWS[state.view] === view.model) && viewAvailable(state.view);
 
 function viewAvailable(name) {
+    const extra = EXTRA.viewAvailable?.(name);
+    if (extra !== undefined)
+        return extra;
     if (name === "influence")
         return influenceAvailable();
     if (name === "difference")
@@ -3465,10 +3485,11 @@ function viewAvailable(name) {
 const shownLevel = view => Math.min(state.level, view.renderer.levels.length - 1);
 
 function encodeVisualization(view, encoder) {
-    const mode = VIEW_MODES[state.view];
+    const scalar = scalarShown(view);
+    const mode = scalar ? SCALAR_MODE : VIEW_MODES[state.view];
     if (!mode || !viewAvailable(state.view))
         return;
-    const renderer = state.view === "influence" ? view.influence : view.renderer;
+    const renderer = scalar ? view.influence : view.renderer;
     const levels = renderer.levels;
     if (!levels.length || !renderer.gradient)
         return;
@@ -3803,7 +3824,7 @@ let sheetYaw = -0.6;
 let sheetTilt = 0.8;
 
 // What the 3D view can raise the surface by: each of the interpolation space's components, as the solve has them,
-// straight rather than premultiplied, over their usual range, then alpha, as the freeform-gradient() editor has them.
+// straight rather than premultiplied, over their usual range, then alpha.
 const COMPONENT_LABELS = {
     "xyz-d50": ["X", "Y", "Z"], "xyz-d65": ["X", "Y", "Z"],
     lab: ["L", "a", "b"], lch: ["L", "C", "h"], oklab: ["L", "a", "b"], oklch: ["L", "C", "h"],
@@ -3995,7 +4016,7 @@ function numbersText(view) {
     const percent = value => `${(100 * value / count).toFixed(value && value < count / 1000 ? 2 : 1)}%`;
     return `${grid} ${held.toLocaleString()} held (${percent(held)}). ${percent(outside)} outside ${GAMUT_NAMES[state.gamut]}` +
         (outside ? `, up to ${furthest.toFixed(3)} past 0 to 1.` : ".") +
-        ` Oklab L from ${darkest.toFixed(3)} to ${lightest.toFixed(3)}.`;
+        ` Oklab L from ${darkest.toFixed(3)} to ${lightest.toFixed(3)}.` + (EXTRA.numbers?.(view, readout) ?? "");
 }
 
 // MARK: - Cross-section
@@ -4104,7 +4125,7 @@ function showSample(view, event) {
         sample.hidden = true;
         return;
     }
-    const rect = view.overlay.getBoundingClientRect();
+    const rect = view.stage.getBoundingClientRect();
     const p = [(event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height];
     if (p[0] < 0 || p[0] > 1 || p[1] < 0 || p[1] > 1) {
         sample.hidden = true;
@@ -4118,6 +4139,7 @@ function showSample(view, event) {
         `${readout.space} ${components.map(v => v.toFixed(3)).join(" ")} / ${shown.alpha.toFixed(3)}`,
         `sRGB ${shown.rgb.map(v => v.toFixed(3)).join(" ")}`,
         excess > 1 / 512 ? `${excess.toFixed(3)} outside ${GAMUT_NAMES[state.gamut]}` : `Inside ${GAMUT_NAMES[state.gamut]}`,
+        ...(EXTRA.sample?.(view, p) ?? []),
     ];
     const swatch = Object.assign(document.createElement("span"), { className: "sampleSwatch" });
     swatch.style.background = `rgb(${shown.rgb.map(v => Math.round(clamp(v, 0, 1) * 255)).join(" ")} / ${clamp(shown.alpha, 0, 1)})`;

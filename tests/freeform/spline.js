@@ -119,3 +119,41 @@ test("the selected stop's influence is 1 at it and 0 at the others", async t => 
     });
     t.equal(points.length / 8, 6, "a point for each stop");
 });
+
+// What a renderer draws, as bytes, at the size it last solved for.
+async function drawnPixels(renderer) {
+    const [width, height] = renderer.solvedSize;
+    const texture = device.createTexture({ size: [width, height], format: navigator.gpu.getPreferredCanvasFormat(), usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC });
+    const bytesPerRow = Math.ceil(width * 4 / 256) * 256;
+    const buffer = device.createBuffer({ size: bytesPerRow * height, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+    const encoder = device.createCommandEncoder();
+    renderer.encode(encoder, texture.createView(), width, height);
+    encoder.copyTextureToBuffer({ texture }, { buffer, bytesPerRow }, [width, height]);
+    device.queue.submit([encoder.finish()]);
+    await buffer.mapAsync(GPUMapMode.READ);
+    const bytes = new Uint8Array(buffer.getMappedRange()), pixels = new Uint8Array(width * height * 4);
+    for (let y = 0; y < height; ++y)
+        pixels.set(bytes.subarray(y * bytesPerRow, y * bytesPerRow + width * 4), y * width * 4);
+    buffer.destroy();
+    texture.destroy();
+    return pixels;
+}
+
+test("the spline drawn at every pixel is the one drawn from the grid", async t => {
+    t.equal(state.splineDrawing, "pixel", "it's drawn at every pixel by default");
+    for (const [name, limit] of [["Three stops", 2], ["Four stops", 4], ["A color wheel", 6]]) {
+        await preset(name);
+        set("splineDrawing", "pixel");
+        await sleep(600);
+        t.ok(views[0].renderer.gradient.perPixel, `${name}: the renderer draws at every pixel`);
+        const pixel = await drawnPixels(views[0].renderer);
+        set("splineDrawing", "grid");
+        await sleep(600);
+        t.ok(!views[0].renderer.gradient.perPixel, `${name}: then from the grid`);
+        const grid = await drawnPixels(views[0].renderer);
+        t.ok(!gpuError, `${name}: ${gpuError}`);
+        t.equal(pixel.length, grid.length, `${name}: the same size`);
+        t.above(Math.max(...pixel.subarray(0, 4000)), 100, `${name}: something is drawn`);
+        t.below(difference(pixel, grid), limit, `${name}: the worst difference, in 8-bit steps`);
+    }
+});

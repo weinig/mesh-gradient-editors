@@ -70,11 +70,11 @@ function difference(a, b) {
     return worst;
 }
 
-// Pointer events on box `view`'s overlay, at fractions of its width and height.
+// Pointer events on box `view`'s overlay, at fractions of the box's width and height.
 function pointer(view = 0) {
     const overlay = views[view].overlay;
     const at = (x, y) => {
-        const rect = overlay.getBoundingClientRect();
+        const rect = views[view].stage.getBoundingClientRect();
         return { clientX: rect.left + x * rect.width, clientY: rect.top + y * rect.height };
     };
     // `more` is anything else the events should have, such as altKey.

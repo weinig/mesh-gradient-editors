@@ -1,11 +1,11 @@
-#stopList {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
-    gap: 4px;
-    margin-top: 8px;
-}
+#stops input[type=range] { flex: 1; }
+#stops output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
+#stops .row + .row, #stopFields + .row { margin-top: 4px; }
+#stopText { flex: 1; min-width: 0; }
+#stopList { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 #stopList button {
-    height: 26px;
+    width: 30px;
+    height: 22px;
     border: 1px solid var(--border);
     border-radius: 5px;
     padding: 0;
@@ -16,133 +16,10 @@
 }
 #stopList button span { position: absolute; inset: 0; border-radius: 4px; }
 #stopList button.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
+#stops [hidden] { display: none !important; }
 input.percent { width: 72px; }
-#sample {
-    position: absolute;
-    z-index: 10;
-    pointer-events: none;
-    display: none;
-    padding: 8px 10px;
-    border-radius: 8px;
-    background: rgba(29, 29, 31, 0.92);
-    color: #fff;
-    font: 12px/1.55 ui-monospace, Menlo, monospace;
-    white-space: pre;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-}
-#sample .muted { color: rgba(255, 255, 255, 0.6); }
-.swatch {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    border: 1px solid rgba(128, 128, 128, 0.6);
-    vertical-align: -1px;
-}
-.swatch.large { width: 14px; height: 14px; border-radius: 3px; vertical-align: -3px; }
-.plot, .sheet {
-    display: block;
-    width: 100%;
-    margin-top: 8px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    touch-action: none;
-}
-.plot { height: 170px; }
-.sheet { height: 280px; cursor: grab; }
-.numbers {
-    font: 11px/1.5 ui-monospace, Menlo, monospace;
-    white-space: pre;
-    overflow-x: auto;
-    margin: 6px 0 0;
-}
-details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
-.legend span { white-space: nowrap; margin-right: 10px; }
-.legend b { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: 3px; margin-right: 4px; }
-input[type=range] { flex: 1; min-width: 80px; }
-#topBar {
-    display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-bottom: 12px;
-}
-#modelBar { display: flex; }
-#aboutButton {
-    font: inherit;
-    padding: 5px 14px;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    background: var(--panel);
-    color: var(--fg);
-    cursor: pointer;
-}
-#aboutButton[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: #fff; }
-#modelBar button {
-    font: inherit;
-    padding: 5px 14px;
-    border: 1px solid var(--border);
-    background: var(--panel);
-    color: var(--fg);
-    cursor: pointer;
-}
-#modelBar button + button { border-left: none; }
-#modelBar button:first-child { border-radius: 6px 0 0 6px; }
-#modelBar button:last-child { border-radius: 0 6px 6px 0; }
-#modelBar button[aria-pressed=true] { background: var(--accent); border-color: var(--accent); color: #fff; }
-#views {
-    display: flex;
-    gap: 16px;
-    align-items: flex-start;
-}
-.view { margin: 0; flex: 1 1 0; min-width: 0; }
-.view[hidden] { display: none; }
-.viewBox { overflow: hidden; margin: 0 auto; }
-.stageWrap { width: max-content; transform-origin: 0 0; }
-.stage { position: relative; outline: 1px solid var(--border); }
-.stage.checkerboard {
-    background-color: #fff;
-    background-image: conic-gradient(#ddd 0 25%, #fff 0 50%, #ddd 0 75%, #fff 0);
-    background-size: 16px 16px;
-}
-.stage.image { background-position: center; background-size: cover; }
-.stage .gpu { position: absolute; inset: 0; width: 100%; height: 100%; }
-.stage .overlay { position: absolute; touch-action: none; }
-.stage .diff { position: absolute; inset: 0; width: 100%; height: 100%; }
-.stage .diff[hidden] { display: none; }
-.stage .stageMessage {
-    position: absolute;
-    inset: 0;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 24px;
-    color: #333;
-    background: rgba(255, 255, 255, 0.85);
-    font-size: 14px;
-}
-.view figcaption { font-size: 12px; margin: 4px auto 0; }
-.view .modelSource { font-style: italic; }
-.view figcaption .modelSummary { display: block; margin-top: 2px; }
-.viewDetails { margin: 0 auto; max-width: 100%; }
-.viewDetails [hidden] { display: none; }
-#splineParts { margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--border); }
-aside[hidden], .row[hidden] { display: none; }
-@media (max-width: 720px) {
-    #views { flex-direction: column; }
-    .view { flex: none; width: 100%; }
-}
-#numbersTable { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
-#numbersTable th, #numbersTable td { text-align: left; vertical-align: top; padding: 3px 6px 3px 0; border-bottom: 1px solid var(--border); }
-#numbersTable th { font-weight: 600; }
-#numbersTable td:first-child { color: var(--muted); }
-#numbersPanel[hidden] { display: none; }
-h3.subhead { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 14px 0 2px; }
-h3.subhead + .row { margin-top: 4px; }
-.view h4.modelHeading { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 12px 0 2px; }
-.view h4.modelHeading + .note { margin-top: 0; }
-.view .modelAbout { margin-top: 6px; }
-.view .modelAbout[hidden] { display: none; }
-.view .modelAbout ul { margin: 0; padding-left: 18px; }
-.view .modelAbout li { margin: 1px 0; }
+#splineDrawing { min-width: 0; flex: 1; }
+/* A stop can be outside the box, so each overlay reaches 28px past it on every side: REACH in editor.js. */
+.stage canvas.overlay { inset: -28px; width: calc(100% + 56px); height: calc(100% + 56px); }
+#views { gap: 56px; margin: 28px 28px 0; }
+.view .numbers { white-space: pre-wrap; tab-size: 7; }

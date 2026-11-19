@@ -10,12 +10,27 @@ test("clicks add stops, drags move them, in any box", async t => {
         await mouse.click(0.6, 0.55);
         t.equal(state.stops.length, 4 + index, `a click in the ${view.model} box adds a stop`);
         t.equal(selection, 3 + index, "and selects it");
-        t.ok(/^#[0-9a-f]{6}$/.test(state.stops.at(-1).color), "in a color from the stops around it");
+        t.ok(/^#[0-9a-f]{6}$/.test(state.stops.at(-1).color), "in the color there");
         await mouse.drag([[0.6, 0.55], [0.5, 0.5], [0.3, 0.6]]);
         t.below(Math.hypot(state.stops.at(-1).p[0] - 0.3, state.stops.at(-1).p[1] - 0.6), 0.01, "a drag moves it");
     }
-    await pointer(0).drag([[0.3, 0.6], [0.1, 0.8], [-0.1, 1.1]]);
-    t.equal(state.stops.length, 5, "a stop dragged out of the box goes");
+    await pointer(0).drag([[0.3, 0.6], [0.1, 0.8], [-0.03, 0.9]]);
+    t.equal(state.stops.length, 6, "a stop dragged a little outside the box stays");
+    t.below(Math.abs(state.stops.at(-1).p[0] + 0.03), 0.01, "outside it");
+    const count = state.stops.length;
+    await pointer(0).click(-0.05, 0.3);
+    t.equal(state.stops.length, count, "a click outside the box adds nothing");
+    await pointer(0).drag([[-0.03, 0.9], [-0.2, 1.1], [-0.4, 1.4]]);
+    t.equal(state.stops.length, 5, "a stop dragged well clear of the box goes");
+});
+
+test("a new stop takes the spline's color there, so the spline barely changes", async t => {
+    await preset("Four stops");
+    const before = splineColor(currentSpline(), [0.3, 0.6]);
+    await pointer(0).click(0.5, 0.5);
+    t.equal(state.stops.length, 5, "a stop is added");
+    const after = splineColor(currentSpline(), [0.3, 0.6]);
+    t.below(Math.max(...before.map((v, k) => Math.abs(v - after[k]))), 0.01, "and the spline elsewhere moves by");
 });
 
 test("the spread circle is dragged in the grid models' boxes, and isn't in the spline's", async t => {
@@ -26,8 +41,8 @@ test("the spread circle is dragged in the grid models' boxes, and isn't in the s
     const stop = state.stops[2];
     const [sx] = boxScale();
     const edge = stop.p[0] + spreadRadius(stop) / sx;
-    t.equal(hitTest(views[1], [edge * views[1].overlay.clientWidth, stop.p[1] * views[1].overlay.clientHeight])?.kind, "spread", "the circle's edge in the biharmonic box");
-    t.equal(hitTest(views[0], [edge * views[0].overlay.clientWidth, stop.p[1] * views[0].overlay.clientHeight]), null, "the same place in the spline's box");
+    t.equal(hitTest(views[1], [edge * views[1].stage.clientWidth, stop.p[1] * views[1].stage.clientHeight])?.kind, "spread", "the circle's edge in the biharmonic box");
+    t.equal(hitTest(views[0], [edge * views[0].stage.clientWidth, stop.p[1] * views[0].stage.clientHeight]), null, "the same place in the spline's box");
     await pointer(1).drag([[edge, stop.p[1]], [edge - 0.05, stop.p[1]], [edge - 0.1, stop.p[1]]]);
     t.below(state.stops[2].spread, 45, "dragging the circle inward lowers the spread from 60%");
     t.above(state.stops[2].spread, 5, "but not to nothing");
@@ -48,7 +63,15 @@ test("the stop's fields, the list, and the buttons", async t => {
     set("opacity", "50");
     set("spread", "30");
     t.equal(`${state.stops[1].opacity} ${state.stops[1].spread}`, "50 30", "opacity and spread");
-    t.ok(/oklch\(0\.7 0\.2 140\) 40% 22% opacity 50%/.test(cssText()), "the spline's CSS has the opacity and no spread");
+    t.ok(cssText().includes("rgb(from oklch(0.7 0.2 140) r g b / calc(alpha * 0.5)) 40% 22%,"), "the spline's CSS has the opacity in the color, and no spread");
+    set("stopWeight", "2.5");
+    t.equal(state.stops[1].weight, 2.5, "a weight typed in");
+    t.ok(cssText().includes(" 40% 22% / 2.5,"), "is in the spline's CSS");
+    set("stopX", "-5");
+    t.below(Math.abs(state.stops[1].p[0] + 0.05), 1e-9, "a position outside the box typed in");
+    set("stopX", "40");
+    set("stopWeight", "");
+    t.equal(state.stops[1].weight, null, "and the weight cleared");
     document.querySelector('#modelBar [data-model="spline"]').click();
     t.ok(/oklch\(0\.7 0\.2 140\) 40% 22% spread 30% opacity 50%/.test(cssText()), "a grid model's has the spread");
     document.querySelector('#modelBar [data-model="spline"]').click();

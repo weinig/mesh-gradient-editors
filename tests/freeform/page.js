@@ -1,184 +1,143 @@
-// The freeform-gradient() editor's cross-section: a row, as before, or a line from A to B.
+// The page's own features: the three models' boxes, color spaces, views, panels, and links.
 
-test("the cross-section along a row or a line", async t => {
-    set("crossSectionToggle", true);
-    set("sheetToggle", true);
-    await sleep(1500);
-    t.equal(state.sectionKind, "row", "it starts along a row");
-    const before = views[0].plot.toDataURL().length;
-    set("sectionKind", "line");
-    await sleep(1000);
-    t.ok($("row").closest(".row").hidden, "a line hides the Row slider");
-    t.ok(/Drag A and B/.test($("crossSectionNote").textContent), "and says how to move its ends");
-    const overlay = views[0].overlay, rect = overlay.getBoundingClientRect();
-    const fire = (type, position) => {
-        const [x, y] = toOverlay(position);
-        overlay.dispatchEvent(new PointerEvent(type, {
-            bubbles: true, pointerId: 1, pointerType: "mouse", button: 0, buttons: type === "pointerup" ? 0 : 1,
-            clientX: rect.left + x * viewScale, clientY: rect.top + y * viewScale,
-        }));
-    };
-    const stops = state.stops.length;
-    fire("pointerdown", state.section[1]);
-    await sleep(50);
-    fire("pointermove", [80, 30]);
-    await sleep(50);
-    fire("pointermove", [75, 15]);
-    await sleep(50);
-    fire("pointerup", [75, 15]);
-    await sleep(1000);
-    t.equal(JSON.stringify(state.section[1]), "[75,15]", "B drags to where the pointer goes");
-    t.equal(state.stops.length, stops, "without adding a stop");
-    const back = decodeState(encodeState());
-    t.equal(`${back?.sectionKind} ${JSON.stringify(back?.section)}`, "line [[10,50],[75,15]]", "the line survives the link");
-    t.ok(views[0].plot.toDataURL().length !== before, "the plot follows the line");
-    set("sectionKind", "row");
-    await sleep(800);
-    t.equal(JSON.stringify(sectionEnds()), "[[0,50],[100,50]]", "the row is as it was");
+test("three boxes, the thin plate spline first", async t => {
+    t.equal(MODELS.join(), "spline,biharmonic,harmonic", "the models");
+    t.equal(views.filter(view => !view.figure.hidden).length, 3, "boxes shown to start with");
+    t.equal(views[0].renderer.constructor.name, "SplineRenderer", "the spline's renderer");
+    t.equal(views[1].renderer.constructor.name, "WebGPUFreeformGradientRenderer", "the biharmonic's renderer");
+    const buttons = [...document.querySelectorAll("#modelBar button")];
+    t.equal(buttons.map(button => button.textContent).join("|"), "Thin plate spline|Biharmonic|Harmonic", "the model buttons");
+    t.ok($("output").value.startsWith("background-image: freeform-gradient(in oklab,"), "the CSS is the spline's by default");
+    set("space", "srgb");
+    t.ok(cssText().startsWith("background-image: freeform-gradient(#"), "with no interpolation method when it's the one WebKit would choose");
+    set("space", "oklab");
+    buttons[0].click();
+    await sleep(300);
+    t.ok(views[0].figure.hidden && !views[1].figure.hidden, "its button hides the spline's box");
+    t.ok($("output").value.startsWith("background-image: freeform-gradient(biharmonic in oklab,"), "and the CSS names the first model shown");
+    buttons[1].click();
+    buttons[2].click();
+    t.equal(state.models.join(), "harmonic", "the last model shown stays");
+    buttons[0].click();
+    buttons[1].click();
+    await sleep(300);
+    t.equal(state.models.join(), "spline,biharmonic,harmonic", "the models come back in their order");
+    $("aboutButton").click();
+    await sleep(200);
+    t.equal(views.map(view => view.figure.querySelectorAll(".modelPros li").length).join(), "5,5,3", "each model's pros");
 });
 
-test("every view and panel draws", async t => {
-    await preset("Scattered sunset");
-    for (const view of VIEWS) {
+test("every interpolation space and view draws", async t => {
+    await preset("A color wheel");
+    state.stops[6].color = "rgb(255 255 255 / 0.3)";
+    state.stops[0].color = "hsl(none 90% 50%)";
+    changed();
+    for (const space of SPACES) {
+        set("space", space);
+        await sleep(450);
+        t.ok(!gpuError, `${space} gave a WebGPU error: ${gpuError}`);
+    }
+    set("space", "oklch");
+    selection = 0;
+    for (const view of ["holds", "gamut", "isolines", "difference", "level", "relaxation", "influence", "plane", "term", "basis", "gradient"]) {
         set("view", view);
-        render();
-        t.ok(!gpuError, `the ${view} view: ${gpuError}`);
+        await sleep(450);
+        t.equal($("view").value, view, `the ${view} view is available`);
+        t.ok(!gpuError, `the ${view} view gave a WebGPU error: ${gpuError}`);
     }
-    set("view", "gradient");
-    for (const id of ["clippingToggle", "normalizationToggle", "sampleToggle", "numbersToggle", "sheetToggle", "crossSectionToggle"]) {
+    for (const edges of EDGES) {
+        set("edges", edges);
+        await sleep(450);
+        t.ok(!gpuError, `${edges} edges gave a WebGPU error: ${gpuError}`);
+    }
+    for (const id of ["crossSection", "sheet", "numbers", "otherCurves"])
         set(id, true);
-        render();
-        t.ok(!gpuError, `with ${id} on: ${gpuError}`);
-    }
-    await sleep(500);
-    t.above($("numbersTable").querySelectorAll("tbody tr").length, 1, "the numbers table's rows");
-    t.ok(!$("crossSectionPanel").hidden && !$("sheetPanel").hidden, "the cross-section's and 3D's panels show");
-    for (const id of ["clippingToggle", "normalizationToggle", "sampleToggle", "numbersToggle", "sheetToggle", "crossSectionToggle"])
-        set(id, false);
-    render();
+    await sleep(2500);
+    t.equal(views.filter(view => view.readout).length, 3, "boxes read back for the panels");
+    t.ok(/texels/.test(views[0].numbers.textContent), "the spline's box has numbers");
 });
 
-test("the models' buttons show and hide their boxes", async t => {
-    await preset("Scattered sunset");
-    const visible = () => views.filter(view => !view.figure.hidden).length;
-    t.equal(visible(), 3, "boxes to start with");
-    const button = [...document.querySelectorAll("#modelBar button")].find(button => button.textContent.includes("Harmonic"));
-    button.click();
-    render();
-    t.equal(visible(), 2, "boxes with the harmonic grid off");
-    t.ok(!state.models.includes("harmonic"), "and it's out of the state");
-    button.click();
-    render();
-    t.equal(visible(), 3, "boxes with it back on");
-});
-
-test("a link carries the gradient and its settings", async t => {
+test("every preset draws, and its link comes back the same", async t => {
     for (const { name } of PRESETS) {
         await preset(name);
-        const back = decodeState(encodeState());
-        t.ok(!!back, `${name}: its link reads back`);
-        for (const key of ["stops", "width", "height", "space", "models", "view", "edges", "hold", "spreadMeaning", "gridResolution", "defaultSpread"])
-            t.equal(JSON.stringify(back?.[key]), JSON.stringify(state[key]), `${name}: ${key}`);
+        t.ok(!gpuError, `${name}: ${gpuError}`);
+        t.equal(JSON.stringify(decodeState(encodeState())), JSON.stringify(state), `${name}: its link`);
     }
-    t.equal(decodeState("not a link"), null, "a bad link is no state");
 });
 
-test("adding, moving, editing and removing stops", async t => {
-    await preset("Three stops");
-    render();
-    const overlay = views[0].overlay;
-    const client = position => {
-        const rect = overlay.getBoundingClientRect(), [x, y] = toOverlay(position);
-        return { clientX: rect.left + x * viewScale, clientY: rect.top + y * viewScale };
-    };
-    const fire = (type, position) => overlay.dispatchEvent(new PointerEvent(type, {
-        bubbles: true, pointerId: 1, pointerType: "mouse", button: 0, buttons: type === "pointerup" ? 0 : 1, ...client(position),
+test("bad links are made sound", async t => {
+    const bad = btoa(JSON.stringify({
+        v: 1, stops: [{ p: [0.1, 0.1], color: "red" }, { p: [0.9, 0.9], color: "blue", spread: 500 }, { p: "x" }],
+        models: ["nope"], steps: 20, section: 5, view: "nope", resolution: 4096, stopSize: "huge",
     }));
-    const count = state.stops.length;
-    // A pointer lands on a whole pixel, so within half a percent of where it's aimed.
-    const near = (position, [x, y]) => Math.abs(position[0] - x) <= 0.5 && Math.abs(position[1] - y) <= 0.5;
-    overlay.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, ...client([60, 60]) }));
-    t.equal(state.stops.length, count + 1, "a double-click adds a stop");
-    const added = state.stops.at(-1);
-    t.ok(near(added.pos, [60, 60]), `where it was clicked: ${added.pos}`);
-    t.equal(selected, count, "and selects it");
-    // In the color that was there, so the gradient doesn't change.
-    const before = interpolatedColor(splines.spline, [0.3 * state.width, 0.3 * state.height]);
-    render();
-    const after = interpolatedColor(splines.spline, [0.3 * state.width, 0.3 * state.height]);
-    t.below(Math.max(...before.map((value, k) => Math.abs(value - after[k]))), 0.01, "the new stop changes the spline elsewhere by");
-    fire("pointerdown", added.pos);
-    await sleep(40);
-    fire("pointermove", [70, 50]);
-    await sleep(40);
-    fire("pointerup", [70, 50]);
-    t.ok(near(state.stops.at(-1).pos, [70, 50]), `a drag moves it: ${state.stops.at(-1).pos}`);
-    set("stopX", "25");
-    set("stopY", "35");
-    t.equal(JSON.stringify(state.stops[selected].pos), "[25,35]", "the position fields move it");
-    $("stopText").value = "rgb(10 20 30)";
-    $("stopText").dispatchEvent(new Event("input"));
-    t.equal(state.stops[selected].color, "rgb(10 20 30)", "the color field colors it");
-    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }));
-    t.equal(state.stops.length, count, "Delete removes the selected stop");
-    $("addStop").click();
-    t.equal(state.stops.length, count + 1, "Add stop adds one");
-    $("removeStop").click();
-    t.equal(state.stops.length, count, "Remove stop removes it");
-    render();
+    const decoded = decodeState(bad);
+    t.equal(decoded.stops.length, 2, "a link's unsound stops are dropped");
+    t.equal(decoded.stops[1].spread, 100, "and a spread kept to 100%");
+    t.equal(`${decoded.models.join("+")} ${decoded.steps} ${decoded.view} ${decoded.resolution} ${decoded.stopSize}`, "spline+biharmonic+harmonic 12 gradient 512 disc", "and its settings");
+    t.equal(decodeState(btoa(JSON.stringify({ v: 1, stops: 5 }))), null, "a link with no stops isn't read");
+    t.equal(decodeState(btoa(JSON.stringify({ v: 1, stops: [], models: ["harmonic", "spline"] }))).models.join(), "spline,harmonic", "a link's models are put in order");
 });
 
-test("undo, redo, and the arrow and Delete keys", async t => {
-    // A key pressed with nothing focused, or in a control.
-    const press = (key, more = {}, target = document.body) => target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...more }));
-    await preset("Three stops");
-    await sleep(500);
-    const start = state.stops[0].pos[0];
-    // Positions are rounded to hundredths of a percent at each press.
-    const moved = pixels => Math.abs(state.stops[0].pos[0] - (start + pixels * 100 / state.width));
-    selected = 0;
+test("links from the editor this one replaced are read", async t => {
+    const old = {
+        v: 1, w: 500, h: 300, s: "srgb", o: 1, k: "none", vw: "grid", n: 1, x: 1, r: 25, xk: 0, xs: [10, 50, 90, 50], m: 0, d: 1, dc: 2,
+        md: "spline", ed: "free", ho: "discs", sm: "none", rf: "spline", oc: 0, gr: 64, ds: 0.02, ms: ["spline", "harmonic"], nb: 0, ab: 0, cl: 0,
+        gm: "srgb", gmap: "clip", sp: [0.3, null], p: [["#ff0000", 20, 30], ["blue", 104, -6, 2]],
+    };
+    const decoded = decodeState(btoa(JSON.stringify(old)));
+    t.equal(`${decoded.width} ${decoded.height} ${decoded.space} ${decoded.backdrop} ${decoded.gamut} ${decoded.gamutMapping}`, "500 300 srgb none srgb clip", "the box and its settings");
+    t.equal(`${decoded.edges} ${decoded.stopSize} ${decoded.view} ${decoded.models.join("+")}`, "free disc holds spline+harmonic", "the edges, stops, view and models");
+    t.equal(`${decoded.normalization} ${decoded.crossSection} ${decoded.sectionKind} ${decoded.sectionRow} ${decoded.sheet} ${decoded.sheetHeight}`, "true true row 0.25 true c2", "the visualizations");
+    t.equal(JSON.stringify(decoded.stops.map(stop => [stop.color, ...stop.p, stop.weight])), '[["#ff0000",0.2,0.3,null],["blue",1.04,-0.06,2]]', "the stops");
+    // A spread of 0.3 was a disc 0.15 of the shorter side in radius; the default, 0.02, one of 0.01.
+    t.equal(decoded.stops.map(stop => stop.spread).join(), "41,0", "their spreads");
+    t.equal(Object.keys(decoded).filter(key => key.length <= 2).join(), "", "none of the old names is left");
+});
+
+test("free edges are open and natural at once", async t => {
+    await preset("Stops just outside the box");
+    set("numbers", true);
+    set("edges", "mirrored");
+    const mirrored = await grab(1);
+    const corner = readout => sampleReadout(readout, [0.98, 0.5]);
+    set("edges", "free");
+    const free = await grab(1);
+    t.ok(!gpuError, `free edges gave a WebGPU error: ${gpuError}`);
+    t.equal(free.window.join(), "0.25,0.25,0.5,0.5", "the box is the middle of the grid");
+    t.ok(views[1].renderer.gradient.naturalEdges, "and nothing holds its sides");
+    // The magenta stop is outside the box's right side: only the bigger grid takes it in.
+    t.above(difference(corner(free), corner(mirrored)), 0.05, "a stop outside the box changes the colors beside it");
+});
+
+test("the spline's own views, numbers and shares", async t => {
+    await preset("Two stops close together");
+    selection = 0;
+    set("numbers", true);
+    set("view", "plane");
+    await sleep(400);
+    t.equal(views[0].renderer.gradient.spline.centers.length, 0, "the linear part has no stop's term");
+    set("view", "term");
+    await sleep(400);
+    t.equal(views[0].renderer.gradient.spline.centers.length, 1, "with the selected stop's term, one");
+    set("view", "basis");
+    await sleep(400);
+    t.equal(views[0].influence.gradient.spline.centers[0].slice(2).join(), "1,1,1,0", "U(r) is the selected stop's term with a weight of 1");
+    selection = null;
     changed();
-    for (let i = 0; i < 3; ++i)
-        press("ArrowRight");
-    t.below(moved(3), 0.02, "three presses of the right arrow move the stop three pixels");
-    press("ArrowRight", {}, $("stopText"));
-    press("ArrowRight", {}, $("stopSpread"));
-    t.below(moved(3), 0.02, "an arrow in a text field or a slider doesn't move it");
-    await sleep(500);
-    press("ArrowDown", { shiftKey: true });
-    t.below(Math.abs(state.stops[0].pos[1] - (30 + 1000 / state.height)), 0.02, "Shift and the down arrow move it ten pixels");
-    await sleep(500);
-    press("z", { metaKey: true });
-    press("z", { metaKey: true });
-    await sleep(100);
-    t.equal(JSON.stringify(state.stops[0].pos), "[20,30]", "undo twice puts the stop back");
-    press("z", { metaKey: true, shiftKey: true });
-    press("y", { ctrlKey: true });
-    await sleep(100);
-    t.below(moved(3), 0.02, "redo, by either key, moves it again");
-    t.equal(state.stops[0].pos[1], 32.5, "and down again");
-    t.ok($("redo").disabled && !$("undo").disabled, "with nothing left to redo, only Undo is enabled");
-    press("z", { metaKey: true }, $("stopText"));
-    t.equal(state.stops[0].pos[1], 32.5, "undo typed into a text field is the field's own");
-    press("Delete");
-    await sleep(500);
-    t.equal(state.stops.length, 2, "Delete removes the selected stop");
-    $("undo").click();
-    await sleep(100);
-    t.equal(state.stops.length, 3, "the Undo button brings it back");
-    $("addStop").click();
-    await sleep(500);
-    t.equal(selected, 3, "a stop added is selected");
-    $("undo").click();
-    t.equal(`${state.stops.length} ${selected}`, "3 2", "undoing it selects a stop that's still there");
-    $("redo").click();
-    t.equal(state.stops.length, 4, "the Redo button adds it again");
-    set("overlayToggle", false);
-    await sleep(500);
-    $("undo").click();
-    t.equal(`${state.stops.length} ${state.overlay}`, "3 false", "undo leaves the settings around the gradient alone");
-    set("overlayToggle", true);
-    await sleep(800);
-    t.equal(JSON.stringify(decodeState(location.hash.slice(1))?.stops), JSON.stringify(state.stops), "the link follows an undo");
-    render();
+    await sleep(300);
+    t.ok($("view").querySelector('[value="basis"]').disabled, "U(r) needs a selected stop");
+    set("view", "gradient");
+    await grab(0);
+    await grab(2);
+    await sleep(300);
+    t.ok(/Past the stops' colors, in Oklab: [\d.]+ lighter, [\d.]+ darker/.test(views[0].numbers.textContent), "the spline goes past the stops' colors");
+    t.ok(/\na\t.*\nb\t.*\nc\t.*\nw1\t/.test(views[0].numbers.textContent), "and its box has the spline's coefficients");
+    t.ok(/Within the stops' colors/.test(views[2].numbers.textContent), "the harmonic model stays within them");
+    t.ok(views[0].worst && !views[2].worst, "the spline's box marks where it goes furthest");
+    const shares = EXTRA.sample(views[0], state.stops[1].p)[0];
+    t.equal(shares, "Each stop's share: 1: 0%, 2: 100%, 3: 0%, 4: 0%", "at a stop, the color is all that stop's");
+    t.equal(EXTRA.sample(views[1], [0.5, 0.5]).length, 0, "the grid models' boxes have no shares");
+    set("normalization", true);
+    await sleep(200);
+    t.ok(shown("normalizationNote") && /farthest is at a distance of 1/.test($("normalizationNote").textContent), "the normalization's note");
 });

@@ -35,3 +35,11 @@ const SHADER = __SHADER__ + COLOR_SHADER("display");
 
 // An editor's own models, by name, each solved by a renderer of its own in place of this one.
 const MODEL_RENDERERS = {};
+
+// An editor's own views that draw one number as the influence is drawn, by name, each with the model whose box shows
+// it. The other boxes show the gradient.
+const SCALAR_VIEWS = {};
+
+// What an editor adds to the shared page: viewAvailable(name), for its own views; numbers(view, readout), more text
+// under a box; sample(view, p), more lines for the color under the pointer.
+const EXTRA = {};

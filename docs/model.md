@@ -92,7 +92,7 @@ they stop mattering.
 
 ## The thin plate spline
 
-The points gradient editor draws a third model beside these two, from stops alone: the thin plate spline, which is
+The freeform-gradient() editor draws a third model beside these two, from stops alone: the thin plate spline, which is
 what WebKit's `freeform-gradient()` draws. It minimizes the biharmonic's energy over the whole plane rather than the
 box, held at each stop's point, so it has a formula and nothing here depends on a grid:
 
@@ -106,8 +106,14 @@ The biharmonic model with natural edges and one-texel stops is the nearest to it
 points, but over the box. The two agree where the answer is a plane, with three stops or fewer, and differ otherwise,
 since the spline's sheet still bends where it crosses the box's sides.
 
-The editor fits the spline in double precision and evaluates it at each texel of the grid in single precision, to
-within 0.00002 of the colors' range, so its box is the spline sampled on the grid, not solved on it.
+The editor also has Free edges: Open and Natural at once, the box twice the size with nothing holding the plate at
+its sides, which is how Finch et al. have their grid. It takes in stops outside the box, which the spline uses
+wherever they are.
+
+The editor fits the spline in double precision. It draws the gradient from the spline itself at every pixel, as
+WebKit does, or from the grid; either way it evaluates the spline at each texel of the grid in single precision, to
+within 0.00002 of the colors' range, for everything that reads the grid. So its grid is the spline sampled, not
+solved.
 
 ## A reference
 

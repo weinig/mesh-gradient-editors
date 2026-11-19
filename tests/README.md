@@ -4,7 +4,7 @@ These run the built editors in Safari, which has the WebGPU they need, and check
 controls behave.
 
     python3 tests/run.py                  every editor's cases
-    python3 tests/run.py diffusion        one editor's: diffusion, points-and-lines, points, freeform, mesh or hue
+    python3 tests/run.py diffusion        one editor's: diffusion, points-and-lines, freeform, mesh or hue
     python3 tests/run.py -k Strength      the cases whose names contain "Strength"
 
 Build the editors first (`python3 tools/build-diffusion-gradient-editor.py` and the others); the tests run the built
@@ -14,7 +14,7 @@ pages at the top of the repository, not the sources.
 
 For each editor, `run.py` makes a copy of its built page with `prelude.js` and the editor's cases appended, opens it in
 a Safari window of its own, and waits. The page runs its cases one after another and reports them in its title, a part at a
-time since a title is cut short, which `run.py` reads back before closing the window. So a full run opens six windows, one at a time, and brings Safari to
+time since a title is cut short, which `run.py` reads back before closing the window. So a full run opens five windows, one at a time, and brings Safari to
 the front for each: a page in the background draws no frames, and the tests would never finish.
 
 For the same reason `run.py` refuses to start while the screen is locked, and keeps the display awake while it runs.

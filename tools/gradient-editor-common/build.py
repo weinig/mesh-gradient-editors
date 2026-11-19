@@ -1,8 +1,9 @@
 # Builds an editor that solves its gradient with MeshShader2's WebGPU renderer: the diffusion gradient editor, the
-# points and lines gradient editor or the points gradient editor. Each is made of the shared parts of
+# points and lines gradient editor or the freeform-gradient() editor. Each is made of the shared parts of
 # mesh-gradient-editor.html, the parts in this directory, and its own parts in tools/<editor>/: editor.css,
 # editor.html and editor.js, which say where the shared parts go, and words.json, the editor's own words for the
-# shared HTML and, if it has models of its own, its MODELS.
+# shared HTML and, if it has models of its own, its MODELS. An editor can also add to the shared HTML from files in
+# its more/: settings.html, edges.html, views.html and visualize.html.
 import json
 import os
 import re
@@ -105,6 +106,10 @@ def build(parts, output_path, source_path):
         "{{VISUALIZE}}": read(os.path.join(common, "visualize.html")),
         "{{CSS}}": read(os.path.join(common, "css.html")),
     })
+    # What the editor adds to the shared HTML, if anything.
+    for marker in sorted(set(re.findall(r"\{\{MORE_(\w+)\}\}", html))):
+        path = os.path.join(parts, "more", marker.lower() + ".html")
+        html = html.replace("{{MORE_" + marker + "}}", read(path) if os.path.exists(path) else "")
     html = fill(html, {"{{" + key + "}}": value for key, value in words.items()})
     leftover = re.findall(r"\{\{\w+\}\}", html)
     assert not leftover, leftover
