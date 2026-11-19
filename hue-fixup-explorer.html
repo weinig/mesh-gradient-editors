@@ -144,22 +144,6 @@ h1 { font-size: 17px; margin: 0 0 4px; }
 h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 8px; }
 .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
 .row > label { min-width: 84px; color: var(--muted); }
-button.info {
-    flex: none;
-    display: flex;
-    margin-left: auto;
-    padding: 3px;
-    border: none;
-    border-radius: 50%;
-    background: none;
-    color: var(--muted);
-    cursor: pointer;
-}
-button.info svg { width: 16px; height: 16px; }
-button.info:hover:not(:disabled), button.info[aria-expanded=true] { color: var(--accent); }
-button.info:disabled { opacity: 0.35; cursor: default; }
-.heading { display: flex; align-items: center; margin-bottom: 8px; }
-.heading h2 { margin: 0; }
 input[type=number] { width: 64px; }
 input[type=text], select, textarea { font: inherit; }
 input[type=text] { flex: 1; min-width: 0; font-family: ui-monospace, Menlo, monospace; }
@@ -326,16 +310,13 @@ button.small { font-size: 12px; }
             <div class="row">
                 <label title="Arrows show which point each hue is fixed up against, each point shows its hue after fixup, and each edge shows how far its hue sweeps. A red edge sweeps more than half a turn: there the color goes the long way around the hue circle."><input type="checkbox" id="hueOverlayToggle" checked> Hue fixup</label>
                 <label title="Show the color under the mouse, and how its hue is the sum of the patch's corner hues, each times its weight there."><input type="checkbox" id="sampleToggle" checked> Sample</label>
-                <button class="info" aria-controls="hueLegendNotes" title="About the hue fixup overlay" aria-label="About the hue fixup overlay" aria-expanded="false"></button>
             </div>
-            <div id="hueLegendNotes" hidden>
             <ul id="hueLegend">
                 <li><span class="key"><span class="arrowKey">⟶</span></span><span>The fixup's path: each hue is fixed up against the hue the arrow comes from, so the two end up at most half a turn apart.</span></li>
                 <li><span class="key"><span class="pill point">−160°</span></span><span>A point's hue after fixup. The swatch is the point's color, which fixup doesn't change. "start" marks the hue everything else is fixed up against.</span></li>
                 <li><span class="key"><span class="pill edge">100°</span></span><span>How far the hue travels along that edge: the difference between the hues at its two ends.</span></li>
                 <li><span class="key"><span class="pill seam">260°</span></span><span>More than half a turn. No arrow checked this edge, so its colors go the long way around the hue circle.</span></li>
             </ul>
-            </div>
         </section>
 
         <section>
@@ -2824,16 +2805,6 @@ async function copy(text, label) {
     }
     setTimeout(() => $("copyStatus").textContent = "", 1500);
 }
-// An info button shows and hides the notes it controls.
-for (const button of document.querySelectorAll("button.info")) {
-    button.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.75" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="4.9" r="0.95" fill="currentColor"/><path d="M8 7.3v4.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
-    button.addEventListener("click", () => {
-        const notes = $(button.getAttribute("aria-controls"));
-        notes.hidden = !notes.hidden;
-        button.setAttribute("aria-expanded", String(!notes.hidden));
-    });
-}
-
 $("copyCSS").addEventListener("click", () => copy($("output").value, "the CSS"));
 $("copyLink").addEventListener("click", () => {
     writeHash();
