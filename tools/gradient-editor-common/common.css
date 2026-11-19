@@ -67,7 +67,7 @@
 #toolbar > button:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
 #toolbar > button[aria-pressed=true] { background: var(--accent); color: #fff; }
 #toolbar svg { width: 24px; height: 24px; display: block; }
-#presetNote[hidden], #otherCurvesRow[hidden], #edgeStripsRow[hidden], #levelRow[hidden], #stepsRow[hidden], #sheetRow[hidden], aside .note[hidden] { display: none; }
+#presetNote[hidden], .row[hidden], aside .note[hidden] { display: none; }
 #levelRow input[type=range], #stepsRow input[type=range] { flex: 1; }
 #levelValue, #stepsValue { min-width: 5.5em; text-align: right; font-variant-numeric: tabular-nums; }
 aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
