@@ -102,6 +102,15 @@ const PRESETS = [
             ],
         },
     },
+    {
+        name: "Finch et al., Figure 8: two points make a ramp",
+        note: "After Figure 8 of the thin-plate spline paper, without its curve: two points alone give a straight ramp across the whole box. The thin plate spline is that ramp exactly. This sets Edges to Natural and Stops hold to One texel, as the paper has them, so the biharmonic model is the same ramp; they stay set when you choose another preset. With Mirrored edges or discs its ramp flattens toward the sides. The harmonic model only rings each stop.",
+        state: {
+            width: 500, height: 500,
+            stops: [stop(0.3, 0.5, "#4d4d4d"), stop(0.8, 0.5, "#f2f2f2")],
+            edges: "natural", stopSize: "texel",
+        },
+    },
 ];
 
 const influenceAvailable = () => selection !== null && !!state.stops[selection];
@@ -638,9 +647,7 @@ for (const view of views) {
         return [(event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height];
     };
 
-    overlay.addEventListener("pointerdown", event => {
-        if (event.button !== 0)
-            return;
+    const press = event => {
         event.preventDefault();
         try {
             overlay.setPointerCapture(event.pointerId);
@@ -659,9 +666,18 @@ for (const view of views) {
             drag = { kind: "stop", index: selection, start: at, origin: at.slice() };
         }
         changed();
+    };
+    overlay.addEventListener("pointerdown", event => {
+        if (event.button === 0)
+            press(event);
     });
 
     overlay.addEventListener("pointermove", event => {
+        // After a menu closes, WebKit sends the next press as a move with the button newly held.
+        if (!drag && pressedWithoutDown(event)) {
+            press(event);
+            return;
+        }
         const at = fraction(event);
         if (!drag) {
             const hit = hitTest(view, point(event));

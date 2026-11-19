@@ -35,6 +35,7 @@
                 <button id="addStop" class="small">Add stop</button>
                 <button id="deleteStop" class="small">Remove stop</button>
                 <button id="finishLine" class="small">Finish line</button>
+                <button id="resetHandles" class="small" title="The lines through this stop go back to curving through their stops on their own.">Reset handles</button>
                 <button id="clearStops" class="small">Remove all</button>
             </div>
             <div class="row" title="A disc: a point with no spread holds a disc 1% of the box's shorter side across, which also holds the surface flat there. One texel: it holds only the texel it's in, so its color is held and its slope is free. With Natural edges and the biharmonic model, two such stops make a linear ramp and three a plane.">
@@ -47,7 +48,7 @@
             <div id="stopList"></div>
             <p id="countNote" class="note"></p>
             <p id="modeNote" class="note"></p>
-            <p class="note">Each stop holds its color. In Lines, the color runs along each line from stop to stop, and the line curves through its stops once it has three.</p>
+            <p class="note">Each stop holds its color. In Lines, the color runs along each line from stop to stop, and the line curves through its stops once it has three, or as its handles say.</p>
         </section>
 
 {{VISUALIZE}}

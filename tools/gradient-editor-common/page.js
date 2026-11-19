@@ -136,6 +136,18 @@ const views = [...document.querySelectorAll(".view")].map(figure => ({
 // The models, in the order of their boxes.
 const MODELS = views.map(view => view.model);
 
+// The mouse buttons held as of the last pointer event anywhere on the page. After a <select>'s menu closes, WebKit
+// still thinks the button that opened it is down, since the menu took the mouse up, so the next press comes as a
+// pointermove with a button newly held instead of a pointerdown. An editor's boxes take such a move as a press.
+let lastMouseButtons = 0;
+for (const type of ["pointerdown", "pointermove", "pointerup", "pointercancel"]) {
+    document.addEventListener(type, event => {
+        if (event.pointerType === "mouse")
+            lastMouseButtons = event.buttons;
+    });
+}
+const pressedWithoutDown = event => event.pointerType === "mouse" && !!(event.buttons & 1) && !(lastMouseButtons & 1);
+
 let device = null;
 let gpuError = null;
 
@@ -198,34 +210,69 @@ function changed() {
     scheduleUndoStep();
 }
 
-// Every box is solved and drawn first, then the visualizations drawn over them, since the difference reads the other
-// box's solution.
+// Whether the GPU is still working through the last solve, and whether something changed meanwhile.
+let solving = false;
+
+// A box is drawn from a solve that's finished, never in the same batch as its solve. WebKit shows a canvas when the
+// frame ends, whether or not the GPU has got to its drawing, so a box drawn behind a long solve can show empty for a
+// frame or two. So each frame first draws every box from what's solved, which is quick, then starts the solves that
+// are out of date, and draws again when they're done. While they run, nothing more is started.
+//
+// The visualizations are drawn over the boxes after all of them, since the difference reads another box's solution.
 function render() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const encoder = device && !gpuError ? device.createCommandEncoder() : null;
-    const drawn = [];
+    const ready = !!device && !gpuError;
+    const shown = [];
     for (const view of views) {
         view.figure.hidden = !state.models.includes(view.model);
         if (view.figure.hidden)
             continue;
         view.stage.style.aspectRatio = `${state.width} / ${state.height}`;
         const width = Math.max(1, Math.round(view.stage.clientWidth * dpr)), height = Math.max(1, Math.round(view.stage.clientHeight * dpr));
-        for (const canvas of [view.gpu, view.overlay]) {
-            if (canvas.width !== width || canvas.height !== height) {
-                canvas.width = width;
-                canvas.height = height;
-            }
+        if (view.overlay.width !== width || view.overlay.height !== height) {
+            view.overlay.width = width;
+            view.overlay.height = height;
         }
-        if (encoder && view.renderer) {
-            encodeView(view, encoder, width, height);
-            drawn.push(view);
-        }
+        if (ready && view.renderer)
+            shown.push({ view, width, height });
         drawOverlay(view, dpr);
     }
-    for (const view of drawn)
-        encodeVisualization(view, encoder);
-    if (encoder)
+    if (ready && !solving) {
+        const encoder = device.createCommandEncoder();
+        const drawn = [];
+        for (const { view, width, height } of shown) {
+            const { renderer, influence } = view;
+            if (!renderer.gradient || !renderer.solvedSize)
+                continue;
+            // Sizing a canvas clears it, so it's sized only when it's about to be drawn.
+            if (view.gpu.width !== width || view.gpu.height !== height) {
+                view.gpu.width = width;
+                view.gpu.height = height;
+            }
+            view.target = view.context.getCurrentTexture().createView();
+            renderer.encode(encoder, view.target, ...renderer.solvedSize);
+            // The influence is solved as a gradient of its own, drawn over by the visualization.
+            if (state.view === "influence" && influenceAvailable() && influence.gradient && influence.solvedSize)
+                influence.encode(encoder, view.target, ...influence.solvedSize);
+            drawn.push(view);
+        }
+        for (const view of drawn)
+            encodeVisualization(view, encoder);
         device.queue.submit([encoder.finish()]);
+
+        const solver = device.createCommandEncoder();
+        let solved = false;
+        for (const { view, width, height } of shown)
+            solved = encodeSolves(view, solver, width, height) || solved;
+        if (solved) {
+            device.queue.submit([solver.finish()]);
+            solving = true;
+            device.queue.onSubmittedWorkDone().then(() => {
+                solving = false;
+                scheduleRender();
+            });
+        }
+    }
     $("gpuStatus").hidden = !!device && !gpuError;
     $("gpuStatus").textContent = gpuError ? `WebGPU: ${gpuError}` : "WebGPU: starting…";
     $("gpuStatus").className = gpuError ? "status error" : "status";
@@ -234,14 +281,28 @@ function render() {
     drawPanels();
 }
 
-// Solves the view's gradient if it changed, or relaxes it for the relaxation view, and draws it.
-function encodeView(view, encoder, viewWidth, viewHeight) {
+// Encodes solving `renderer`'s gradient for a box, if it isn't solved for one that size already. Returns whether it
+// did.
+function encodeSolve(renderer, encoder, width, height) {
+    if (!renderer.gradient || !renderer.prepare(width, height))
+        return false;
+    if (renderer.solvedSize?.[0] === width && renderer.solvedSize?.[1] === height)
+        return false;
+    renderer.encodeSolve(encoder);
+    renderer.solvedSize = [width, height];
+    return true;
+}
+
+// Encodes solving the view's gradient if it changed, or relaxing it for the relaxation view, and the selected
+// curve's or stop's influence if that's shown. Returns whether anything was solved.
+function encodeSolves(view, encoder, viewWidth, viewHeight) {
     const data = { ...windowed(gradientData(view.model)), gamutMapping: state.gamutMapping === "map" ? 1 : 0, edgeStrips: state.edgeStrips,
         naturalEdges: state.edges === "natural" };
     // The box the renderer solves: the view's, or twice it for open edges.
     const width = openEdges() ? 2 * viewWidth : viewWidth, height = openEdges() ? 2 * viewHeight : viewHeight;
     const relaxing = state.view === "relaxation" && view.model === "harmonic";
     const key = JSON.stringify(data) + (relaxing ? `:relaxed ${2 ** state.steps}` : "");
+    let solved = false;
     if (key !== view.gradientKey) {
         view.renderer.setGradient(data);
         view.gradientKey = key;
@@ -251,16 +312,15 @@ function encodeView(view, encoder, viewWidth, viewHeight) {
         if (view.renderer.prepare(width, height)) {
             encodeRelaxation(view.renderer, encoder, 2 ** state.steps);
             view.renderer.solvedSize = [width, height];
+            solved = true;
         }
         view.relaxedSize = [width, height];
     }
-    view.target = view.context.getCurrentTexture().createView();
-    view.renderer.encode(encoder, view.target, width, height);
+    solved = encodeSolve(view.renderer, encoder, width, height) || solved;
     view.solveKey = `${key} ${width}x${height}`;
     // What a readback of this solve decodes it with.
     view.solveSpace = state.space;
     view.solveWindow = viewWindow();
-    // The influence is solved as a gradient of its own, drawn over by the visualization.
     if (state.view === "influence" && influenceAvailable()) {
         const influence = { ...windowed(gradientData(view.model, true)), naturalEdges: state.edges === "natural" };
         const influenceKey = JSON.stringify(influence);
@@ -268,8 +328,9 @@ function encodeView(view, encoder, viewWidth, viewHeight) {
             view.influence.setGradient(influence);
             view.influenceKey = influenceKey;
         }
-        view.influence.encode(encoder, view.target, width, height);
+        solved = encodeSolve(view.influence, encoder, width, height) || solved;
     }
+    return solved;
 }
 
 // MARK: - Visualizations
@@ -1119,7 +1180,7 @@ function drawSection(ctx, toPixels) {
 function commonState() {
     return {
         space: state?.space ?? "oklab",
-        gamutMapping: state?.gamutMapping ?? "clip",
+        gamutMapping: state?.gamutMapping ?? "map",
         backdrop: state?.backdrop ?? "checkerboard",
         resolution: state?.resolution ?? 512,
         models: state?.models ?? MODELS.slice(),

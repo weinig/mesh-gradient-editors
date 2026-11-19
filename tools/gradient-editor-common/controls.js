@@ -137,6 +137,8 @@ function updateCommonControls() {
     $("sectionRowValue").textContent = `${Math.round(state.sectionRow * 100)}%`;
     $("sectionDrag").textContent = state.sectionKind === "row" ? "Drag the row up and down in either box." : "Drag A and B in either box.";
     $("gamut").value = state.gamut;
+    // The gamut to check against shows while something checks against it.
+    $("gamutRow").hidden = !(state.view === "gamut" || state.numbers || state.sample);
     $("sample").checked = state.sample;
     $("otherCurves").checked = state.otherCurves;
     $("otherCurvesRow").hidden = !state.crossSection || state.models.length < 2;

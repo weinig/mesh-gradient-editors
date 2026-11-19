@@ -90,3 +90,34 @@ test("undo, redo, and the arrow, Delete and Escape keys", async t => {
     t.equal(state.curves.length, count, "Backspace in a field deletes no curve");
     $("width").blur();
 });
+
+test("after a menu closes, a press that comes as a move still drags", async t => {
+    await preset("A line between two colors");
+    const before = state.curves[0].from.slice();
+    await pointer().dragAfterMenu([[0.5, 0.5], [0.5, 0.6], [0.5, 0.7]]);
+    t.below(Math.abs(state.curves[0].from[1] - (before[1] + 0.2)), 0.01, "the curve under the press is dragged");
+});
+
+test("a selected curve's handles drag", async t => {
+    await preset("A leaf");
+    const index = state.curves.findIndex(curve => isPath(curve));
+    selection = { curve: index, node: null };
+    changed();
+    await sleep(100);
+    const node = state.curves[index].nodes.find(node => node.out[0] || node.out[1]);
+    const n = state.curves[index].nodes.indexOf(node);
+    const at = [node.p[0] + node.out[0], node.p[1] + node.out[1]];
+    await pointer().drag([at, [at[0] + 0.03, at[1] + 0.03], [at[0] + 0.06, at[1] + 0.06]]);
+    const moved = state.curves[index].nodes[n];
+    t.below(Math.hypot(moved.p[0] + moved.out[0] - (at[0] + 0.06), moved.p[1] + moved.out[1] - (at[1] + 0.06)), 0.005, "the handle goes where it's dragged");
+    t.equal(moved.p.join(), node.p.join(), "and its node stays put");
+});
+
+test("the presets after the papers draw", async t => {
+    for (const name of ["Orzan et al., Figure 2: a diffusion curve", "Finch et al., Figure 2: a shaded sphere", "Finch et al., Figure 5: a tear"]) {
+        await preset(name);
+        await sleep(500);
+        t.ok(!gpuError, `${name}: ${gpuError}`);
+        t.equal(JSON.stringify(decodeState(encodeState()).curves.map(curve => curve.kind)), JSON.stringify(state.curves.map(curve => curve.kind)), `${name}: its link's curves`);
+    }
+});

@@ -24,6 +24,8 @@ EDITORS = {
     "points-and-lines": "points-and-lines-gradient-editor.html",
     "points": "points-gradient-editor.html",
     "freeform": "freeform-gradient-editor.html",
+    "mesh": "mesh-gradient-editor.html",
+    "hue": "hue-fixup-explorer.html",
 }
 
 

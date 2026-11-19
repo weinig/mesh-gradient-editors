@@ -112,6 +112,8 @@
             <div class="row">
                 <label for="preset">Preset</label>
                 <select id="preset"></select>
+                <button id="undo" class="icon" title="Undo (⌘Z)" aria-label="Undo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7L4 12l5 5M4 12h10a5 5 0 0 1 0 10h-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -3)"/></svg></button>
+                <button id="redo" class="icon" title="Redo (⇧⌘Z)" aria-label="Redo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7l5 5-5 5M20 12H10a5 5 0 0 0 0 10h2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -3)"/></svg></button>
             </div>
             <p id="presetNote" class="note" hidden></p>
             <div class="row">
@@ -213,7 +215,7 @@
                 <button id="removeStop" class="small">Remove stop</button>
             </div>
             <div id="stopList"></div>
-            <p class="note">Drag a stop to move it, even outside the box. Double-click the box to add a stop with the color already there. Press Delete to remove the selected stop.</p>
+            <p class="note">Drag a stop to move it, even outside the box. Double-click the box to add a stop with the color already there. The arrow keys move the selected stop, and Delete removes it.</p>
         </section>
 
         <section>

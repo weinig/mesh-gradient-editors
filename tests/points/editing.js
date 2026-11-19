@@ -91,3 +91,57 @@ test("undo, redo, and the arrow, Delete and Escape keys", async t => {
     press("Escape");
     t.equal(selection, null, "Escape selects nothing");
 });
+
+test("after a menu closes, a press that comes as a move still drags", async t => {
+    await preset("Four stops");
+    const from = state.stops[0].p.slice();
+    await pointer(1).dragAfterMenu([from, [0.4, 0.4], [0.5, 0.5]]);
+    t.equal(state.stops.length, 4, "no stop is added");
+    t.below(Math.hypot(state.stops[0].p[0] - 0.5, state.stops[0].p[1] - 0.5), 0.01, "the stop under the press is dragged");
+});
+
+test("the gradient is gamut mapped by default, and the gamut to check shows only when something checks", async t => {
+    t.equal(state.gamutMapping, "map", "out of gamut colors by default");
+    t.equal(decodeState(btoa(JSON.stringify({ v: 1, stops: [] }))).gamutMapping, "map", "and for a link that doesn't say");
+    t.equal(decodeState(btoa(JSON.stringify({ v: 1, stops: [], gamutMapping: "clip" }))).gamutMapping, "clip", "a link that says clip is clipped");
+    t.ok(!shown("gamutRow"), "the gamut to check is hidden to start with");
+    set("view", "gamut");
+    await sleep(200);
+    t.ok(shown("gamutRow"), "it shows for Where it leaves the gamut");
+    set("view", "gradient");
+    set("numbers", true);
+    await sleep(200);
+    t.ok(shown("gamutRow"), "and for the numbers");
+});
+
+test("a box is drawn from a finished solve, not along with it", async t => {
+    await preset("Four stops");
+    await sleep(600);
+    t.ok(!solving, "nothing is being solved at rest");
+    const before = views[1].gradientKey;
+    state.stops[0].p = [0.3, 0.3];
+    render();
+    t.ok(solving, "a change starts a solve");
+    t.ok(views[1].gradientKey !== before, "of the changed gradient");
+    state.stops[0].p = [0.35, 0.3];
+    const during = views[1].gradientKey;
+    render();
+    t.equal(views[1].gradientKey, during, "and nothing more is started until it's done");
+    await sleep(600);
+    t.ok(!solving && views[1].gradientKey !== during, "then the latest is solved");
+});
+
+test("the paper's two points make a ramp in the spline and the biharmonic model", async t => {
+    await preset("Finch et al., Figure 8: two points make a ramp");
+    t.equal(`${state.edges} ${state.stopSize}`, "natural texel", "the preset sets natural edges and one-texel stops");
+    set("space", "srgb");
+    set("numbers", true);
+    for (const index of [0, 1]) {
+        const readout = await grab(index);
+        const at = x => sampleReadout(readout, [x, 0.5])[0];
+        const slope = (at(0.8) - at(0.3)) / 0.5;
+        const worst = Math.max(...[0.05, 0.2, 0.5, 0.65, 0.95].map(x => Math.abs(at(x) - (at(0.3) + slope * (x - 0.3)))));
+        t.below(worst, index ? 0.03 : 0.001, `${views[index].model}: the worst miss from a straight ramp`);
+        t.below(Math.abs(sampleReadout(readout, [0.5, 0.1])[0] - at(0.5)), index ? 0.03 : 0.001, `${views[index].model}: the same up and down the box`);
+    }
+});

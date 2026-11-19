@@ -77,8 +77,9 @@ function pointer(view = 0) {
         const rect = overlay.getBoundingClientRect();
         return { clientX: rect.left + x * rect.width, clientY: rect.top + y * rect.height };
     };
-    const fire = (type, x, y) => overlay.dispatchEvent(new PointerEvent(type, {
-        bubbles: true, pointerId: 1, button: 0, buttons: type === "pointerup" ? 0 : 1, ...at(x, y),
+    // `more` is anything else the events should have, such as altKey.
+    const fire = (type, x, y, more = {}) => overlay.dispatchEvent(new PointerEvent(type, {
+        bubbles: true, pointerId: 1, button: 0, buttons: type === "pointerup" ? 0 : 1, ...at(x, y), ...more,
     }));
     return {
         fire,
@@ -87,14 +88,26 @@ function pointer(view = 0) {
             fire("pointerup", x, y);
             await sleep(30);
         },
-        async drag(points) {
-            fire("pointerdown", ...points[0]);
+        async drag(points, more = {}) {
+            fire("pointerdown", ...points[0], more);
             for (const point of points.slice(1)) {
                 await sleep(40);
-                fire("pointermove", ...point);
+                fire("pointermove", ...point, more);
             }
             await sleep(40);
-            fire("pointerup", ...points.at(-1));
+            fire("pointerup", ...points.at(-1), more);
+            await sleep(300);
+        },
+        // A press as WebKit sends it after a menu closes: no pointerdown, but a move with the button newly held.
+        async dragAfterMenu(points) {
+            const mouse = { pointerType: "mouse" };
+            fire("pointermove", ...points[0], { ...mouse, buttons: 0 });
+            for (const point of points) {
+                await sleep(40);
+                fire("pointermove", ...point, mouse);
+            }
+            await sleep(40);
+            fire("pointerup", ...points.at(-1), mouse);
             await sleep(300);
         },
         doubleClick: (x, y) => overlay.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, ...at(x, y) })),

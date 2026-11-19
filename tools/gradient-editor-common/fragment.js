@@ -49,8 +49,8 @@ function decodeState(text) {
             data.space = ["srgb", "srgb-linear", "oklab"][data.space];
         if (!SPACES.includes(data.space))
             data.space = "oklab";
-        if (data.gamutMapping !== "map")
-            data.gamutMapping = "clip";
+        if (data.gamutMapping !== "clip")
+            data.gamutMapping = "map";
         if (!BACKDROPS.includes(data.backdrop))
             data.backdrop = "checkerboard";
         if (!GAMUTS.includes(data.gamut))

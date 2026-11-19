@@ -175,6 +175,8 @@ textarea {
 #swatches button span { position: absolute; inset: 0; border-radius: 4px; }
 #swatches button.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
 button.small { font-size: 12px; }
+.row > button.icon { padding: 1px 5px; }
+.row > button.icon svg { width: 16px; height: 16px; display: block; }
 @media (max-width: 720px) {
     main { padding: 8px; gap: 8px; }
     #stageScroller { flex: 1 1 100%; height: auto; position: static; overflow: hidden; }
@@ -203,6 +205,8 @@ button.small { font-size: 12px; }
             <div class="row">
                 <label for="preset">Preset</label>
                 <select id="preset"></select>
+                <button id="undo" class="icon" title="Undo (⌘Z)" aria-label="Undo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7L4 12l5 5M4 12h10a5 5 0 0 1 0 10h-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -3)"/></svg></button>
+                <button id="redo" class="icon" title="Redo (⇧⌘Z)" aria-label="Redo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7l5 5-5 5M20 12H10a5 5 0 0 0 0 10h2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -3)"/></svg></button>
             </div>
             <div class="row">
                 <label>Grid</label>
@@ -966,7 +970,7 @@ function decodeState(text) {
             background: typeof data.b === "string" ? data.b : "",
             hueOrder: data.f === "columns" ? "columns" : "rows",
             overlay: data.o !== 0,
-            gamutMapping: data.gmap === "map" ? "map" : "clip",
+            gamutMapping: data.gmap === "clip" ? "clip" : "map",
             hueOverlay: data.x !== 0,
             sample: data.m !== 0,
             backdrop: BACKDROPS.includes(data.k) ? data.k : "checkerboard",
@@ -1038,7 +1042,7 @@ function presetState(index) {
         height: state?.height ?? 400,
         hueOrder: state?.hueOrder ?? "rows",
         overlay: state?.overlay ?? true,
-        gamutMapping: state?.gamutMapping ?? "clip",
+        gamutMapping: state?.gamutMapping ?? "map",
         hueOverlay: state?.hueOverlay ?? true,
         sample: state?.sample ?? true,
         backdrop: state?.backdrop ?? "checkerboard",
@@ -1820,6 +1824,7 @@ function scheduleRender() {
 // Drags write the URL when they end.
 function changed({ dragging = !!drag } = { }) {
     scheduleRender();
+    scheduleUndoStep();
     if (!dragging)
         scheduleHashWrite();
 }
@@ -2365,19 +2370,6 @@ stage.addEventListener("pointerleave", event => {
         hideSample();
 });
 
-// Space swaps the hue fixup order, so the two can be compared without moving the mouse.
-document.addEventListener("keydown", event => {
-    if (event.code !== "Space" || event.repeat || event.metaKey || event.ctrlKey || event.altKey)
-        return;
-    if (event.target.closest?.("input, select, textarea, button"))
-        return;
-    event.preventDefault();
-    state.hueOrder = state.hueOrder === "columns" ? "rows" : "columns";
-    changed();
-    if (lastSamplePosition)
-        showSample(lastSamplePosition);
-});
-
 // `slop` scales the distance a point or handle can be from (x, y) and still be hit.
 function hitTest(x, y, slop = 1) {
     const near = (p, radius) => Math.hypot(p[0] - x, p[1] - y) <= radius;
@@ -2416,6 +2408,15 @@ function hitTest(x, y, slop = 1) {
 }
 
 let drag = null;
+
+// Where a point and its control points go when moved by `by` from where they started, kept in reach.
+function movedPoint(startPosition, startControls, by) {
+    // When the handles span more than the reachable area, only the point itself is kept in reach.
+    const delta = clampedDelta(clampedDelta(by, [startPosition, ...(startControls ?? [])]), [startPosition]);
+    const pos = round2Point([startPosition[0] + delta[0], startPosition[1] + delta[1]]);
+    const moved = [pos[0] - startPosition[0], pos[1] - startPosition[1]];
+    return { pos, cps: startControls?.map(k => round2Point([k[0] + moved[0], k[1] + moved[1]])) ?? null };
+}
 
 // The pointer's position on the overlay, in the stage's own coordinates.
 function overlayPosition(event) {
@@ -2477,14 +2478,7 @@ overlay.addEventListener("pointermove", event => {
     const p = fromOverlay(x, y);
     const point = pointAt(drag.r, drag.c);
     if (drag.kind === "point") {
-        // When the handles span more than the reachable area, only the point itself is kept in reach.
-        const raw = [p[0] - drag.start[0], p[1] - drag.start[1]];
-        const delta = clampedDelta(clampedDelta(raw, [drag.startPosition, ...(drag.startControls ?? [])]), [drag.startPosition]);
-        const position = round2Point([drag.startPosition[0] + delta[0], drag.startPosition[1] + delta[1]]);
-        const moved = [position[0] - drag.startPosition[0], position[1] - drag.startPosition[1]];
-        point.pos = position;
-        if (drag.startControls)
-            point.cps = drag.startControls.map(k => round2Point([k[0] + moved[0], k[1] + moved[1]]));
+        Object.assign(point, movedPoint(drag.startPosition, drag.startControls, [p[0] - drag.start[0], p[1] - drag.start[1]]));
     } else {
         point.cps[drag.side] = round2Point(clampedToReach(p));
     }
@@ -2501,6 +2495,113 @@ function endDrag(event) {
 overlay.addEventListener("pointerup", endDrag);
 overlay.addEventListener("pointercancel", endDrag);
 overlay.addEventListener("lostpointercapture", endDrag);
+
+// MARK: - Undo, redo and keys
+
+// Undo steps through the gradient and the box's size, not the settings around them.
+// A step is taken when a change has settled: after a drag or a pick of a color ends, not during it.
+const UNDO_KEYS = ["width", "height", "rows", "cols", "space", "hue", "background", "points"];
+const undoSteps = [];
+let undoIndex = -1;
+let undoTimer = null;
+// Whether the color picker's color is still changing.
+let picking = false;
+
+const undoSnapshot = () => JSON.stringify(Object.fromEntries(UNDO_KEYS.map(key => [key, state[key]])));
+
+function takeUndoStep() {
+    undoTimer = null;
+    if (drag || picking)
+        return scheduleUndoStep();
+    const now = undoSnapshot();
+    if (now === undoSteps[undoIndex])
+        return;
+    undoSteps.splice(undoIndex + 1, Infinity, now);
+    if (undoSteps.length > 200)
+        undoSteps.shift();
+    undoIndex = undoSteps.length - 1;
+    updateUndoButtons();
+}
+
+function scheduleUndoStep() {
+    if (undoTimer === null)
+        undoTimer = setTimeout(takeUndoStep, 300);
+}
+
+// Steps back, or forward for 1, to what the editor held then.
+function stepUndo(by) {
+    // A change still settling is a step of its own, to come back to.
+    if (undoTimer !== null) {
+        clearTimeout(undoTimer);
+        takeUndoStep();
+    }
+    if (drag || !undoSteps[undoIndex + by])
+        return;
+    undoIndex += by;
+    Object.assign(state, JSON.parse(undoSteps[undoIndex]));
+    // The grid may have fewer rows or columns now.
+    selected = [Math.min(selected[0], state.rows - 1), Math.min(selected[1], state.cols - 1)];
+    changed();
+    updateUndoButtons();
+}
+
+function updateUndoButtons() {
+    $("undo").disabled = undoIndex <= 0;
+    $("redo").disabled = undoIndex >= undoSteps.length - 1;
+}
+
+$("undo").addEventListener("click", () => stepUndo(-1));
+$("redo").addEventListener("click", () => stepUndo(1));
+
+// Moves the selected point, and its control points with it. Says whether it moved.
+function nudgeSelection(dx, dy) {
+    if (drag)
+        return false;
+    const point = pointAt(...selected);
+    const start = resolvedPosition(...selected);
+    const moved = movedPoint(start, point.cps, [dx, dy]);
+    if (samePoint(moved.pos, start))
+        return false;
+    Object.assign(point, moved);
+    return true;
+}
+
+document.addEventListener("keydown", event => {
+    // Keys typed into a field of text are the field's: its own undo, its arrows. Arrows are also a menu's and a
+    // radio button's.
+    const field = event.target.closest?.("input, textarea, select");
+    const typing = !!field && (field.tagName === "TEXTAREA" || ["text", "number", "search"].includes(field.type));
+    const steering = typing || (!!field && (field.tagName === "SELECT" || ["range", "radio"].includes(field.type)));
+    const command = event.metaKey || event.ctrlKey;
+    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+    if (command && !typing && (key === "z" || key === "y")) {
+        event.preventDefault();
+        stepUndo(key === "y" || event.shiftKey ? 1 : -1);
+        return;
+    }
+    if (typing || command || event.altKey || (steering && key.startsWith("Arrow")))
+        return;
+    // Space swaps the hue fixup order, so the two can be compared without moving the mouse.
+    if (event.code === "Space") {
+        if (event.repeat || event.target.closest?.("input, select, textarea, button"))
+            return;
+        event.preventDefault();
+        state.hueOrder = state.hueOrder === "columns" ? "rows" : "columns";
+        changed();
+        if (lastSamplePosition)
+            showSample(lastSamplePosition);
+        return;
+    }
+    const arrow = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[key];
+    if (!arrow)
+        return;
+    // A pixel of the box, or ten with Shift. Positions are percentages of the box.
+    const pixels = event.shiftKey ? 10 : 1;
+    if (nudgeSelection(arrow[0] * pixels * 100 / state.width, arrow[1] * pixels * 100 / state.height)) {
+        event.preventDefault();
+        changed();
+    }
+});
 
 // MARK: - Controls
 
@@ -2621,9 +2722,13 @@ $("pointPicker").addEventListener("input", () => {
     pointAt(r, c).color = $("pointPicker").value;
     $("pointText").value = $("pointPicker").value;
     $("pointText").classList.remove("invalid");
+    picking = true;
     changed({ dragging: true });
 });
-$("pointPicker").addEventListener("change", writeHash);
+$("pointPicker").addEventListener("change", () => {
+    picking = false;
+    writeHash();
+});
 $("pointText").addEventListener("input", () => {
     const text = $("pointText").value.trim();
     const valid = !!parseColor(text);
@@ -2678,6 +2783,7 @@ window.addEventListener("hashchange", () => {
         selected = [0, 0];
         lastWrittenHash = location.hash;
         scheduleRender();
+        scheduleUndoStep();
     }
 });
 
@@ -2753,6 +2859,7 @@ new ResizeObserver(() => scheduleRender()).observe($("stageScroller"));
 
 state = decodeState(location.hash.slice(1)) ?? presetState(0);
 writeHash();
+takeUndoStep();
 render();
 
 WebGPUMeshGradientRenderer.create(gpuCanvas).then(renderer => {

@@ -135,6 +135,39 @@ const PRESETS = [
             ],
         },
     },
+    {
+        name: "Orzan et al., Figure 2: a diffusion curve",
+        note: "After Figure 2 of the diffusion curves paper: one S-shaped curve with a color on either side, sharp at one end and blurred at the other. The paper's colors and blur change along the curve; a curve here has one color a side and one blur, so this is two curves joined in the middle. The harmonic box is the paper's model.",
+        state: {
+            width: 600, height: 340,
+            curves: [
+                { kind: "path", closed: false, nodes: [node(0.1, 0.72, 0, 0, 0.1, -0.69), node(0.5, 0.5, -0.12, -0.52, 0, 0)], left: "#35c9c2", right: "#4b2fe0" },
+                { kind: "path", closed: false, nodes: [node(0.5, 0.5, 0, 0, 0.12, 0.52), node(0.9, 0.3, -0.1, 0.66, 0, 0)], left: "#d8f04a", right: "#2a55d9", blur: 30 },
+            ],
+        },
+    },
+    {
+        name: "Finch et al., Figure 2: a shaded sphere",
+        note: "After the top row of Figure 2 of the thin-plate spline paper: a dark rim and one bright spot. The harmonic model, the paper's Laplacian diffusion, makes a tent at the spot; the biharmonic model, its thin-plate spline, shades the sphere smoothly. The rim is a curve with a free slope, the paper's tear with a value; the spot is a point in the paper, and a very small circle here.",
+        state: {
+            width: 500, height: 500,
+            curves: [
+                { ...ellipse(0.5, 0.5, 0.38, 0.38), inside: "#3b3b3b", outside: "#ffffff", free: true },
+                { ...ellipse(0.38, 0.36, 0.012, 0.012), inside: "#f4f4f4", outside: "#f4f4f4" },
+            ],
+        },
+    },
+    {
+        name: "Finch et al., Figure 5: a tear",
+        note: "After the middle row of Figure 5 of the thin-plate spline paper: a bright center inside a dark rim, cut apart by a circle that's a tear, so each side is flat in its own color. The paper's tear has no colors of its own and takes them from a point and the rim; a curve here always has a color a side, so the circle carries them. Turn off its Free slope to see a band's halo in its place.",
+        state: {
+            width: 500, height: 500,
+            curves: [
+                { ...ellipse(0.5, 0.5, 0.4, 0.4), inside: "#1e1e1e", outside: "#ffffff", free: true },
+                { ...ellipse(0.5, 0.5, 0.2, 0.2), inside: "#f2f2f2", outside: "#1e1e1e", free: true },
+            ],
+        },
+    },
 ];
 
 const influenceAvailable = () => !!(selection && state.curves[selection.curve]);
@@ -891,9 +924,7 @@ for (const view of views) {
         return [(event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height];
     };
 
-    overlay.addEventListener("pointerdown", event => {
-        if (event.button !== 0)
-            return;
+    const press = event => {
         event.preventDefault();
         try {
             overlay.setPointerCapture(event.pointerId);
@@ -909,7 +940,7 @@ for (const view of views) {
                 drag = { kind: "shape", curve: hit.curve, handle: hit.handle, start: at, origin: structuredClone(state.curves[hit.curve]) };
             } else if (hit.kind === "handle") {
                 selection = { curve: hit.curve, node: hit.node };
-                drag = { kind: "handle", ...hit };
+                drag = { kind: "handle", ...hit, start: at };
             } else if (hit.kind === "node") {
                 selection = { curve: hit.curve, node: hit.node };
                 drag = { kind: "node", curve: hit.curve, node: hit.node, start: at, origin: state.curves[hit.curve].nodes[hit.node].p.slice() };
@@ -947,9 +978,18 @@ for (const view of views) {
             drag = { kind: tool, curve: index, start: at, points: [at] };
         }
         changed();
+    };
+    overlay.addEventListener("pointerdown", event => {
+        if (event.button === 0)
+            press(event);
     });
 
     overlay.addEventListener("pointermove", event => {
+        // After a menu closes, WebKit sends the next press as a move with the button newly held.
+        if (!drag && pressedWithoutDown(event)) {
+            press(event);
+            return;
+        }
         const at = fraction(event);
         if (!drag) {
             if (tool === "select") {

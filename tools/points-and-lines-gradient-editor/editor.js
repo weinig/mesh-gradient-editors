@@ -4,7 +4,9 @@ __COMMON_HEAD__
 
 // Stops hold colors: on their own as points, or along lines. A stop's position is a fraction of the box, 0 to 1
 // across and down; its opacity and spread are percentages. A line is the stops it runs through, in order, by index,
-// and a stop at a line's end may also end another, joining them.
+// and a stop at a line's end may also end another, joining them. A line curves through its stops on its own, or, once
+// it has `handles`, as they say: for each of its stops an `in` and an `out` Bézier handle, offsets from the stop in
+// fractions of the box.
 let state = null;
 
 const stop = (x, y, color, spread = 0, opacity = 100) => ({ p: [x, y], color, opacity, spread });
@@ -122,6 +124,38 @@ const PRESETS = [
             lines: [{ stops: [0, 1, 2, 3, 4], closed: false }],
         },
     },
+    {
+        name: "A line shaped by its handles",
+        note: "A line of three stops, shaped by hand. Select a stop to see its handles and drag one to bend the line; hold Option to move a handle alone, or Option-drag a stop to pull new handles out of it. Reset handles lets the line curve through its stops on its own again.",
+        state: {
+            width: 600, height: 400,
+            stops: [stop(0.12, 0.3, "#7209b7"), stop(0.5, 0.6, "#f72585"), stop(0.88, 0.3, "#ffb703"), stop(0.5, 0.12, "#023047"), stop(0.5, 0.92, "#8ecae6")],
+            lines: [{ stops: [0, 1, 2], closed: false, handles: [
+                { in: [0, 0], out: [0.02, 0.3] }, { in: [-0.16, 0.12], out: [0.16, -0.12] }, { in: [-0.02, 0.3], out: [0, 0] },
+            ] }],
+        },
+    },
+    {
+        name: "Finch et al., Figure 5: a bright point in a dark rim",
+        note: "After Figure 5 of the thin-plate spline paper, before any curve is added to it: a bright point in the middle of a dark rim. The biharmonic model, the paper's thin-plate spline, fades smoothly from one to the other; the harmonic model makes a tent at the point. The rim is a closed line whose handles make it a circle. In the paper the rim is also a tear, with white outside it; a line here is one color on both sides, so the box is dark outside too.",
+        state: {
+            width: 500, height: 500,
+            stops: [stop(0.5, 0.14, "#262626"), stop(0.86, 0.5, "#262626"), stop(0.5, 0.86, "#262626"), stop(0.14, 0.5, "#262626"), stop(0.5, 0.5, "#f5f5f5")],
+            lines: [{ stops: [0, 1, 2, 3], closed: true, handles: [
+                { in: [-0.1988, 0], out: [0.1988, 0] }, { in: [0, -0.1988], out: [0, 0.1988] }, { in: [0.1988, 0], out: [-0.1988, 0] }, { in: [0, 0.1988], out: [0, -0.1988] },
+            ] }],
+        },
+    },
+    {
+        name: "Finch et al., Figure 8: two points make a ramp",
+        note: "After Figure 8 of the thin-plate spline paper, without its curve: two points alone give a straight ramp across the whole box, since a thin plate held at two points has nothing to bend it. This sets Edges to Natural and Points hold to One texel, as the paper has them, and they stay set when you choose another preset. With Mirrored edges or discs the ramp flattens toward the sides. The harmonic model only rings each point.",
+        state: {
+            width: 500, height: 500,
+            stops: [stop(0.3, 0.5, "#4d4d4d"), stop(0.8, 0.5, "#f2f2f2")],
+            lines: [],
+            edges: "natural", stopSize: "texel",
+        },
+    },
 ];
 
 const influenceAvailable = () => selection !== null && !!state.stops[selection];
@@ -130,7 +164,7 @@ const influenceAvailable = () => selection !== null && !!state.stops[selection];
 // when a preset is chosen, and which links it can read.
 const PRESET_KEYS = ["stops", "lines"];
 const TWO_SIDED_LINES = false;
-const DEFAULT_PRESET = 0;
+const DEFAULT_PRESET = 1;
 
 function resetEditing() {
     selection = null;
@@ -187,7 +221,12 @@ function acceptsState(data) {
         data.stopSize = "disc";
     data.lines = data.lines.filter(line => line && Array.isArray(line.stops)).map(line => {
         const stops = line.stops.filter(i => Number.isInteger(i) && index[i] >= 0).map(i => index[i]);
-        return { stops, closed: !!line.closed && stops.length > 2 };
+        const offset = v => Array.isArray(v) && v.length === 2 && v.every(finite);
+        // Handles are kept only if there's a sound pair for every stop.
+        const handles = Array.isArray(line.handles) && stops.length === line.stops.length && line.handles.length === stops.length
+            && line.handles.every(handle => handle && offset(handle.in) && offset(handle.out))
+            ? { handles: line.handles.map(handle => ({ in: handle.in.slice(), out: handle.out.slice() })) } : {};
+        return { stops, closed: !!line.closed && stops.length > 2, ...handles };
     }).filter(line => line.stops.length > 1);
     return true;
 }
@@ -225,25 +264,51 @@ function pruneLines() {
     drawing = drawn ? state.lines.indexOf(drawn) : null;
 }
 
-// A line's stretches from stop to stop, as their four Bézier points and the stops at either end. Two stops make a
-// straight line; with more, it curves through them as a Catmull-Rom spline does, in the box's own proportions.
+// The handles a line has on its own, for each of its stops. Two stops make a straight line; with more, it curves
+// through them as a Catmull-Rom spline does.
+function automaticHandles(line) {
+    const points = line.stops.map(i => state.stops[i].p);
+    const count = points.length;
+    const at = i => line.closed && count > 2 ? points[(i + count) % count] : points[clamp(i, 0, count - 1)];
+    return points.map((_, i) => {
+        const out = count > 2 ? [(at(i + 1)[0] - at(i - 1)[0]) / 6, (at(i + 1)[1] - at(i - 1)[1]) / 6] : [0, 0];
+        return { in: [-out[0], -out[1]], out };
+    });
+}
+
+// A line's handles: its own, or the automatic ones.
+const lineHandles = line => line.handles?.length === line.stops.length ? line.handles : automaticHandles(line);
+
+// Gives a line handles of its own, as they are now, to be moved.
+function ownHandles(line) {
+    if (line.handles?.length !== line.stops.length)
+        line.handles = automaticHandles(line);
+    return line.handles;
+}
+
+// Whether the stop at `position` along a line has a stretch before it, for its `in` handle, or after it, for `out`.
+function hasStretch(line, position, which) {
+    const count = line.stops.length;
+    if (count < 2)
+        return false;
+    return line.closed && count > 2 || (which === "in" ? position > 0 : position < count - 1);
+}
+
+// A line's stretches from stop to stop, as their four Bézier points and the stops at either end.
 function lineStretches(line) {
-    const [sx, sy] = boxScale();
-    const points = line.stops.map(i => [state.stops[i].p[0] * sx, state.stops[i].p[1] * sy]);
+    const points = line.stops.map(i => state.stops[i].p);
+    const handles = lineHandles(line);
     const count = points.length;
     const stretchCount = line.closed && count > 2 ? count : count - 1;
-    const at = i => line.closed && count > 2 ? points[(i + count) % count] : points[clamp(i, 0, count - 1)];
-    const toFraction = ([x, y]) => [x / sx, y / sy];
     const result = [];
     for (let i = 0; i < stretchCount; ++i) {
-        const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
-        const curved = count > 2;
-        const c1 = curved ? [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6] : p1;
-        const c2 = curved ? [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6] : p2;
+        const next = (i + 1) % count;
+        const p1 = points[i], p2 = points[next];
         result.push({
-            bezier: [p1, c1, c2, p2].map(toFraction),
+            bezier: [p1, [p1[0] + handles[i].out[0], p1[1] + handles[i].out[1]], [p2[0] + handles[next].in[0], p2[1] + handles[next].in[1]], p2],
             from: line.stops[i],
-            to: line.stops[(i + 1) % count],
+            to: line.stops[next],
+            position: i,
         });
     }
     return result;
@@ -409,6 +474,20 @@ function drawOverlay(view) {
         ctx.setLineDash([]);
     }
 
+    for (const { at, from } of selected ? stopHandles(selection) : []) {
+        ctx.strokeStyle = ACCENT;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(...toPixels(from));
+        ctx.lineTo(...toPixels(at));
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(...toPixels(at), 4, 0, 2 * Math.PI);
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+        ctx.stroke();
+    }
+
     state.stops.forEach((stop, i) => {
         const at = toPixels(stop.p);
         const radius = i === selection ? 8 : 6.5;
@@ -440,8 +519,49 @@ let drag = null;
 
 const subtract = (a, b) => [a[0] - b[0], a[1] - b[1]];
 
-// What's under a point in CSS pixels of `view`'s box: an end of the cross-section, a stop, the selected point's spread
-// circle, or a line, in that order.
+// A stop's handles on the lines through it, the ones that bend a stretch and aren't on the stop itself: each with
+// its line and the stop's position along it, where it is, and the stop it's from.
+function stopHandles(index) {
+    const result = [];
+    state.lines.forEach((line, l) => {
+        const position = line.stops.length > 1 ? line.stops.indexOf(index) : -1;
+        if (position < 0)
+            return;
+        const handle = lineHandles(line)[position];
+        const from = state.stops[index].p;
+        for (const which of ["in", "out"]) {
+            if (hasStretch(line, position, which) && (handle[which][0] || handle[which][1]))
+                result.push({ line: l, position, which, from, at: [from[0] + handle[which][0], from[1] + handle[which][1]] });
+        }
+    });
+    return result;
+}
+
+// Moves a stop's handle on a line to an offset from the stop. The stop's other handle stays opposite it, at its own
+// length, unless `alone`.
+function moveHandle(line, position, which, offset, alone) {
+    const handle = ownHandles(line)[position];
+    handle[which] = offset;
+    if (alone)
+        return;
+    const other = which === "in" ? "out" : "in";
+    const [sx, sy] = boxScale();
+    const length = Math.hypot(offset[0] * sx, offset[1] * sy) || 1;
+    const otherLength = Math.hypot(handle[other][0] * sx, handle[other][1] * sy);
+    handle[other] = [-offset[0] / length * otherLength, -offset[1] / length * otherLength];
+}
+
+// Pulls both of a stop's handles out of it on every line through it, `offset` one way and its opposite the other.
+function pullHandles(index, offset) {
+    for (const line of linesThrough(index)) {
+        const handle = ownHandles(line)[line.stops.indexOf(index)];
+        handle.out = offset.slice();
+        handle.in = [-offset[0], -offset[1]];
+    }
+}
+
+// What's under a point in CSS pixels of `view`'s box: an end of the cross-section, one of the selected stop's
+// handles, a stop, the selected point's spread circle, or a line, in that order.
 function hitTest(view, point) {
     const size = [view.overlay.clientWidth, view.overlay.clientHeight];
     const toPixels = ([x, y]) => [x * size[0], y * size[1]];
@@ -450,6 +570,10 @@ function hitTest(view, point) {
     const end = state.sectionKind === "line" ? sectionHit(point, toPixels) : null;
     if (end)
         return end;
+    for (const handle of selection !== null && state.stops[selection] ? stopHandles(selection) : []) {
+        if (distance(toPixels(handle.at)) <= 7)
+            return { kind: "handle", line: handle.line, position: handle.position, which: handle.which };
+    }
     for (let i = state.stops.length - 1; i >= 0; --i) {
         if (distance(toPixels(state.stops[i].p)) <= 9)
             return { kind: "stop", index: i };
@@ -507,8 +631,14 @@ function addStop(p) {
 function deleteStop(index) {
     state.stops.splice(index, 1);
     const drawn = drawing !== null ? state.lines[drawing] : null;
-    for (const line of state.lines)
-        line.stops = line.stops.filter(i => i !== index).map(i => i > index ? i - 1 : i);
+    for (const line of state.lines) {
+        const kept = line.stops.map((_, position) => position).filter(position => line.stops[position] !== index);
+        if (line.handles?.length === line.stops.length)
+            line.handles = kept.map(position => line.handles[position]);
+        else
+            delete line.handles;
+        line.stops = kept.map(position => line.stops[position]).map(i => i > index ? i - 1 : i);
+    }
     state.lines = state.lines.filter(line => line.stops.length > 1 || line === drawn && line.stops.length);
     for (const line of state.lines) {
         if (line.stops.length < 3)
@@ -516,6 +646,13 @@ function deleteStop(index) {
     }
     drawing = drawn && state.lines.includes(drawn) ? state.lines.indexOf(drawn) : null;
     selection = null;
+}
+
+// Adds a stop to the end of a line. If the line has handles of its own, the stop gets the ones it would have had.
+function appendStop(line, index) {
+    line.stops.push(index);
+    if (line.handles)
+        line.handles.push(automaticHandles(line).at(-1));
 }
 
 // Ends the line being drawn. A line of one stop is no line, and its stop is a point.
@@ -545,6 +682,10 @@ function continueFrom(index) {
             return l;
         if (line.stops[0] === index) {
             line.stops.reverse();
+            // Backwards, each stop's handles change places.
+            line.handles = line.handles?.reverse().map(handle => ({ in: handle.out, out: handle.in }));
+            if (!line.handles)
+                delete line.handles;
             return l;
         }
     }
@@ -564,9 +705,7 @@ for (const view of views) {
         return [(event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height];
     };
 
-    overlay.addEventListener("pointerdown", event => {
-        if (event.button !== 0)
-            return;
+    const press = event => {
         event.preventDefault();
         try {
             overlay.setPointerCapture(event.pointerId);
@@ -577,6 +716,12 @@ for (const view of views) {
             drag = { kind: "section", end: hit.end };
         } else if (hit?.kind === "spread") {
             drag = { kind: "spread", index: hit.index };
+        } else if (hit?.kind === "handle") {
+            drag = { kind: "handle", line: hit.line, position: hit.position, which: hit.which };
+        } else if (hit?.kind === "stop" && event.altKey && linesThrough(hit.index).length) {
+            // Option-dragging a stop on a line pulls its handles out of it.
+            selection = hit.index;
+            drag = { kind: "pull", index: hit.index, start: at };
         } else if (hit?.kind === "stop") {
             if (mode === "lines") {
                 const line = drawing !== null ? state.lines[drawing] : null;
@@ -586,7 +731,7 @@ for (const view of views) {
                         line.closed = true;
                         drawing = null;
                     } else if (!line.stops.includes(hit.index)) {
-                        line.stops.push(hit.index);
+                        appendStop(line, hit.index);
                     }
                 } else if (!line) {
                     drawing = continueFrom(hit.index);
@@ -602,7 +747,18 @@ for (const view of views) {
             const color = colorMix(from.color, to.color, hit.t);
             state.stops.push({ p, color, opacity: Math.round(from.opacity + (to.opacity - from.opacity) * hit.t), spread: 0 });
             const index = state.stops.length - 1;
-            line.stops.splice(line.stops.indexOf(hit.stretch.from) + 1, 0, index);
+            const position = hit.stretch.position + 1;
+            line.stops.splice(position, 0, index);
+            if (line.handles) {
+                // The stretch is split where the stop goes, so a line with handles of its own keeps its shape.
+                const [p0, p1, p2, p3] = hit.stretch.bezier;
+                const mix = (a, b) => [a[0] + (b[0] - a[0]) * hit.t, a[1] + (b[1] - a[1]) * hit.t];
+                const a = mix(p0, p1), b = mix(p1, p2), c = mix(p2, p3), d = mix(a, b), e = mix(b, c);
+                const next = position % line.handles.length;
+                line.handles[position - 1].out = subtract(a, p0);
+                line.handles[next].in = subtract(c, p3);
+                line.handles.splice(position, 0, { in: subtract(d, p), out: subtract(e, p) });
+            }
             selection = index;
             drag = { kind: "stop", index, start: at, origin: p.slice(), moved: false };
         } else if (mode === "lines") {
@@ -611,22 +767,32 @@ for (const view of views) {
                 state.lines.push({ stops: [index], closed: false });
                 drawing = state.lines.length - 1;
             } else {
-                state.lines[drawing].stops.push(index);
+                appendStop(state.lines[drawing], index);
             }
             selection = index;
-            drag = { kind: "stop", index, start: at, origin: at.slice(), moved: false };
+            // Dragging on from a new stop pulls its handles out, as a pen does.
+            drag = { kind: "pen", index, line: drawing, start: at };
         } else {
             selection = addStop(at);
             drag = { kind: "stop", index: selection, start: at, origin: at.slice(), moved: false };
         }
         changed();
+    };
+    overlay.addEventListener("pointerdown", event => {
+        if (event.button === 0)
+            press(event);
     });
 
     overlay.addEventListener("pointermove", event => {
+        // After a menu closes, WebKit sends the next press as a move with the button newly held.
+        if (!drag && pressedWithoutDown(event)) {
+            press(event);
+            return;
+        }
         const at = fraction(event);
         if (!drag) {
             const hit = hitTest(view, point(event));
-            overlay.style.cursor = !hit ? "crosshair" : hit.kind === "section" ? (hit.end === "row" ? "ns-resize" : "move") : hit.kind === "spread" ? "ew-resize" : hit.kind === "stop" ? "grab" : mode === "lines" ? "copy" : "crosshair";
+            overlay.style.cursor = !hit ? "crosshair" : hit.kind === "section" ? (hit.end === "row" ? "ns-resize" : "move") : hit.kind === "spread" ? "ew-resize" : hit.kind === "stop" || hit.kind === "handle" ? "grab" : mode === "lines" ? "copy" : "crosshair";
             return;
         }
         if (drag.kind === "section") {
@@ -634,10 +800,31 @@ for (const view of views) {
             changed();
             return;
         }
+        if (drag.kind === "handle") {
+            const line = state.lines[drag.line];
+            const stop = line && state.stops[line.stops[drag.position]];
+            if (stop)
+                moveHandle(line, drag.position, drag.which, subtract(at, stop.p), event.altKey);
+            changed();
+            return;
+        }
         const stop = state.stops[drag.index];
         if (!stop)
             return;
-        if (drag.kind === "spread") {
+        if (drag.kind === "pull" || drag.kind === "pen") {
+            const delta = subtract(at, drag.start);
+            // Under a few pixels it's still a click.
+            if (Math.hypot(delta[0] * overlay.clientWidth, delta[1] * overlay.clientHeight) >= 3) {
+                if (drag.kind === "pull") {
+                    pullHandles(drag.index, delta);
+                } else if (state.lines[drag.line]) {
+                    const line = state.lines[drag.line];
+                    const handle = ownHandles(line)[line.stops.indexOf(drag.index)];
+                    handle.out = delta;
+                    handle.in = [-delta[0], -delta[1]];
+                }
+            }
+        } else if (drag.kind === "spread") {
             const [sx, sy] = boxScale();
             const reach = Math.hypot((at[0] - stop.p[0]) * sx, (at[1] - stop.p[1]) * sy);
             stop.spread = Math.round(clamp((reach - STOP_RADIUS) / (FULL_SPREAD - STOP_RADIUS), 0, 1) * 100);
@@ -700,7 +887,7 @@ function cssColorIn(space, c, alpha) {
 
 const MODE_NOTES = {
     points: "Points: click to add a stop, in the color around it, and drag stops to move them. The arrow keys nudge the selected stop, Delete removes it, and Escape selects nothing. Drag a stop out of the box to remove it. Drag the dashed circle around a selected stop to change its spread.",
-    lines: "Lines: click to add stops along a line; it curves through them once it has three. Double-click or press Finish line to end it. Click a stop at the end of a line to carry on from it, the first stop to close the line, another line's end to join them, or a line to add a stop on it.",
+    lines: "Lines: click to add stops along a line; it curves through them once it has three. Drag as you add a stop to pull out its handles and shape the curve yourself, as a pen does. Double-click or press Finish line to end it. Click a stop at the end of a line to carry on from it, the first stop to close the line, another line's end to join them, or a line to add a stop on it. A selected stop on a line shows its handles: drag one to bend the line, with Option to move it alone, or Option-drag the stop to pull new ones out.",
 };
 
 function updateControls() {
@@ -719,6 +906,7 @@ function updateControls() {
     $("stopFields").hidden = !selected;
     $("deleteStop").hidden = !selected;
     $("finishLine").hidden = drawing === null;
+    $("resetHandles").hidden = !(selected && linesThrough(selection).some(line => line.handles));
     if (!selected)
         $("stopTitle").textContent = "Stops";
     if (selected) {
@@ -854,6 +1042,12 @@ $("deleteStop").addEventListener("click", () => {
     changed();
 });
 $("finishLine").addEventListener("click", finishLine);
+// The lines through the selected stop go back to curving through their stops on their own.
+$("resetHandles").addEventListener("click", () => {
+    for (const line of selection !== null ? linesThrough(selection) : [])
+        delete line.handles;
+    changed();
+});
 $("clearStops").addEventListener("click", () => {
     state.stops = [];
     state.lines = [];
@@ -872,16 +1066,21 @@ __COMMON_CONTROLS__
 
 // A made-up freeform-gradient() with lines:
 //
-//   freeform-gradient( [ harmonic || in <space> ]? , [ <stop> | line( <stop># [ , close ]? ) ]# )
+//   freeform-gradient( [ harmonic || in <space> ]? , [ <stop> | line( <line-stop># [ , close ]? ) ]# )
 //   <stop> = <color> <position> [ spread <percentage> ]? [ opacity <percentage> ]?
+//   <line-stop> = <color> <position> [ handles <percentage>{4} ]? [ opacity <percentage> ]?
+//
+// A line's stops have handles if the line has its own: the in handle's offset, then the out handle's.
 
 const number = v => String(Math.round(v * 100) / 100 || 0);
 const percent = v => `${number(v * 100)}%`;
 
-function stopText(stop, withSpread) {
+function stopText(stop, withSpread, handle = null) {
     const parts = [stop.color.trim(), percent(stop.p[0]), percent(stop.p[1])];
     if (withSpread && stop.spread)
         parts.push(`spread ${stop.spread}%`);
+    if (handle)
+        parts.push(`handles ${[...handle.in, ...handle.out].map(percent).join(" ")}`);
     if (stop.opacity !== 100)
         parts.push(`opacity ${stop.opacity}%`);
     return parts.join(" ");
@@ -891,7 +1090,7 @@ function cssText() {
     const prelude = [state.models.length === 1 && state.models[0] === "harmonic" ? "harmonic" : "", `in ${state.space}`].filter(Boolean).join(" ");
     const points = state.stops.filter((_, i) => !linesThrough(i).length).map(stop => stopText(stop, true));
     const lines = state.lines.filter(line => line.stops.length > 1).map(line => {
-        const stops = line.stops.map(i => stopText(state.stops[i], false));
+        const stops = line.stops.map((i, position) => stopText(state.stops[i], false, line.handles?.[position]));
         return `line(${[...stops, ...(line.closed && line.stops.length > 2 ? ["close"] : [])].join(", ")})`;
     });
     return `background-image: freeform-gradient(${[prelude, ...points, ...lines].join(",\n    ")});`;

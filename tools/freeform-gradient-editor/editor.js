@@ -1342,6 +1342,7 @@ function scheduleRender() {
 // Drags write the URL when they end.
 function changed({ dragging = !!drag } = { }) {
     scheduleRender();
+    scheduleUndoStep();
     if (!dragging)
         scheduleHashWrite();
 }
@@ -1843,13 +1844,102 @@ function removeSelectedStop() {
     changed();
 }
 
+// MARK: - Undo, redo and keys
+
+// Undo steps through the gradient and the box's size, not the settings around them.
+// A step is taken when a change has settled: after a drag or a slider's move ends, not during it.
+const UNDO_KEYS = ["width", "height", "space", "stops"];
+const undoSteps = [];
+let undoIndex = -1;
+let undoTimer = null;
+// Whether a slider or the color picker is still moving.
+let adjusting = false;
+
+const undoSnapshot = () => JSON.stringify(Object.fromEntries(UNDO_KEYS.map(key => [key, state[key]])));
+
+function takeUndoStep() {
+    undoTimer = null;
+    if (drag || adjusting)
+        return scheduleUndoStep();
+    const now = undoSnapshot();
+    if (now === undoSteps[undoIndex])
+        return;
+    undoSteps.splice(undoIndex + 1, Infinity, now);
+    if (undoSteps.length > 200)
+        undoSteps.shift();
+    undoIndex = undoSteps.length - 1;
+    updateUndoButtons();
+}
+
+function scheduleUndoStep() {
+    if (undoTimer === null)
+        undoTimer = setTimeout(takeUndoStep, 300);
+}
+
+// Steps back, or forward for 1, to what the editor held then.
+function stepUndo(by) {
+    // A change still settling is a step of its own, to come back to.
+    if (undoTimer !== null) {
+        clearTimeout(undoTimer);
+        takeUndoStep();
+    }
+    if (drag || !undoSteps[undoIndex + by])
+        return;
+    undoIndex += by;
+    Object.assign(state, JSON.parse(undoSteps[undoIndex]));
+    // There may be fewer stops now.
+    selected = Math.min(selected, state.stops.length - 1);
+    changed();
+    updateUndoButtons();
+}
+
+function updateUndoButtons() {
+    $("undo").disabled = undoIndex <= 0;
+    $("redo").disabled = undoIndex >= undoSteps.length - 1;
+}
+
+$("undo").addEventListener("click", () => stepUndo(-1));
+$("redo").addEventListener("click", () => stepUndo(1));
+
+// Moves the selected stop. Says whether it moved.
+function nudgeSelection(dx, dy) {
+    if (drag)
+        return false;
+    const stop = state.stops[selected];
+    const position = round2Point(clampedToReach([stop.pos[0] + dx, stop.pos[1] + dy]));
+    if (position[0] === stop.pos[0] && position[1] === stop.pos[1])
+        return false;
+    stop.pos = position;
+    return true;
+}
+
 document.addEventListener("keydown", event => {
-    if ((event.key !== "Delete" && event.key !== "Backspace") || event.metaKey || event.ctrlKey || event.altKey)
+    // Keys typed into a field of text are the field's: its own undo, its Delete. Arrows are also a slider's and a
+    // menu's.
+    const field = event.target.closest?.("input, textarea, select");
+    const typing = !!field && (field.tagName === "TEXTAREA" || ["text", "number", "search"].includes(field.type));
+    const steering = typing || (!!field && (field.tagName === "SELECT" || field.type === "range"));
+    const command = event.metaKey || event.ctrlKey;
+    const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+    if (command && !typing && (key === "z" || key === "y")) {
+        event.preventDefault();
+        stepUndo(key === "y" || event.shiftKey ? 1 : -1);
         return;
-    if (event.target.closest?.("input, select, textarea"))
+    }
+    if (typing || command || event.altKey || (steering && key.startsWith("Arrow")))
         return;
-    event.preventDefault();
-    removeSelectedStop();
+    const arrow = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[key];
+    if (key === "Delete" || key === "Backspace") {
+        event.preventDefault();
+        removeSelectedStop();
+    } else if (arrow) {
+        // A pixel of the box, or ten with Shift. Positions are percentages of the box.
+        const pixels = event.shiftKey ? 10 : 1;
+        if (nudgeSelection(arrow[0] * pixels * 100 / state.width, arrow[1] * pixels * 100 / state.height)) {
+            event.preventDefault();
+            changed();
+        }
+    }
 });
 
 // MARK: - Visualize
@@ -3115,9 +3205,13 @@ $("stopPicker").addEventListener("input", () => {
     state.stops[selected].color = $("stopPicker").value;
     $("stopText").value = $("stopPicker").value;
     $("stopText").classList.remove("invalid");
+    adjusting = true;
     changed({ dragging: true });
 });
-$("stopPicker").addEventListener("change", writeHash);
+$("stopPicker").addEventListener("change", () => {
+    adjusting = false;
+    writeHash();
+});
 $("stopText").addEventListener("input", () => {
     const text = $("stopText").value.trim();
     const valid = !!parseColor(text);
@@ -3146,9 +3240,13 @@ $("stopWeight").addEventListener("change", () => {
 });
 $("stopSpread").addEventListener("input", () => {
     state.stops[selected].spread = clamp(Number($("stopSpread").value), 0, 1);
+    adjusting = true;
     changed({ dragging: true });
 });
-$("stopSpread").addEventListener("change", () => changed());
+$("stopSpread").addEventListener("change", () => {
+    adjusting = false;
+    changed();
+});
 $("stopSpreadDefault").addEventListener("click", () => {
     state.stops[selected].spread = null;
     changed();
@@ -3178,6 +3276,7 @@ window.addEventListener("hashchange", () => {
         selected = 0;
         lastWrittenHash = location.hash;
         scheduleRender();
+        scheduleUndoStep();
     }
 });
 
@@ -3188,6 +3287,7 @@ new ResizeObserver(() => scheduleRender()).observe($("stageScroller"));
 
 state = decodeState(location.hash.slice(1)) ?? presetState(2);
 writeHash();
+takeUndoStep();
 render();
 
 WebGPUFreeformGradientRenderer.create().then(renderer => {

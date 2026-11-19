@@ -127,3 +127,58 @@ test("adding, moving, editing and removing stops", async t => {
     t.equal(state.stops.length, count, "Remove stop removes it");
     render();
 });
+
+test("undo, redo, and the arrow and Delete keys", async t => {
+    // A key pressed with nothing focused, or in a control.
+    const press = (key, more = {}, target = document.body) => target.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...more }));
+    await preset("Three stops");
+    await sleep(500);
+    const start = state.stops[0].pos[0];
+    // Positions are rounded to hundredths of a percent at each press.
+    const moved = pixels => Math.abs(state.stops[0].pos[0] - (start + pixels * 100 / state.width));
+    selected = 0;
+    changed();
+    for (let i = 0; i < 3; ++i)
+        press("ArrowRight");
+    t.below(moved(3), 0.02, "three presses of the right arrow move the stop three pixels");
+    press("ArrowRight", {}, $("stopText"));
+    press("ArrowRight", {}, $("stopSpread"));
+    t.below(moved(3), 0.02, "an arrow in a text field or a slider doesn't move it");
+    await sleep(500);
+    press("ArrowDown", { shiftKey: true });
+    t.below(Math.abs(state.stops[0].pos[1] - (30 + 1000 / state.height)), 0.02, "Shift and the down arrow move it ten pixels");
+    await sleep(500);
+    press("z", { metaKey: true });
+    press("z", { metaKey: true });
+    await sleep(100);
+    t.equal(JSON.stringify(state.stops[0].pos), "[20,30]", "undo twice puts the stop back");
+    press("z", { metaKey: true, shiftKey: true });
+    press("y", { ctrlKey: true });
+    await sleep(100);
+    t.below(moved(3), 0.02, "redo, by either key, moves it again");
+    t.equal(state.stops[0].pos[1], 32.5, "and down again");
+    t.ok($("redo").disabled && !$("undo").disabled, "with nothing left to redo, only Undo is enabled");
+    press("z", { metaKey: true }, $("stopText"));
+    t.equal(state.stops[0].pos[1], 32.5, "undo typed into a text field is the field's own");
+    press("Delete");
+    await sleep(500);
+    t.equal(state.stops.length, 2, "Delete removes the selected stop");
+    $("undo").click();
+    await sleep(100);
+    t.equal(state.stops.length, 3, "the Undo button brings it back");
+    $("addStop").click();
+    await sleep(500);
+    t.equal(selected, 3, "a stop added is selected");
+    $("undo").click();
+    t.equal(`${state.stops.length} ${selected}`, "3 2", "undoing it selects a stop that's still there");
+    $("redo").click();
+    t.equal(state.stops.length, 4, "the Redo button adds it again");
+    set("overlayToggle", false);
+    await sleep(500);
+    $("undo").click();
+    t.equal(`${state.stops.length} ${state.overlay}`, "3 false", "undo leaves the settings around the gradient alone");
+    set("overlayToggle", true);
+    await sleep(800);
+    t.equal(JSON.stringify(decodeState(location.hash.slice(1))?.stops), JSON.stringify(state.stops), "the link follows an undo");
+    render();
+});
