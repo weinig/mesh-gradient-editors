@@ -102,6 +102,31 @@ h1 { font-size: 17px; margin: 0 0 4px; }
 h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 8px; }
 .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
 .row > label { min-width: 84px; color: var(--muted); }
+#sampleTip {
+    position: absolute;
+    z-index: 10;
+    pointer-events: none;
+    display: none;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(29, 29, 31, 0.92);
+    color: #fff;
+    font: 12px/1.55 ui-monospace, Menlo, monospace;
+    white-space: pre;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+#sampleTip .muted { color: rgba(255, 255, 255, 0.6); }
+#sampleTip .swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    vertical-align: -1px;
+    margin-right: 3px;
+}
+#sampleTip .swatch.large { width: 14px; height: 14px; border-radius: 3px; vertical-align: -3px; margin-right: 6px; }
+#view { flex: 1; min-width: 0; }
 button.info {
     flex: none;
     display: flex;
@@ -202,6 +227,7 @@ button.small { font-size: 12px; }
             </div>
         </div>
     </div>
+    <div id="sampleTip"></div>
     <aside>
         <section>
             <h1>mesh-gradient() Editor</h1>
@@ -275,6 +301,25 @@ button.small { font-size: 12px; }
                 <button id="resetControls" class="small">Reset control points</button>
             </div>
             <div id="swatches"></div>
+        </section>
+
+        <section>
+            <h2>Visualize</h2>
+            <div class="row">
+                <label for="view">Show</label>
+                <select id="view">
+                    <option value="gradient">The gradient</option>
+                    <option value="triangles">The triangles it's drawn with</option>
+                </select>
+                <button class="info" aria-controls="viewNotes" title="About this view" aria-label="About this view" aria-expanded="false"></button>
+            </div>
+            <p id="tessellationCount" class="note" hidden></p>
+            <div id="viewNotes" hidden>
+                <p id="viewNote" class="note"></p>
+            </div>
+            <div class="row" title="Show the color under the pointer, in the interpolation color space, and where in which patch it is.">
+                <label><input type="checkbox" id="sampleToggle"> Sample the color under the pointer</label>
+            </div>
         </section>
 
         <section>
@@ -905,6 +950,13 @@ function cssText() {
 
 // MARK: - URL fragment
 
+// What the box shows under Visualize.
+const VIEWS = ["gradient", "triangles"];
+const VIEW_NOTES = {
+    gradient: "The gradient as it's drawn.",
+    triangles: "The mesh is drawn as triangles. Every patch is cut into the same grid of cells, each cell two triangles. The grid is as fine as the most bent patch needs at the box's size in pixels, from 1 to 96 cells a side, so it changes as you bend the mesh or resize the box. The triangles only place a patch's pixels: each pixel's color is worked out from where it is in its patch, not blended across its triangle. This is how the WebGPU renderer here cuts the mesh, following WebKit's.",
+};
+
 function encodeState() {
     const data = {
         v: 1,
@@ -917,6 +969,8 @@ function encodeState() {
         b: state.background,
         g: state.renderer,
         o: state.overlay ? 1 : 0,
+        vw: state.view === "gradient" ? undefined : state.view,
+        m: state.sample ? 1 : undefined,
         gmap: state.gamutMapping,
         k: state.backdrop,
         p: state.points.map(p => {
@@ -961,6 +1015,8 @@ function decodeState(text) {
             background: typeof data.b === "string" ? data.b : "",
             renderer: data.g === "webgpu" ? "webgpu" : "native",
             overlay: data.o !== 0,
+            view: VIEWS.includes(data.vw) ? data.vw : "gradient",
+            sample: data.m === 1,
             gamutMapping: data.gmap === "clip" ? "clip" : "map",
             backdrop: BACKDROPS.includes(data.k) ? data.k : "checkerboard",
             points,
@@ -1126,6 +1182,8 @@ function presetState(index) {
         height: state?.height ?? 400,
         renderer: state?.renderer ?? defaultRenderer(),
         overlay: state?.overlay ?? true,
+        view: state?.view ?? "gradient",
+        sample: state?.sample ?? false,
         gamutMapping: state?.gamutMapping ?? "map",
         backdrop: state?.backdrop ?? "checkerboard",
         ...preset,
@@ -1298,7 +1356,9 @@ function subdivisions(cv) {
     return Number.isFinite(count) ? clamp(Math.ceil(count), 1, 96) : 1;
 }
 
-function buildMesh(pixelWidth, pixelHeight, outputSpace) {
+// Each patch's control values, in row order: its position in the unit box, and its weighted colors (8 floats each).
+// `colorsMissingAlpha` is null when no point is missing its alpha.
+function meshPatches() {
     const { rows, cols } = state;
     const position = (r, c) => resolvedPosition(r, c).map(v => v / 100);
     const controls = (r, c) => resolvedControlPoints(r, c).map(p => [p[0] / 100, p[1] / 100]);
@@ -1311,8 +1371,7 @@ function buildMesh(pixelWidth, pixelHeight, outputSpace) {
             return Math.max(2 * last - index, 0);
         return index;
     };
-    // Equivalent to MeshGradient::makeColorPatch() in MeshGradient.cpp. Each of the 16 control values is a weighted
-    // color, 8 floats.
+    // Equivalent to MeshGradient::makeColorPatch() in MeshGradient.cpp.
     const colorPatch = (colors, r, c) => {
         const color = (r, c) => colors[mirrored(r, rows) * cols + mirrored(c, cols)];
         return coonsPatch(
@@ -1322,30 +1381,41 @@ function buildMesh(pixelWidth, pixelHeight, outputSpace) {
             monotoneSegment(color(r - 1, c), color(r, c), color(r + 1, c), color(r + 2, c)));
     };
 
-    const patchCount = (rows - 1) * (cols - 1);
+    const patches = [];
+    for (let r = 0; r + 1 < rows; ++r) {
+        for (let c = 0; c + 1 < cols; ++c) {
+            const [tl, tr, bl, br] = [position(r, c), position(r, c + 1), position(r + 1, c), position(r + 1, c + 1)];
+            const [ktl, ktr, kbl, kbr] = [controls(r, c), controls(r, c + 1), controls(r + 1, c), controls(r + 1, c + 1)];
+            patches.push({
+                r,
+                c,
+                position: coonsPatch(
+                    [tl, ktl[1], ktr[3], tr],
+                    [tr, ktr[2], kbr[0], br],
+                    [bl, kbl[1], kbr[3], br],
+                    [tl, ktl[2], kbl[0], bl]),
+                colors: colorPatch(weighted, r, c),
+                colorsMissingAlpha: missingAlpha ? colorPatch(missingAlpha, r, c) : null,
+            });
+        }
+    }
+    return patches;
+}
+
+function buildMesh(pixelWidth, pixelHeight, outputSpace) {
+    const patches = meshPatches();
+    const patchCount = patches.length;
     const positions = new Float32Array(patchCount * 32);
     const colorValues = new Float32Array(patchCount * 128);
     // Empty when no point is missing its alpha.
-    const colorValuesMissingAlpha = missingAlpha ? new Float32Array(patchCount * 128) : null;
+    const colorValuesMissingAlpha = patches[0].colorsMissingAlpha ? new Float32Array(patchCount * 128) : null;
     let maximumSubdivisions = 1;
-    let patch = 0;
-    for (let r = 0; r + 1 < rows; ++r) {
-        for (let c = 0; c + 1 < cols; ++c, ++patch) {
-            const [tl, tr, bl, br] = [position(r, c), position(r, c + 1), position(r + 1, c), position(r + 1, c + 1)];
-            const [ktl, ktr, kbl, kbr] = [controls(r, c), controls(r, c + 1), controls(r + 1, c), controls(r + 1, c + 1)];
-            const positionPatch = coonsPatch(
-                [tl, ktl[1], ktr[3], tr],
-                [tr, ktr[2], kbr[0], br],
-                [bl, kbl[1], kbr[3], br],
-                [tl, ktl[2], kbl[0], bl]);
-            positionPatch.forEach((p, k) => positions.set(p, patch * 32 + k * 2));
-            maximumSubdivisions = Math.max(maximumSubdivisions, subdivisions(positionPatch.map(p => [p[0] * pixelWidth, p[1] * pixelHeight])));
-
-            colorPatch(weighted, r, c).forEach((v, k) => colorValues.set(v, patch * 128 + k * 8));
-            if (missingAlpha)
-                colorPatch(missingAlpha, r, c).forEach((v, k) => colorValuesMissingAlpha.set(v, patch * 128 + k * 8));
-        }
-    }
+    patches.forEach((patch, index) => {
+        patch.position.forEach((p, k) => positions.set(p, index * 32 + k * 2));
+        maximumSubdivisions = Math.max(maximumSubdivisions, subdivisions(patch.position.map(p => [p[0] * pixelWidth, p[1] * pixelHeight])));
+        patch.colors.forEach((v, k) => colorValues.set(v, index * 128 + k * 8));
+        patch.colorsMissingAlpha?.forEach((v, k) => colorValuesMissingAlpha.set(v, index * 128 + k * 8));
+    });
 
     const backgroundColor = state.background.trim() ? parseColor(state.background) : null;
     const [br, bg, bb, ba] = backgroundColor ? toOutput(backgroundColor, outputSpace) : [0, 0, 0, 0];
@@ -1358,6 +1428,37 @@ function buildMesh(pixelWidth, pixelHeight, outputSpace) {
         space: SPACES.indexOf(state.space),
         background: [br * ba, bg * ba, bb * ba, ba],
     };
+}
+
+// The triangles the mesh is drawn with: every patch cut into the same grid, `subdivisions` cells to a side, each
+// cell two triangles. Returns each patch's grid of points, a row at a time, as fractions of the box. Equivalent to
+// meshGradientTessellate() in the shader.
+function tessellation(pixelWidth, pixelHeight) {
+    const mesh = buildMesh(pixelWidth, pixelHeight, "srgb");
+    const side = mesh.subdivisions + 1;
+    const bases = Array.from({ length: side }, (_, i) => {
+        const t = i / mesh.subdivisions, s = 1 - t;
+        return [s * s * s, 3 * s * s * t, 3 * s * t * t, t * t * t];
+    });
+    const patches = [];
+    for (let patch = 0; patch < mesh.patchCount; ++patch) {
+        const points = new Float32Array(side * side * 2);
+        for (let j = 0; j < side; ++j) {
+            for (let i = 0; i < side; ++i) {
+                let x = 0, y = 0;
+                for (let row = 0; row < 4; ++row) {
+                    for (let column = 0; column < 4; ++column) {
+                        const weight = bases[j][row] * bases[i][column];
+                        x += weight * mesh.positions[patch * 32 + (row * 4 + column) * 2];
+                        y += weight * mesh.positions[patch * 32 + (row * 4 + column) * 2 + 1];
+                    }
+                }
+                points.set([x, y], (j * side + i) * 2);
+            }
+        }
+        patches.push(points);
+    }
+    return { subdivisions: mesh.subdivisions, patches };
 }
 
 // MARK: - WebGPU renderer
@@ -1933,6 +2034,8 @@ function render() {
 
     updateMargin(width, height);
     drawOverlay(width, height, dpr);
+    if (lastSamplePosition)
+        showSample(lastSamplePosition);
     updateControls();
 }
 
@@ -1986,13 +2089,51 @@ function updateMargin(width, height) {
 }
 narrowScreen.addEventListener("change", () => scheduleRender());
 
+// The triangles' edges, under the points and their handles.
+function drawTessellation(ctx, width, height, dpr) {
+    const { subdivisions, patches } = tessellation(Math.round(width * dpr), Math.round(height * dpr));
+    const side = subdivisions + 1;
+    const edges = new Path2D();
+    for (const points of patches) {
+        const at = (i, j) => [margin.x + points[(j * side + i) * 2] * width, margin.y + points[(j * side + i) * 2 + 1] * height];
+        for (let j = 0; j < side; ++j) {
+            for (let i = 0; i < side; ++i) {
+                const [x, y] = at(i, j);
+                if (i + 1 < side) {
+                    edges.moveTo(x, y);
+                    edges.lineTo(...at(i + 1, j));
+                }
+                if (j + 1 < side) {
+                    edges.moveTo(x, y);
+                    edges.lineTo(...at(i, j + 1));
+                }
+                // A cell's diagonal, from its top right corner to its bottom left.
+                if (i + 1 < side && j + 1 < side) {
+                    edges.moveTo(...at(i + 1, j));
+                    edges.lineTo(...at(i, j + 1));
+                }
+            }
+        }
+    }
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
+    ctx.stroke(edges);
+    ctx.lineWidth = 0.5;
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
+    ctx.stroke(edges);
+    const triangles = patches.length * subdivisions * subdivisions * 2;
+    $("tessellationCount").textContent = `${subdivisions} × ${subdivisions} cells to a patch: ${triangles.toLocaleString()} triangles in ${patches.length} patch${patches.length === 1 ? "" : "es"}.`;
+}
+
 function drawOverlay(width, height, dpr) {
     const cssWidth = width + 2 * margin.x, cssHeight = height + 2 * margin.y;
     overlay.style.left = `${-margin.x}px`;
     overlay.style.top = `${-margin.y}px`;
     overlay.style.width = `${cssWidth}px`;
     overlay.style.height = `${cssHeight}px`;
-    overlay.style.display = state.overlay ? "" : "none";
+    overlay.style.display = state.overlay || state.view === "triangles" ? "" : "none";
+    // With the points hidden there's nothing to drag.
+    overlay.style.pointerEvents = state.overlay ? "" : "none";
     if (overlay.width !== Math.round(cssWidth * dpr) || overlay.height !== Math.round(cssHeight * dpr)) {
         overlay.width = Math.round(cssWidth * dpr);
         overlay.height = Math.round(cssHeight * dpr);
@@ -2000,6 +2141,9 @@ function drawOverlay(width, height, dpr) {
     const ctx = overlayContext;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssWidth, cssHeight);
+    $("tessellationCount").hidden = state.view !== "triangles";
+    if (state.view === "triangles")
+        drawTessellation(ctx, width, height, dpr);
     if (!state.overlay)
         return;
 
@@ -2196,6 +2340,184 @@ overlay.addEventListener("pointerup", endDrag);
 overlay.addEventListener("pointercancel", endDrag);
 overlay.addEventListener("lostpointercapture", endDrag);
 
+// MARK: - Sampling
+
+function cubicBernsteinDerivative(t) {
+    const s = 1 - t;
+    return [-3 * s * s, 3 * s * s - 6 * s * t, 6 * s * t - 3 * t * t, 3 * t * t];
+}
+
+// Sums 16 control values, each an array of numbers, with the weights `basisV[row] * basisU[column]`.
+function evaluatePatch(controlValues, basisU, basisV) {
+    const result = new Array(controlValues[0].length).fill(0);
+    for (let row = 0; row < 4; ++row) {
+        for (let column = 0; column < 4; ++column) {
+            const weight = basisV[row] * basisU[column];
+            controlValues[4 * row + column].forEach((value, k) => result[k] += value * weight);
+        }
+    }
+    return result;
+}
+
+// The patch and (u, v) drawn at `target`, a point in the unit box, or null. Like the renderer, later patches and
+// triangles win where the mesh folds over itself.
+function locate(patches, target) {
+    const side = 17;
+    const contains = (a, b, c) => {
+        const d = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
+        if (Math.abs(d) < 1e-12)
+            return null;
+        const l1 = ((b[1] - c[1]) * (target[0] - c[0]) + (c[0] - b[0]) * (target[1] - c[1])) / d;
+        const l2 = ((c[1] - a[1]) * (target[0] - c[0]) + (a[0] - c[0]) * (target[1] - c[1])) / d;
+        const l3 = 1 - l1 - l2;
+        return l1 >= -1e-6 && l2 >= -1e-6 && l3 >= -1e-6 ? [l1, l2, l3] : null;
+    };
+    for (let index = patches.length - 1; index >= 0; --index) {
+        const patch = patches[index];
+        const grid = [];
+        for (let j = 0; j < side; ++j) {
+            for (let i = 0; i < side; ++i) {
+                const u = i / (side - 1), v = j / (side - 1);
+                grid.push({ uv: [u, v], p: evaluatePatch(patch.position, cubicBernstein(u), cubicBernstein(v)) });
+            }
+        }
+        for (let j = side - 2; j >= 0; --j) {
+            for (let i = side - 2; i >= 0; --i) {
+                const a = j * side + i;
+                for (const triangle of [[a + 1, a + side + 1, a + side], [a, a + 1, a + side]]) {
+                    const [A, B, C] = triangle.map(k => grid[k]);
+                    const weights = contains(A.p, B.p, C.p);
+                    if (!weights)
+                        continue;
+                    let uv = [0, 1].map(k => weights[0] * A.uv[k] + weights[1] * B.uv[k] + weights[2] * C.uv[k]);
+                    // Refine with Newton's method, since the grid is only an approximation of the patch.
+                    for (let step = 0; step < 4; ++step) {
+                        const [bu, bv] = [cubicBernstein(uv[0]), cubicBernstein(uv[1])];
+                        const p = evaluatePatch(patch.position, bu, bv);
+                        const du = evaluatePatch(patch.position, cubicBernsteinDerivative(uv[0]), bv);
+                        const dv = evaluatePatch(patch.position, bu, cubicBernsteinDerivative(uv[1]));
+                        const det = du[0] * dv[1] - dv[0] * du[1];
+                        if (Math.abs(det) < 1e-12)
+                            break;
+                        const [ex, ey] = [target[0] - p[0], target[1] - p[1]];
+                        uv = [clamp(uv[0] + (ex * dv[1] - dv[0] * ey) / det, 0, 1), clamp(uv[1] + (du[0] * ey - ex * du[1]) / det, 0, 1)];
+                    }
+                    return { patch, u: uv[0], v: uv[1] };
+                }
+            }
+        }
+    }
+    return null;
+}
+
+// The two sums of the weighted mean at (u, v). Equivalent to weightedMean() in the shader.
+function sampleWeightedMean(patch, u, v) {
+    const [bu, bv] = [cubicBernstein(u), cubicBernstein(v)];
+    const color = evaluatePatch(patch.colors, bu, bv);
+    if (patch.colorsMissingAlpha) {
+        const alpha = color[7] > 0 ? clamp(color[3] / color[7], 0, 1) : 1;
+        const missingAlpha = evaluatePatch(patch.colorsMissingAlpha, bu, bv);
+        for (let k = 0; k < 8; ++k)
+            color[k] += missingAlpha[k] * alpha;
+    }
+    return color;
+}
+
+// The color at (u, v) in the interpolation color space, with hues not yet normalized. Equivalent to
+// interpolatedColor() in the shader.
+function sampleColor(patch, u, v) {
+    const mean = sampleWeightedMean(patch, u, v);
+    const color = [0, 1, 2, 3].map(k => mean[4 + k] > 0 ? mean[k] / mean[4 + k] : NaN);
+    if (!color.some(Number.isNaN))
+        return color;
+    const nudge = 1 / 1024;
+    const nudged = sampleWeightedMean(patch, u + (0.5 - u) * nudge, v + (0.5 - v) * nudge);
+    return color.map((value, k) => !Number.isNaN(value) ? value : nudged[4 + k] > 0 ? nudged[k] / nudged[4 + k] : 0);
+}
+
+const formatNumber3 = v => String(Math.round(v * 1000) / 1000);
+
+// The color, as CSS in the interpolation color space.
+function cssForSample(color) {
+    const space = state.space;
+    const [a, b, c] = color.slice(0, 3).map(formatNumber3);
+    const alpha = clamp(color[3], 0, 1);
+    const alphaText = alpha < 1 ? ` / ${formatNumber3(alpha)}` : "";
+    if (space === "hsl" || space === "hwb")
+        return `${space}(${a} ${b}% ${c}%${alphaText})`;
+    if (["lab", "lch", "oklab", "oklch"].includes(space))
+        return `${space}(${a} ${b} ${c}${alphaText})`;
+    return `color(${space} ${a} ${b} ${c}${alphaText})`;
+}
+
+const escapeHTML = text => text.replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[ch]);
+const swatchHTML = (css, large = false) => `<span class="swatch${large ? " large" : ""}" style="background: ${escapeHTML(css)}"></span>`;
+
+function sampleHTML(hit) {
+    const { patch, u, v } = hit;
+    const color = sampleColor(patch, u, v);
+    const hueIndex = HUE_INDEX[state.space];
+    if (hueIndex !== undefined)
+        color[hueIndex] = normalizeHue(color[hueIndex]);
+    const css = cssForSample(color);
+    return [
+        `<span class="muted">Patch row ${patch.r + 1}, column ${patch.c + 1} · u ${u.toFixed(2)} · v ${v.toFixed(2)}</span>`,
+        `${swatchHTML(css, true)}${escapeHTML(css)}`,
+    ].join("\n");
+}
+
+// Where the mouse last was over the box, so the sample can be redrawn when the mesh changes under it.
+let lastSamplePosition = null;
+
+function hideSample() {
+    lastSamplePosition = null;
+    $("sampleTip").style.display = "none";
+}
+
+function showSample(event) {
+    lastSamplePosition = { clientX: event.clientX, clientY: event.clientY, pointerType: event.pointerType };
+    if (!state.sample)
+        return hideSample();
+    // The stage may be scaled down to fit a narrow screen, so this goes by its drawn size.
+    const rect = stage.getBoundingClientRect();
+    const target = [(event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height];
+    const hit = locate(meshPatches(), target);
+    if (!hit)
+        return hideSample();
+    const sample = $("sampleTip");
+    sample.innerHTML = sampleHTML(hit);
+    sample.style.display = "block";
+    // Placed in the page, so it scrolls with what it describes. Beside a mouse pointer, and above a finger, which would
+    // cover it otherwise.
+    const { width, height } = sample.getBoundingClientRect();
+    const viewportWidth = document.documentElement.clientWidth;
+    let x, y;
+    if (event.pointerType === "mouse") {
+        x = event.clientX + 18 + width > viewportWidth ? event.clientX - 18 - width : event.clientX + 18;
+        y = Math.min(event.clientY + 18, innerHeight - height - 8);
+    } else {
+        x = clamp(event.clientX - width / 2, 8, viewportWidth - width - 8);
+        y = event.clientY - height - 36 >= 8 ? event.clientY - height - 36 : event.clientY + 36;
+    }
+    sample.style.left = `${Math.max(8, x) + scrollX}px`;
+    sample.style.top = `${Math.max(8, y) + scrollY}px`;
+}
+
+// A mouse samples as it hovers. A finger samples where it touches and as it moves, unless it is dragging a point or
+// handle, and the sample stays once it lifts.
+stage.addEventListener("pointermove", event => {
+    if (event.pointerType === "mouse" || !drag)
+        showSample(event);
+});
+stage.addEventListener("pointerdown", event => {
+    if (event.pointerType !== "mouse" && !drag)
+        showSample(event);
+});
+stage.addEventListener("pointerleave", event => {
+    if (event.pointerType === "mouse")
+        hideSample();
+});
+
 // MARK: - Undo, redo and keys
 
 // Undo steps through the gradient and the box's size, not the settings around them.
@@ -2308,6 +2630,9 @@ function updateControls() {
     for (const radio of document.querySelectorAll("input[name=renderer]"))
         radio.checked = radio.value === state.renderer;
     $("overlayToggle").checked = state.overlay;
+    $("view").value = state.view;
+    $("viewNote").textContent = VIEW_NOTES[state.view];
+    $("sampleToggle").checked = state.sample;
     $("gamutMapping").value = state.gamutMapping;
 
     const [r, c] = selected;
@@ -2383,6 +2708,25 @@ $("overlayToggle").addEventListener("change", () => {
     state.overlay = $("overlayToggle").checked;
     changed();
 });
+$("view").addEventListener("change", () => {
+    state.view = $("view").value;
+    changed();
+});
+$("sampleToggle").addEventListener("change", () => {
+    state.sample = $("sampleToggle").checked;
+    if (!state.sample)
+        hideSample();
+    changed();
+});
+// An info button shows and hides the notes it controls.
+for (const button of document.querySelectorAll("button.info")) {
+    button.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.75" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="4.9" r="0.95" fill="currentColor"/><path d="M8 7.3v4.2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+    button.addEventListener("click", () => {
+        const notes = $(button.getAttribute("aria-controls"));
+        notes.hidden = !notes.hidden;
+        button.setAttribute("aria-expanded", String(!notes.hidden));
+    });
+}
 $("preset").addEventListener("change", () => {
     if ($("preset").value === "")
         return;

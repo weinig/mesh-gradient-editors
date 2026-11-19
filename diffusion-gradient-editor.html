@@ -102,6 +102,31 @@ h1 { font-size: 17px; margin: 0 0 4px; }
 h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 8px; }
 .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0; }
 .row > label { min-width: 84px; color: var(--muted); }
+#sampleTip {
+    position: absolute;
+    z-index: 10;
+    pointer-events: none;
+    display: none;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(29, 29, 31, 0.92);
+    color: #fff;
+    font: 12px/1.55 ui-monospace, Menlo, monospace;
+    white-space: pre;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+#sampleTip .muted { color: rgba(255, 255, 255, 0.6); }
+#sampleTip .swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    vertical-align: -1px;
+    margin-right: 3px;
+}
+#sampleTip .swatch.large { width: 14px; height: 14px; border-radius: 3px; vertical-align: -3px; margin-right: 6px; }
+#view { flex: 1; min-width: 0; }
 button.info {
     flex: none;
     display: flex;
