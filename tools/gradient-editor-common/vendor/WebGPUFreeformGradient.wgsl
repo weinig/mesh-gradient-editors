@@ -36,7 +36,13 @@ struct FreeformSegment {
     // How firmly the segment holds its colors, 0 to 1: its weight where it
     // covers a texel fully.
     strength: f32,
+    // The directions of the segments before and after it on its line, as
+    // angles in the box's units, or noJoint where it has none.
+    previousAngle: f32,
+    nextAngle: f32,
 }
+
+const noJoint = 1e9;
 
 // Must match the uniforms WebGPUFreeformGradient.js writes for a level.
 struct Level {
@@ -207,6 +213,23 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
                        distanceAlong - segmentLength - segment.endDistance);
         let blend = texel + openEndFan * max(0.0, past + openEndLead * texel);
         var left = saturate(0.5 + across / blend);
+        // Past a joint, a segment's own line doesn't tell the sides apart:
+        // just past a sharp corner a texel is all but on it. Past the next
+        // segment's start too, the texel is outside the turn.
+        if (segment.isTwoSided == 1u && lengthSquared > 0.0) {
+            let direction = along / segmentLength;
+            if (distanceAlong > segmentLength && segment.nextAngle < noJoint) {
+                let next = vec2<f32>(cos(segment.nextAngle), sin(segment.nextAngle));
+                if (dot(position - b, next) < 0.0) {
+                    left = select(1.0, 0.0, direction.x * next.y - direction.y * next.x < 0.0);
+                }
+            } else if (distanceAlong < 0.0 && segment.previousAngle < noJoint) {
+                let previous = vec2<f32>(cos(segment.previousAngle), sin(segment.previousAngle));
+                if (dot(position - a, previous) > 0.0) {
+                    left = select(1.0, 0.0, previous.x * direction.y - previous.y * direction.x < 0.0);
+                }
+            }
+        }
         if (segment.isTwoSided == 2u) {
             // A tear holds the texel either side of each edge of the grid it
             // crosses, to that side's color, and nothing else.

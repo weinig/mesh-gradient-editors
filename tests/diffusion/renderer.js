@@ -139,3 +139,18 @@ test("free slopes and natural edges draw at every grid", async t => {
         t.ok(!gpuError, `at ${resolution}: ${gpuError}`);
     }
 });
+
+test("past a closed curve's sharp corners, the biharmonic holds the outside color", async t => {
+    await preset("A leaf");
+    set("space", "srgb");
+    set("numbers", true);
+    // The leaf's outside, #f4f1e6, and places outside it: just past each tip, and the box's corners.
+    const outside = [0xf4, 0xf1, 0xe6].map(v => v / 255);
+    const places = [[0.17, 0.625], [0.83, 0.375], [0.03, 0.03], [0.97, 0.03], [0.03, 0.97], [0.97, 0.97]];
+    for (const resolution of ["256", "512", "1024"]) {
+        set("resolution", resolution);
+        const readout = await grab(0);
+        const worst = Math.max(...places.map(p => Math.max(...[0, 1, 2].map(k => Math.abs(sampleReadout(readout, p)[k] - outside[k])))));
+        t.below(worst, 0.03, `on the ${resolution} grid`);
+    }
+});

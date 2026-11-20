@@ -59,6 +59,9 @@ const edgeBlendTexels = 1.5;
 
 const fround = Math.fround;
 
+// What a segment's neighbor's direction is where it has none: the shader's noJoint.
+const noJoint = 1e9;
+
 // The rows of the Galerkin levels below a level's own equation where no point
 // and no edge reaches: the 13-point stencil's Pᵀ K P / 4 on an unbounded
 // grid, and that of each in turn, 25 numbers a row, as the Metal solver's
@@ -1139,7 +1142,18 @@ export class WebGPUFreeformGradientRenderer {
     const u32 = new Uint32Array(segmentBytes);
     const far = 3.4028234663852886e38;
     const distances = [];
+    // Each segment's neighbors' directions on its line, for the sides past a joint.
+    const joints = [];
     for (const line of gradient.lines) {
+      const angles = [];
+      for (let e = 0; e < line.ends.length; e += 4) {
+        angles.push(Math.atan2((line.ends[e + 3] - line.ends[e + 1]) * boxScale[1], (line.ends[e + 2] - line.ends[e]) * boxScale[0]));
+      }
+      const last = angles.length - 1;
+      angles.forEach((_, k) => joints.push([
+        k > 0 ? angles[k - 1] : line.closed ? angles[last] : noJoint,
+        k < last ? angles[k + 1] : line.closed ? angles[0] : noJoint,
+      ]));
       const lengths = [];
       for (let e = 0; e < line.ends.length; e += 4) {
         lengths.push(Math.fround(Math.hypot((line.ends[e + 2] - line.ends[e]) * boxScale[0],
@@ -1168,6 +1182,8 @@ export class WebGPUFreeformGradientRenderer {
       f32[o + 24] = i < distances.length ? distances[i][1] : far;
       const strength = gradient.strengths?.[i] ?? 1;
       f32[o + 25] = Number.isFinite(strength) ? Math.min(Math.max(strength, 0), 1) : 1;
+      f32[o + 26] = i < joints.length ? joints[i][0] : noJoint;
+      f32[o + 27] = i < joints.length ? joints[i][1] : noJoint;
     }
 
     this.pointBuffer = this.storageBuffer(this.pointBuffer, pointData);

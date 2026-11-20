@@ -45,12 +45,14 @@ A two-sided segment holds at least 3 texels a side, not 1.5: with fewer than two
 doesn't hold the slope across the line, and overshoots far past its colors on coarse grids.
 
 Fixes: edgeQuads() gives each segment's first and last pieces the segment's own ends, so pieces meet exactly and a
-line's strips aren't broken into runs at joints that rounding put a unit apart; it skips segments of no length, and
-a hairpin or a vector of no length no longer makes a NaN; and a run that ends where it starts is mitered at its seam
+line's strips aren't broken into runs at joints that rounding put a unit apart; it skips segments of no length, and a
+hairpin or a vector of no length no longer makes a NaN; and a run that ends where it starts is mitered at its seam
 and blends all the way round. Strengths are clamped to 0 to 1, a box of no size forgets that it was solved, and the
 grid is at most 2048 texels a side, as the biharmonic's dot products need. Past its end, a segment's share of a
 texel's held color gives way to the segments the texel is beside, so the outside of a two-sided corner isn't held to
-a mix of both sides. And the edge strips antialias the line by mixing the two sides' colors as drawn, not in the
-interpolation space.
+a mix of both sides. Past a joint of a two-sided line, a texel past the next segment's start too is held to the
+outside of the turn, since each segment's own line barely tells the sides apart there: at a sharp corner the band
+held a mix of both colors just past the tip, and the biharmonic carried its slope out across the box. And the edge
+strips antialias the line by mixing the two sides' colors as drawn, not in the interpolation space.
 
 The builder inlines both into the diffusion and points and lines gradient editors, dropping the module's `export`.
