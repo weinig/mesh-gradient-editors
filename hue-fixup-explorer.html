@@ -270,18 +270,16 @@ button.small { font-size: 12px; }
                     <option value="map">Gamut map (CSS Color 4)</option>
                 </select>
             </div>
-            <div class="row">
-                <label for="background">Background</label>
-                <input id="background" type="text" placeholder="none (transparent)" spellcheck="false">
-            </div>
-            <div class="row" title="What is drawn behind the box, showing through wherever the mesh and its background are transparent. It is not part of the CSS.">
+            <div class="row" title="What is drawn behind the box, showing through wherever the mesh is transparent. It is not part of the CSS.">
                 <label for="backdrop">Backdrop</label>
                 <select id="backdrop">
                     <option value="checkerboard">Checkerboard</option>
                     <option value="none">None</option>
+                    <option value="color">Color</option>
                     <option value="puppy">Puppy</option>
                     <option value="image">Image</option>
                 </select>
+                <input id="backdropColor" type="color" title="The backdrop's color">
                 <span id="backdropImageName" class="note"></span>
                 <button id="chooseBackdropImage" class="small" title="Choose an image, or drop one on the box">Choose…</button>
                 <input id="backdropFile" type="file" accept="image/*" hidden>
@@ -921,9 +919,6 @@ function preludeText() {
     let method = `in ${state.space}`;
     if (polar && state.hue !== "shorter")
         method += ` ${state.hue} hue`;
-    const background = state.background.trim() && parseColor(state.background) ? state.background.trim() : "";
-    if (background)
-        return `${method} ${background}`;
     const precisions = state.points.map(p => colorPrecision(p.color));
     if (!precisions.includes("unknown")) {
         const defaultSpace = precisions.includes("float") ? "oklab" : "srgb";
@@ -956,13 +951,13 @@ function encodeState() {
         c: state.cols,
         s: state.space,
         u: state.hue,
-        b: state.background,
         f: state.hueOrder,
         o: state.overlay ? 1 : 0,
         gmap: state.gamutMapping,
         x: state.hueOverlay ? 1 : 0,
         m: state.sample ? 1 : 0,
         k: state.backdrop,
+        kc: state.backdropColor,
         p: state.points.map(p => {
             const entry = [p.color];
             if (p.pos || p.cps)
@@ -1002,13 +997,13 @@ function decodeState(text) {
             cols,
             space: SPACES.includes(data.s) ? data.s : "oklab",
             hue: ["shorter", "longer", "increasing", "decreasing"].includes(data.u) ? data.u : "shorter",
-            background: typeof data.b === "string" ? data.b : "",
             hueOrder: data.f === "columns" ? "columns" : "rows",
             overlay: data.o !== 0,
             gamutMapping: data.gmap === "clip" ? "clip" : "map",
             hueOverlay: data.x !== 0,
             sample: data.m !== 0,
             backdrop: BACKDROPS.includes(data.k) ? data.k : "checkerboard",
+            backdropColor: /^#[0-9a-f]{6}$/i.test(data.kc) ? data.kc : "#ffffff",
             points,
         };
     } catch {
@@ -1047,7 +1042,7 @@ const PRESETS = [
     {
         name: "Hues around a patch",
         state: {
-            width: 400, height: 400, rows: 2, cols: 2, space: "oklch", hue: "shorter", background: "",
+            width: 400, height: 400, rows: 2, cols: 2, space: "oklch", hue: "shorter",
             points: [
                 makePoint("oklch(0.75 0.15 0)"), makePoint("oklch(0.75 0.15 100)"),
                 makePoint("oklch(0.75 0.15 300)"), makePoint("oklch(0.75 0.15 200)"),
@@ -1060,7 +1055,7 @@ const PRESETS = [
     {
         name: "Hues around the edge",
         state: {
-            width: 400, height: 400, rows: 3, cols: 3, space: "oklch", hue: "shorter", background: "",
+            width: 400, height: 400, rows: 3, cols: 3, space: "oklch", hue: "shorter",
             points: [
                 makePoint("oklch(0.75 0.15 0)"), makePoint("oklch(0.75 0.15 50)"), makePoint("oklch(0.75 0.15 100)"),
                 makePoint("oklch(0.75 0.15 310)"), makePoint("oklch(0.75 0.15 200)"), makePoint("oklch(0.75 0.15 150)"),
@@ -1081,6 +1076,7 @@ function presetState(index) {
         hueOverlay: state?.hueOverlay ?? true,
         sample: state?.sample ?? true,
         backdrop: state?.backdrop ?? "checkerboard",
+        backdropColor: state?.backdropColor ?? "#ffffff",
         ...preset,
     };
 }
@@ -1330,8 +1326,6 @@ function buildMesh(pixelWidth, pixelHeight, outputSpace) {
         patch.colorsMissingAlpha?.forEach((v, k) => colorValuesMissingAlpha.set(v, index * 128 + k * 8));
     });
 
-    const backgroundColor = state.background.trim() ? parseColor(state.background) : null;
-    const [br, bg, bb, ba] = backgroundColor ? toOutput(backgroundColor, outputSpace) : [0, 0, 0, 0];
     return {
         patchCount,
         subdivisions: maximumSubdivisions,
@@ -1339,7 +1333,6 @@ function buildMesh(pixelWidth, pixelHeight, outputSpace) {
         colors: colorValues,
         colorsMissingAlpha: colorValuesMissingAlpha,
         space: SPACES.indexOf(state.space),
-        background: [br * ba, bg * ba, bb * ba, ba],
     };
 }
 
@@ -1803,11 +1796,10 @@ class WebGPUMeshGradientRenderer {
         compute.dispatchWorkgroups(across, Math.ceil(groups / across));
         compute.end();
 
-        const [r, g, b, a] = mesh.background;
         const pass = encoder.beginRenderPass({
             colorAttachments: [{
                 view: this.context.getCurrentTexture().createView(),
-                clearValue: { r, g, b, a },
+                clearValue: { r: 0, g: 0, b: 0, a: 0 },
                 loadOp: "clear",
                 storeOp: "store",
             }],
@@ -2535,7 +2527,7 @@ overlay.addEventListener("lostpointercapture", endDrag);
 
 // Undo steps through the gradient and the box's size, not the settings around them.
 // A step is taken when a change has settled: after a drag or a pick of a color ends, not during it.
-const UNDO_KEYS = ["width", "height", "rows", "cols", "space", "hue", "background", "points"];
+const UNDO_KEYS = ["width", "height", "rows", "cols", "space", "hue", "points"];
 const undoSteps = [];
 let undoIndex = -1;
 let undoTimer = null;
@@ -2648,9 +2640,6 @@ function updateControls() {
     $("space").value = state.space;
     $("hue").value = state.hue;
     $("hue").disabled = !(state.space in HUE_INDEX);
-    if (document.activeElement !== $("background"))
-        $("background").value = state.background;
-    $("background").classList.toggle("invalid", !!state.background.trim() && !parseColor(state.background));
     $("hueOrder").value = state.hueOrder;
     $("hueOrder").disabled = !(state.space in HUE_INDEX);
     $("overlayToggle").checked = state.overlay;
@@ -2713,10 +2702,6 @@ $("space").addEventListener("change", () => {
 });
 $("hue").addEventListener("change", () => {
     state.hue = $("hue").value;
-    changed();
-});
-$("background").addEventListener("input", () => {
-    state.background = $("background").value;
     changed();
 });
 $("hueOrder").addEventListener("change", () => {
@@ -2828,7 +2813,7 @@ window.addEventListener("hashchange", () => {
 
 // The backdrop is drawn behind the box, and is not part of the CSS. A chosen image is not saved in the URL, so it is
 // only kept until the page is reloaded.
-const BACKDROPS = ["checkerboard", "none", "puppy", "image"];
+const BACKDROPS = ["checkerboard", "none", "color", "puppy", "image"];
 let backdropImage = null;
 
 function renderBackdrop() {
@@ -2838,7 +2823,10 @@ function renderBackdrop() {
     const backgroundImage = url ? `url("${url}")` : "";
     if (stage.style.backgroundImage !== backgroundImage)
         stage.style.backgroundImage = backgroundImage;
+    stage.style.backgroundColor = state.backdrop === "color" ? state.backdropColor ?? "#ffffff" : "";
     $("backdrop").value = state.backdrop;
+    $("backdropColor").value = state.backdropColor ?? "#ffffff";
+    $("backdropColor").hidden = state.backdrop !== "color";
     const choosing = state.backdrop === "image";
     $("backdropImageName").hidden = !choosing;
     $("backdropImageName").textContent = backdropImage?.name ?? "No image chosen";
@@ -2863,6 +2851,12 @@ $("backdrop").addEventListener("change", () => {
         $("backdropFile").click();
     changed();
 });
+for (const type of ["input", "change"]) {
+    $("backdropColor").addEventListener(type, () => {
+        state.backdropColor = $("backdropColor").value;
+        changed();
+    });
+}
 $("chooseBackdropImage").addEventListener("click", () => $("backdropFile").click());
 $("backdropFile").addEventListener("change", () => {
     useBackdropImage($("backdropFile").files[0]);

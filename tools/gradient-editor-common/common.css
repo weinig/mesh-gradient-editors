@@ -37,7 +37,7 @@
 }
 .stage.image { background-position: center; background-size: cover; }
 #stageScroller.dropTarget { outline: 2px dashed var(--accent); outline-offset: -2px; }
-#backdropImageName[hidden], #chooseBackdropImage[hidden] { display: none; }
+#backdropImageName[hidden], #chooseBackdropImage[hidden], #backdropColor[hidden] { display: none; }
 .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .stage .overlay { touch-action: none; }
 .view figcaption { font-size: 12px; margin-top: 6px; }

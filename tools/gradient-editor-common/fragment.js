@@ -53,6 +53,8 @@ function decodeState(text) {
             data.gamutMapping = "map";
         if (!BACKDROPS.includes(data.backdrop))
             data.backdrop = "checkerboard";
+        if (!/^#[0-9a-f]{6}$/i.test(data.backdropColor))
+            data.backdropColor = "#ffffff";
         if (!GAMUTS.includes(data.gamut))
             data.gamut = "srgb";
         if (!EDGES.includes(data.edges))

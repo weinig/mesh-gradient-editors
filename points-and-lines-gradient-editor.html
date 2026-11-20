@@ -248,7 +248,7 @@ button.small { font-size: 12px; }
 }
 .stage.image { background-position: center; background-size: cover; }
 #stageScroller.dropTarget { outline: 2px dashed var(--accent); outline-offset: -2px; }
-#backdropImageName[hidden], #chooseBackdropImage[hidden] { display: none; }
+#backdropImageName[hidden], #chooseBackdropImage[hidden], #backdropColor[hidden] { display: none; }
 .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 .stage .overlay { touch-action: none; }
 .view figcaption { font-size: 12px; margin-top: 6px; }
@@ -496,9 +496,11 @@ input.percent { width: 64px; }
                 <select id="backdrop">
                     <option value="checkerboard">Checkerboard</option>
                     <option value="none">None</option>
+                    <option value="color">Color</option>
                     <option value="puppy">Puppy</option>
                     <option value="image">Image</option>
                 </select>
+                <input id="backdropColor" type="color" title="The backdrop's color">
                 <span id="backdropImageName" class="note"></span>
                 <button id="chooseBackdropImage" class="small" title="Choose an image, or drop one on a box">Choose…</button>
                 <input id="backdropFile" type="file" accept="image/*" hidden>
@@ -4229,6 +4231,7 @@ function commonState() {
         space: state?.space ?? "oklab",
         gamutMapping: state?.gamutMapping ?? "map",
         backdrop: state?.backdrop ?? "checkerboard",
+        backdropColor: state?.backdropColor ?? "#ffffff",
         resolution: state?.resolution ?? 512,
         models: state?.models ?? MODELS.slice(),
         view: state?.view ?? "gradient",
@@ -4414,7 +4417,7 @@ function drawOverlay(view) {
 // MARK: - Editing
 
 // Whether clicks add stops on their own or along lines.
-let mode = "points";
+let mode = "select";
 // The selected stop, by index.
 let selection = null;
 // The line being drawn, by index, which clicks in Lines add stops to the end of.
@@ -5339,7 +5342,7 @@ $("playSteps").addEventListener("click", () => {
 
 // The backdrop is drawn behind the box, and is not part of the CSS. A chosen image is not saved in the URL, so it is
 // only kept until the page is reloaded.
-const BACKDROPS = ["checkerboard", "none", "puppy", "image"];
+const BACKDROPS = ["checkerboard", "none", "color", "puppy", "image"];
 let backdropImage = null;
 
 function renderBackdrop() {
@@ -5350,8 +5353,11 @@ function renderBackdrop() {
         stage.classList.toggle("image", !!url);
         if (stage.style.backgroundImage !== backgroundImage)
             stage.style.backgroundImage = backgroundImage;
+        stage.style.backgroundColor = state.backdrop === "color" ? state.backdropColor ?? "#ffffff" : "";
     }
     $("backdrop").value = state.backdrop;
+    $("backdropColor").value = state.backdropColor ?? "#ffffff";
+    $("backdropColor").hidden = state.backdrop !== "color";
     const choosing = state.backdrop === "image";
     $("backdropImageName").hidden = !choosing;
     $("backdropImageName").textContent = backdropImage?.name ?? "No image chosen";
@@ -5376,6 +5382,12 @@ $("backdrop").addEventListener("change", () => {
         $("backdropFile").click();
     changed();
 });
+for (const type of ["input", "change"]) {
+    $("backdropColor").addEventListener(type, () => {
+        state.backdropColor = $("backdropColor").value;
+        changed();
+    });
+}
 $("chooseBackdropImage").addEventListener("click", () => $("backdropFile").click());
 $("backdropFile").addEventListener("change", () => {
     useBackdropImage($("backdropFile").files[0]);
@@ -5490,6 +5502,8 @@ function decodeState(text) {
             data.gamutMapping = "map";
         if (!BACKDROPS.includes(data.backdrop))
             data.backdrop = "checkerboard";
+        if (!/^#[0-9a-f]{6}$/i.test(data.backdropColor))
+            data.backdropColor = "#ffffff";
         if (!GAMUTS.includes(data.gamut))
             data.gamut = "srgb";
         if (!EDGES.includes(data.edges))

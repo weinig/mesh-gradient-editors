@@ -1204,6 +1204,7 @@ function commonState() {
         space: state?.space ?? "oklab",
         gamutMapping: state?.gamutMapping ?? "map",
         backdrop: state?.backdrop ?? "checkerboard",
+        backdropColor: state?.backdropColor ?? "#ffffff",
         resolution: state?.resolution ?? 512,
         models: state?.models ?? MODELS.slice(),
         view: state?.view ?? "gradient",

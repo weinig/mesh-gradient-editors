@@ -32,7 +32,14 @@ test("backdrops, about, numbers, sampling and influence", async t => {
     set("backdrop", "none");
     await sleep(100);
     t.ok(!views[0].stage.classList.contains("checkerboard"), "no backdrop has no checkerboard");
+    set("backdrop", "color");
+    set("backdropColor", "#336699");
+    await sleep(100);
+    t.equal(views.map(view => view.stage.style.backgroundColor).join(), views.map(() => "rgb(51, 102, 153)").join(), "a color backdrop is behind every box");
+    t.equal(decodeState(encodeState()).backdropColor, "#336699", "and its color is in the link");
     set("backdrop", "checkerboard");
+    await sleep(100);
+    t.equal(views[0].stage.style.backgroundColor, "", "and goes with it");
     $("aboutButton").click();
     await sleep(200);
     t.ok(!views[0].figure.querySelector(".modelAbout").hidden, "About the models opens");

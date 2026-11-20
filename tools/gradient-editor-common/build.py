@@ -39,6 +39,7 @@ def mesh_parts(source_path):
     const backgroundImage = url ? `url("${url}")` : "";
     if (stage.style.backgroundImage !== backgroundImage)
         stage.style.backgroundImage = backgroundImage;
+    stage.style.backgroundColor = state.backdrop === "color" ? state.backdropColor ?? "#ffffff" : "";
 """
     assert backdrop.count(backdrop_stage) == 1
     backdrop = backdrop.replace(backdrop_stage, """    const backgroundImage = url ? `url("${url}")` : "";
@@ -47,6 +48,7 @@ def mesh_parts(source_path):
         stage.classList.toggle("image", !!url);
         if (stage.style.backgroundImage !== backgroundImage)
             stage.style.backgroundImage = backgroundImage;
+        stage.style.backgroundColor = state.backdrop === "color" ? state.backdropColor ?? "#ffffff" : "";
     }
 """)
 

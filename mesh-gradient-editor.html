@@ -262,18 +262,16 @@ button.small { font-size: 12px; }
                     <option value="map">Gamut map (CSS Color 4)</option>
                 </select>
             </div>
-            <div class="row">
-                <label for="background">Background</label>
-                <input id="background" type="text" placeholder="none (transparent)" spellcheck="false">
-            </div>
-            <div class="row" title="What is drawn behind the box, showing through wherever the mesh and its background are transparent. It is not part of the CSS.">
+            <div class="row" title="What is drawn behind the box, showing through wherever the mesh is transparent. It is not part of the CSS.">
                 <label for="backdrop">Backdrop</label>
                 <select id="backdrop">
                     <option value="checkerboard">Checkerboard</option>
                     <option value="none">None</option>
+                    <option value="color">Color</option>
                     <option value="puppy">Puppy</option>
                     <option value="image">Image</option>
                 </select>
+                <input id="backdropColor" type="color" title="The backdrop's color">
                 <span id="backdropImageName" class="note"></span>
                 <button id="chooseBackdropImage" class="small" title="Choose an image, or drop one on the box">Choose…</button>
                 <input id="backdropFile" type="file" accept="image/*" hidden>
@@ -924,9 +922,6 @@ function preludeText() {
     let method = `in ${state.space}`;
     if (polar && state.hue !== "shorter")
         method += ` ${state.hue} hue`;
-    const background = state.background.trim() && parseColor(state.background) ? state.background.trim() : "";
-    if (background)
-        return `${method} ${background}`;
     const precisions = state.points.map(p => colorPrecision(p.color));
     if (!precisions.includes("unknown")) {
         const defaultSpace = precisions.includes("float") ? "oklab" : "srgb";
@@ -966,13 +961,13 @@ function encodeState() {
         c: state.cols,
         s: state.space,
         u: state.hue,
-        b: state.background,
         g: state.renderer,
         o: state.overlay ? 1 : 0,
         vw: state.view === "gradient" ? undefined : state.view,
         m: state.sample ? 1 : undefined,
         gmap: state.gamutMapping,
         k: state.backdrop,
+        kc: state.backdropColor,
         p: state.points.map(p => {
             const entry = [p.color];
             if (p.pos || p.cps)
@@ -1012,13 +1007,13 @@ function decodeState(text) {
             cols,
             space: SPACES.includes(data.s) ? data.s : "oklab",
             hue: ["shorter", "longer", "increasing", "decreasing"].includes(data.u) ? data.u : "shorter",
-            background: typeof data.b === "string" ? data.b : "",
             renderer: data.g === "webgpu" ? "webgpu" : "native",
             overlay: data.o !== 0,
             view: VIEWS.includes(data.vw) ? data.vw : "gradient",
             sample: data.m === 1,
             gamutMapping: data.gmap === "clip" ? "clip" : "map",
             backdrop: BACKDROPS.includes(data.k) ? data.k : "checkerboard",
+            backdropColor: /^#[0-9a-f]{6}$/i.test(data.kc) ? data.kc : "#ffffff",
             points,
         };
     } catch {
@@ -1054,14 +1049,14 @@ const PRESETS = [
     {
         name: "2×2 corner blend",
         state: {
-            rows: 2, cols: 2, space: "srgb", hue: "shorter", background: "",
+            rows: 2, cols: 2, space: "srgb", hue: "shorter",
             points: [makePoint("#ff375f"), makePoint("#ffd60a"), makePoint("#0a84ff"), makePoint("#30d158")],
         },
     },
     {
         name: "3×3 sunset",
         state: {
-            rows: 3, cols: 3, space: "oklab", hue: "shorter", background: "",
+            rows: 3, cols: 3, space: "oklab", hue: "shorter",
             points: [
                 makePoint("#1b1446"), makePoint("#3b1c6e"), makePoint("#1b1446"),
                 makePoint("#c2185b"), makePoint("#ff6f3c", [50, 42]), makePoint("#c2185b"),
@@ -1072,7 +1067,7 @@ const PRESETS = [
     {
         name: "Curved mesh",
         state: {
-            rows: 3, cols: 3, space: "oklab", hue: "shorter", background: "",
+            rows: 3, cols: 3, space: "oklab", hue: "shorter",
             points: [
                 makePoint("#0b1d51"), makePoint("#7209b7", null, [[45, -25], [70, 8], [55, 25], [30, -8]]), makePoint("#3a0ca3"),
                 makePoint("#4361ee", [0, 60]), makePoint("#f72585", [55, 45], [[70, 20], [85, 55], [40, 70], [25, 35]]), makePoint("#4cc9f0", [100, 40]),
@@ -1083,7 +1078,7 @@ const PRESETS = [
     {
         name: "Missing components (oklch)",
         state: {
-            rows: 2, cols: 3, space: "oklch", hue: "shorter", background: "",
+            rows: 2, cols: 3, space: "oklch", hue: "shorter",
             points: [
                 makePoint("oklch(0.7 0.2 none)"), makePoint("oklch(0.75 0.2 30)"), makePoint("oklch(0.85 0.15 none)"),
                 makePoint("oklch(0.65 0.22 150)"), makePoint("color(display-p3 0 0.3 1 / none)"), makePoint("oklch(0.6 0.25 300)"),
@@ -1093,14 +1088,14 @@ const PRESETS = [
     {
         name: "Missing components (sRGB)",
         state: {
-            rows: 2, cols: 2, space: "srgb", hue: "shorter", background: "",
+            rows: 2, cols: 2, space: "srgb", hue: "shorter",
             points: [makePoint("rgb(none 255 0)"), makePoint("rgb(255 0 none)"), makePoint("rgb(0 none 255)"), makePoint("rgb(255 255 255 / none)")],
         },
     },
     {
         name: "3×3 with a curved center",
         state: {
-            width: 400, height: 400, rows: 3, cols: 3, space: "oklab", hue: "shorter", background: "",
+            width: 400, height: 400, rows: 3, cols: 3, space: "oklab", hue: "shorter",
             points: [
                 makePoint("#ff3b30"), makePoint("#ffcc00"), makePoint("#34c759"),
                 makePoint("#ff2d95"), makePoint("#ffffff", [60.71, 39.29], [[42.86, 14.29], [89.29, 46.43], [53.57, 67.86], [10.71, 21.43]]), makePoint("#00c7be"),
@@ -1111,35 +1106,35 @@ const PRESETS = [
     {
         name: "Longer hue (oklch)",
         state: {
-            width: 400, height: 400, rows: 2, cols: 2, space: "oklch", hue: "longer", background: "",
+            width: 400, height: 400, rows: 2, cols: 2, space: "oklch", hue: "longer",
             points: [makePoint("oklch(0.75 0.15 0)"), makePoint("oklch(0.75 0.15 90)"), makePoint("oklch(0.75 0.15 270)"), makePoint("oklch(0.75 0.15 180)")],
         },
     },
     {
         name: "Diamond",
         state: {
-            width: 400, height: 400, rows: 2, cols: 2, space: "srgb", hue: "shorter", background: "",
+            width: 400, height: 400, rows: 2, cols: 2, space: "srgb", hue: "shorter",
             points: [makePoint("#ff3b30", [50, 4.29]), makePoint("#ffcc00", [95.71, 50]), makePoint("#007aff", [4.29, 50]), makePoint("#34c759", [50, 95.71])],
         },
     },
     {
-        name: "Inset with a background",
+        name: "Inset",
         state: {
-            width: 400, height: 400, rows: 2, cols: 2, space: "oklab", hue: "shorter", background: "#223",
+            width: 400, height: 400, rows: 2, cols: 2, space: "oklab", hue: "shorter",
             points: [makePoint("#ffcc00", [14.29, 14.29]), makePoint("#ff2d95", [85.71, 14.29]), makePoint("#007aff", [14.29, 85.71]), makePoint("#34c759", [85.71, 85.71])],
         },
     },
     {
         name: "Translucent corners",
         state: {
-            width: 400, height: 400, rows: 2, cols: 2, space: "oklab", hue: "shorter", background: "",
+            width: 400, height: 400, rows: 2, cols: 2, space: "oklab", hue: "shorter",
             points: [makePoint("rgb(255 59 48 / 0.9)"), makePoint("rgb(0 122 255 / 0.1)"), makePoint("rgb(52 199 89 / 0.1)"), makePoint("rgb(255 204 0 / 0.9)")],
         },
     },
     {
         name: "4×4 pastels",
         state: {
-            width: 400, height: 400, rows: 4, cols: 4, space: "oklab", hue: "shorter", background: "",
+            width: 400, height: 400, rows: 4, cols: 4, space: "oklab", hue: "shorter",
             points: [
                 makePoint("#fbc2eb"), makePoint("#a6c1ee"), makePoint("#fbc2eb"), makePoint("#a6c1ee"),
                 makePoint("#a18cd1"), makePoint("#fad0c4"), makePoint("#ffd1ff"), makePoint("#84fab0"),
@@ -1151,7 +1146,7 @@ const PRESETS = [
     {
         name: "Aurora ribbon",
         state: {
-            width: 400, height: 400, rows: 3, cols: 3, space: "oklab", hue: "shorter", background: "",
+            width: 400, height: 400, rows: 3, cols: 3, space: "oklab", hue: "shorter",
             points: [
                 makePoint("#0b1026"), makePoint("#0b1026"), makePoint("#0b1026"),
                 makePoint("#00e6a8", [0, 42.86], [[0, 42.86], [32.14, 14.29], [0, 42.86], [0, 42.86]]),
@@ -1164,7 +1159,7 @@ const PRESETS = [
     {
         name: "Fold",
         state: {
-            width: 400, height: 400, rows: 2, cols: 2, space: "oklab", hue: "shorter", background: "",
+            width: 400, height: 400, rows: 2, cols: 2, space: "oklab", hue: "shorter",
             points: [
                 makePoint("#007aff", [10.71, 14.29], [[10.71, 14.29], [150, 85.71], [10.71, 14.29], [10.71, 14.29]]),
                 makePoint("#ffcc00", [89.29, 14.29]),
@@ -1186,6 +1181,7 @@ function presetState(index) {
         sample: state?.sample ?? false,
         gamutMapping: state?.gamutMapping ?? "map",
         backdrop: state?.backdrop ?? "checkerboard",
+        backdropColor: state?.backdropColor ?? "#ffffff",
         ...preset,
     };
 }
@@ -1417,8 +1413,6 @@ function buildMesh(pixelWidth, pixelHeight, outputSpace) {
         patch.colorsMissingAlpha?.forEach((v, k) => colorValuesMissingAlpha.set(v, index * 128 + k * 8));
     });
 
-    const backgroundColor = state.background.trim() ? parseColor(state.background) : null;
-    const [br, bg, bb, ba] = backgroundColor ? toOutput(backgroundColor, outputSpace) : [0, 0, 0, 0];
     return {
         patchCount,
         subdivisions: maximumSubdivisions,
@@ -1426,7 +1420,6 @@ function buildMesh(pixelWidth, pixelHeight, outputSpace) {
         colors: colorValues,
         colorsMissingAlpha: colorValuesMissingAlpha,
         space: SPACES.indexOf(state.space),
-        background: [br * ba, bg * ba, bb * ba, ba],
     };
 }
 
@@ -1921,11 +1914,10 @@ class WebGPUMeshGradientRenderer {
         compute.dispatchWorkgroups(across, Math.ceil(groups / across));
         compute.end();
 
-        const [r, g, b, a] = mesh.background;
         const pass = encoder.beginRenderPass({
             colorAttachments: [{
                 view: this.context.getCurrentTexture().createView(),
-                clearValue: { r, g, b, a },
+                clearValue: { r: 0, g: 0, b: 0, a: 0 },
                 loadOp: "clear",
                 storeOp: "store",
             }],
@@ -2522,7 +2514,7 @@ stage.addEventListener("pointerleave", event => {
 
 // Undo steps through the gradient and the box's size, not the settings around them.
 // A step is taken when a change has settled: after a drag or a pick of a color ends, not during it.
-const UNDO_KEYS = ["width", "height", "rows", "cols", "space", "hue", "background", "points"];
+const UNDO_KEYS = ["width", "height", "rows", "cols", "space", "hue", "points"];
 const undoSteps = [];
 let undoIndex = -1;
 let undoTimer = null;
@@ -2624,9 +2616,6 @@ function updateControls() {
     $("space").value = state.space;
     $("hue").value = state.hue;
     $("hue").disabled = !(state.space in HUE_INDEX);
-    if (document.activeElement !== $("background"))
-        $("background").value = state.background;
-    $("background").classList.toggle("invalid", !!state.background.trim() && !parseColor(state.background));
     for (const radio of document.querySelectorAll("input[name=renderer]"))
         radio.checked = radio.value === state.renderer;
     $("overlayToggle").checked = state.overlay;
@@ -2688,10 +2677,6 @@ $("space").addEventListener("change", () => {
 });
 $("hue").addEventListener("change", () => {
     state.hue = $("hue").value;
-    changed();
-});
-$("background").addEventListener("input", () => {
-    state.background = $("background").value;
     changed();
 });
 for (const radio of document.querySelectorAll("input[name=renderer]")) {
@@ -2812,7 +2797,7 @@ window.addEventListener("hashchange", () => {
 
 // The backdrop is drawn behind the box, and is not part of the CSS. A chosen image is not saved in the URL, so it is
 // only kept until the page is reloaded.
-const BACKDROPS = ["checkerboard", "none", "puppy", "image"];
+const BACKDROPS = ["checkerboard", "none", "color", "puppy", "image"];
 let backdropImage = null;
 
 function renderBackdrop() {
@@ -2822,7 +2807,10 @@ function renderBackdrop() {
     const backgroundImage = url ? `url("${url}")` : "";
     if (stage.style.backgroundImage !== backgroundImage)
         stage.style.backgroundImage = backgroundImage;
+    stage.style.backgroundColor = state.backdrop === "color" ? state.backdropColor ?? "#ffffff" : "";
     $("backdrop").value = state.backdrop;
+    $("backdropColor").value = state.backdropColor ?? "#ffffff";
+    $("backdropColor").hidden = state.backdrop !== "color";
     const choosing = state.backdrop === "image";
     $("backdropImageName").hidden = !choosing;
     $("backdropImageName").textContent = backdropImage?.name ?? "No image chosen";
@@ -2847,6 +2835,12 @@ $("backdrop").addEventListener("change", () => {
         $("backdropFile").click();
     changed();
 });
+for (const type of ["input", "change"]) {
+    $("backdropColor").addEventListener(type, () => {
+        state.backdropColor = $("backdropColor").value;
+        changed();
+    });
+}
 $("chooseBackdropImage").addEventListener("click", () => $("backdropFile").click());
 $("backdropFile").addEventListener("change", () => {
     useBackdropImage($("backdropFile").files[0]);

@@ -98,3 +98,18 @@ test("the color under the pointer", async t => {
     stage.dispatchEvent(new PointerEvent("pointerleave", { pointerType: "mouse" }));
     t.ok(!shown("sampleTip"), "it goes when the pointer leaves");
 });
+
+test("a color backdrop, and no background in the CSS", async t => {
+    set("backdrop", "color");
+    set("backdropColor", "#336699");
+    await sleep(100);
+    t.equal(stage.style.backgroundColor, "rgb(51, 102, 153)", "a color backdrop is behind the box");
+    t.ok(shown("backdropColor"), "with its color well");
+    t.equal(decodeState(encodeState()).backdropColor, "#336699", "and its color is in the link");
+    t.ok(!$("background"), "there's no Background field");
+    t.ok(!/mesh-gradient\(in \w+ #/.test($("output").value), "nor a background in the CSS");
+    set("backdrop", "checkerboard");
+    await sleep(100);
+    t.equal(stage.style.backgroundColor, "", "the checkerboard has no color");
+    t.ok(!shown("backdropColor"), "nor its well");
+});
