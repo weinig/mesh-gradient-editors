@@ -38,8 +38,11 @@ Sixth, a segment's two-sidedness may be 2, for a tear, as Finch et al.'s: it hol
 side of each edge of the grid it crosses, and the biharmonic leaves the slope across it free. freeformConstraints
 writes where tears cross each level's grid, and near one a texel's row of the level's own equation is built from the
 thin plate's energy term by term, leaving out the terms a tear crosses, rather than taken from the 13-point stencil.
-The coarser levels, built from those rows, need nothing more. A tear's edge strips hold its colors one texel either
-side, and with any tear the finest level is solved as with natural edges.
+The coarser levels, built from those rows, need nothing more. Tears are counted edge by edge: an edge crossed an even
+number of times, as where a curve thinner than a texel passes, as at a sharp tip, is whole and holds nothing, and a
+texel's side is the one a step from it across the edge leaves, not its segment's line, which can't always tell near
+the segment's ends. Each edge is crossed once where two segments meet on it. A tear's edge strips hold its colors one
+texel either side, and with any tear the finest level is solved as with natural edges.
 
 A two-sided segment holds at least 3 texels a side, not 1.5: with fewer than two whole texels a side the biharmonic
 doesn't hold the slope across the line, and overshoots far past its colors on coarse grids.

@@ -154,3 +154,24 @@ test("past a closed curve's sharp corners, the biharmonic holds the outside colo
         t.below(worst, 0.03, `on the ${resolution} grid`);
     }
 });
+
+test("a closed tear holds nothing past it, where it's thinner than a texel or its nodes are on the grid's edges", async t => {
+    set("space", "srgb");
+    set("numbers", true);
+    // The leaf's tips are thinner than a texel on coarse grids; the circle's nodes are on the grid's edges.
+    for (const [name, outside, places] of [
+        ["A leaf", "#f4f1e6", [[0.17, 0.625], [0.83, 0.375], [0.03, 0.03], [0.97, 0.97]]],
+        ["A circle", "#1e88ff", [[0.25, 0.5], [0.75, 0.5], [0.5, 0.15], [0.03, 0.03], [0.97, 0.97]]],
+    ]) {
+        await preset(name);
+        set("space", "srgb");
+        state.curves[0].free = true;
+        const color = [1, 3, 5].map(i => parseInt(outside.slice(i, i + 2), 16) / 255);
+        for (const resolution of ["256", "512", "1024"]) {
+            set("resolution", resolution);
+            const readout = await grab(0);
+            const worst = Math.max(...places.map(p => Math.max(...[0, 1, 2].map(k => Math.abs(sampleReadout(readout, p)[k] - color[k])))));
+            t.below(worst, 0.03, `${name} on the ${resolution} grid`);
+        }
+    }
+});

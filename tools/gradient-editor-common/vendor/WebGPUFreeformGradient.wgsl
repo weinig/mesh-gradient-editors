@@ -107,6 +107,23 @@ fn crossesEdge(a: vec2<f32>, b: vec2<f32>, c0: vec2<f32>, c1: vec2<f32>) -> bool
     return t >= 0.0 && t <= 1.0;
 }
 
+// Whether the segment from a to b crosses the grid edge from c0 to c1, for
+// counting a curve's crossings: by which side of the edge each end of the
+// segment is on, so where two segments of a curve meet on an edge, it's
+// crossed once, not twice or not at all.
+fn crossesEdgeOnce(a: vec2<f32>, b: vec2<f32>, c0: vec2<f32>, c1: vec2<f32>) -> bool {
+    let e = c1 - c0;
+    let sa = e.x * (a.y - c0.y) - e.y * (a.x - c0.x) >= 0.0;
+    let sb = e.x * (b.y - c0.y) - e.y * (b.x - c0.x) >= 0.0;
+    if (sa == sb) {
+        return false;
+    }
+    let d = b - a;
+    let s0 = d.x * (c0.y - a.y) - d.y * (c0.x - a.x);
+    let s1 = d.x * (c1.y - a.y) - d.y * (c1.x - a.x);
+    return (s0 >= 0.0) != (s1 >= 0.0);
+}
+
 // A tear is near a texel if it's within this many texels of it: two for the
 // reach of a term of the texel's row, one for the far end of the edge the
 // tear crosses, and a half to spare.
@@ -151,6 +168,15 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
     var coverageSum = 0.0;
     var weight = 0.0;
     var tears = 0u;
+    // Tears, edge by edge: right, left, down and up. An edge crossed an even
+    // number of times, as where a curve thinner than a texel passes, as at a
+    // sharp tip, is whole, and holds nothing.
+    let steps = array<vec2<f32>, 4>(vec2<f32>(level.texelSize.x, 0.0), vec2<f32>(-level.texelSize.x, 0.0),
+                                    vec2<f32>(0.0, level.texelSize.y), vec2<f32>(0.0, -level.texelSize.y));
+    var edgeCount = array<u32, 4>(0u, 0u, 0u, 0u);
+    var edgeColor = array<vec4<f32>, 4>(vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0));
+    var edgeHold = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
+    var edgeWeight = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
     for (var i = 0u; i < level.pointCount; i++) {
         let point = points[i];
         let delta = position - point.position * level.boxScale;
@@ -230,21 +256,21 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
                 }
             }
         }
+        // Which of the texel's edges a tear crosses. A tear holds the texel
+        // either side of each edge of the grid it crosses, to that side's
+        // color, and nothing else: the side a step from the texel across the
+        // edge leaves, which the segment's own line can't always tell near its
+        // ends.
+        var crossed = array<bool, 4>(false, false, false, false);
         if (segment.isTwoSided == 2u) {
-            // A tear holds the texel either side of each edge of the grid it
-            // crosses, to that side's color, and nothing else.
-            let stepX = vec2<f32>(level.texelSize.x, 0.0);
-            let stepY = vec2<f32>(0.0, level.texelSize.y);
-            let right = crossesEdge(a, b, position, position + stepX);
-            let down = crossesEdge(a, b, position, position + stepY);
-            tears |= select(0u, 1u, right) | select(0u, 2u, down);
             if (distance(position, a + t * along) <= tearReach * texel) {
                 tears |= 4u;
             }
-            coverage = select(0.0, 1.0, right || down || crossesEdge(a, b, position - stepX, position)
-                              || crossesEdge(a, b, position - stepY, position));
-            left = select(0.0, 1.0, across > 0.0);
-            beyond = 0.0;
+            for (var d = 0; d < 4; d++) {
+                // Each edge from its upper or left texel, so both texels beside it count the same.
+                let other = position + steps[d];
+                crossed[d] = select(crossesEdgeOnce(a, b, other, position), crossesEdgeOnce(a, b, position, other), d % 2 == 0);
+            }
         } else if (segment.isTwoSided != 0u) {
             coverage *= saturate(1.0 - max(0.0, past) / (openEndFade * texel));
         }
@@ -271,10 +297,39 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
         // over a texel, to any segment the texel is beside, and counts only
         // where no other does.
         let share = max(saturate(1.0 - beyond / texel), 1e-4);
+        if (segment.isTwoSided == 2u) {
+            for (var d = 0; d < 4; d++) {
+                if (!crossed[d]) {
+                    continue;
+                }
+                let e = steps[d];
+                let side = select(1.0, 0.0, along.x * e.y - along.y * e.x < 0.0);
+                var sideColor = mix(mix(segment.startRight, segment.endRight, t), mix(segment.startLeft, segment.endLeft, t), side);
+                if (level.holds == 2u && segment.strength < 1.0) {
+                    let free = bilinearRead(constraintFree, (vec2<f32>(gid) + 0.5) / vec2<f32>(level.size)
+                                            * vec2<f32>(textureDimensions(constraintFree)) - 0.5);
+                    sideColor = mix(free, sideColor, segment.strength);
+                }
+                edgeCount[d] += 1u;
+                edgeColor[d] += strength * sideColor;
+                edgeHold[d] += strength;
+                edgeWeight[d] = max(edgeWeight[d], strength);
+            }
+            continue;
+        }
         colorSum += coverage * strength * share * color;
         coverageSum += coverage * strength * share;
         weight = max(weight, coverage * strength);
     }
+    for (var d = 0; d < 4; d++) {
+        if (edgeCount[d] % 2u == 0u) {
+            continue;
+        }
+        colorSum += edgeColor[d];
+        coverageSum += edgeHold[d];
+        weight = max(weight, edgeWeight[d]);
+    }
+    tears |= select(0u, 1u, edgeCount[0] % 2u == 1u) | select(0u, 2u, edgeCount[2] % 2u == 1u);
 
     var color = vec4<f32>(0.0);
     if (coverageSum > 0.0) {
