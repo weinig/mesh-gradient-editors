@@ -75,5 +75,12 @@
                     <option value="natural">Natural</option>
 {{MORE_EDGES}}                </select>
             </div>
+            <div id="edgeStripsRow" class="row" title="A two-sided curve's jump is held across a couple of texels, which filtering up to the screen would blur. Strips along it, drawn over the gradient at the screen's resolution, keep it sharp. As the grid solves them shows the solve alone.">
+                <label for="edgeStrips">Curve edges</label>
+                <select id="edgeStrips">
+                    <option value="sharp">Sharp at the screen's resolution</option>
+                    <option value="solved">As the grid solves them</option>
+                </select>
+            </div>
 {{MORE_GRID}}            <p id="gpuStatus" class="status"></p>
         </section>

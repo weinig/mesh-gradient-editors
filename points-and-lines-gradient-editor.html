@@ -532,6 +532,13 @@ input.percent { width: 64px; }
                     <option value="natural">Natural</option>
                 </select>
             </div>
+            <div id="edgeStripsRow" class="row" title="A two-sided curve's jump is held across a couple of texels, which filtering up to the screen would blur. Strips along it, drawn over the gradient at the screen's resolution, keep it sharp. As the grid solves them shows the solve alone.">
+                <label for="edgeStrips">Curve edges</label>
+                <select id="edgeStrips">
+                    <option value="sharp">Sharp at the screen's resolution</option>
+                    <option value="solved">As the grid solves them</option>
+                </select>
+            </div>
             <div class="row" title="A disc: a point with no spread holds a disc 1% of the box's shorter side across, which also holds the surface flat there. One texel: it holds only the texel it's in, so its color is held and its slope is free. With Natural edges and the biharmonic model, two such stops make a linear ramp and three a plane.">
                 <label for="stopSize">Points hold</label>
                 <select id="stopSize">
@@ -633,9 +640,6 @@ input.percent { width: 64px; }
             </div>
             <div class="row">
                 <label><input type="checkbox" id="sample"> Sample the color under the pointer</label>
-            </div>
-            <div id="edgeStripsRow" class="row" title="A two-sided curve's jump is held across a couple of texels, which filtering up to the screen would blur. Strips along it, drawn over the gradient at the screen's resolution, keep it sharp. Turn them off to see the solve alone.">
-                <label><input type="checkbox" id="edgeStrips"> Draw the edge strips that keep a curve's jump sharp</label>
             </div>
             <h3>Under each box</h3>
             <div class="row">
@@ -5115,7 +5119,7 @@ function updateCommonControls() {
     $("sample").checked = state.sample;
     $("otherCurves").checked = state.otherCurves;
     $("otherCurvesRow").hidden = !state.crossSection || state.models.length < 2;
-    $("edgeStrips").checked = state.edgeStrips;
+    $("edgeStrips").value = state.edgeStrips ? "sharp" : "solved";
     $("edgeStripsRow").hidden = !TWO_SIDED_LINES;
     const heights = sheetHeights(state.space);
     if ($("sheetHeight").dataset.space !== String(state.space)) {
@@ -5281,12 +5285,14 @@ $("gamut").addEventListener("change", () => {
     state.gamut = $("gamut").value;
     changed();
 });
-for (const id of ["otherCurves", "edgeStrips"]) {
-    $(id).addEventListener("change", () => {
-        state[id] = $(id).checked;
-        changed();
-    });
-}
+$("otherCurves").addEventListener("change", () => {
+    state.otherCurves = $("otherCurves").checked;
+    changed();
+});
+$("edgeStrips").addEventListener("change", () => {
+    state.edgeStrips = $("edgeStrips").value === "sharp";
+    changed();
+});
 $("sample").addEventListener("change", () => {
     state.sample = $("sample").checked;
     changed();

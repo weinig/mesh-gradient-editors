@@ -141,7 +141,7 @@ function updateCommonControls() {
     $("sample").checked = state.sample;
     $("otherCurves").checked = state.otherCurves;
     $("otherCurvesRow").hidden = !state.crossSection || state.models.length < 2;
-    $("edgeStrips").checked = state.edgeStrips;
+    $("edgeStrips").value = state.edgeStrips ? "sharp" : "solved";
     $("edgeStripsRow").hidden = !TWO_SIDED_LINES;
     const heights = sheetHeights(state.space);
     if ($("sheetHeight").dataset.space !== String(state.space)) {
@@ -307,12 +307,14 @@ $("gamut").addEventListener("change", () => {
     state.gamut = $("gamut").value;
     changed();
 });
-for (const id of ["otherCurves", "edgeStrips"]) {
-    $(id).addEventListener("change", () => {
-        state[id] = $(id).checked;
-        changed();
-    });
-}
+$("otherCurves").addEventListener("change", () => {
+    state.otherCurves = $("otherCurves").checked;
+    changed();
+});
+$("edgeStrips").addEventListener("change", () => {
+    state.edgeStrips = $("edgeStrips").value === "sharp";
+    changed();
+});
 $("sample").addEventListener("change", () => {
     state.sample = $("sample").checked;
     changed();
