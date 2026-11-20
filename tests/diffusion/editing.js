@@ -36,6 +36,31 @@ test("the pen, double-clicks and bad links", async t => {
     t.equal(decodeState(bad).curves.length, 1, "a link's unsound curves are dropped");
 });
 
+test("the toolbar's colors are the selected curve's, or the next curve's", async t => {
+    await preset("A circle");
+    selection = { curve: 0, node: null };
+    changed();
+    await sleep(100);
+    t.equal(hexColor($("newFirst").value), hexColor(state.curves[0].inside), "they show the selected curve's");
+    set("newFirst", "#00ff00");
+    t.equal(state.curves[0].inside, "#00ff00", "and change it");
+    const outside = state.curves[0].outside;
+    $("swapNewColors").click();
+    t.equal(`${state.curves[0].inside} ${state.curves[0].outside}`, `${outside} #00ff00`, "and swap it");
+    selection = null;
+    changed();
+    await sleep(100);
+    t.equal(hexColor($("newFirst").value), "#00ff00", "with none selected, they're the next curve's");
+    set("newSecond", "#0000ff");
+    t.equal(state.curves[0].outside, "#00ff00", "and leave the curves alone");
+    const before = state.curves.length;
+    document.querySelector("#toolbar [data-tool=ellipse]").click();
+    await pointer().drag([[0.1, 0.1], [0.2, 0.2], [0.3, 0.3]]);
+    t.equal(state.curves.length - before, 1, "a curve drawn");
+    t.equal(`${state.curves.at(-1).inside} ${state.curves.at(-1).outside}`, "#00ff00 #0000ff", "takes them");
+    document.querySelector("#toolbar [data-tool=select]").click();
+});
+
 test("Falloff: Flat or Smooth", async t => {
     await preset("A circle");
     selection = { curve: 0, node: null };

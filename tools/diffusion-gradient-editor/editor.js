@@ -1128,11 +1128,30 @@ for (const view of views) {
 
 for (const button of document.querySelectorAll("#toolbar button[data-tool]"))
     button.addEventListener("click", () => setTool(button.dataset.tool));
-$("newFirst").addEventListener("input", () => newColors[0] = pickedColor($("newFirst")));
-$("newSecond").addEventListener("input", () => newColors[1] = pickedColor($("newSecond")));
+// The toolbar's two colors are the selected curve's, or with none selected, the next curve's. A color picked in
+// either case is the next curve's too.
+const sidesOf = curve => curve.closed ? ["inside", "outside"] : ["left", "right"];
+const selectedCurve = () => selection && state.curves[selection.curve];
+for (const [id, k] of [["newFirst", 0], ["newSecond", 1]]) {
+    for (const type of ["input", "change"]) {
+        $(id).addEventListener(type, () => {
+            newColors[k] = pickedColor($(id));
+            const curve = selectedCurve();
+            if (curve)
+                curve[sidesOf(curve)[k]] = newColors[k];
+            changed();
+        });
+    }
+}
 $("swapNewColors").addEventListener("click", () => {
-    newColors = [newColors[1], newColors[0]];
-    updateControls();
+    const curve = selectedCurve();
+    if (curve) {
+        const [first, second] = sidesOf(curve);
+        [curve[first], curve[second]] = [curve[second], curve[first]];
+    } else {
+        newColors = [newColors[1], newColors[0]];
+    }
+    changed();
 });
 
 // MARK: - Controls
@@ -1142,8 +1161,12 @@ function updateControls() {
     $("showCurves").checked = state.showCurves;
     for (const button of document.querySelectorAll("#toolbar button[data-tool]"))
         button.setAttribute("aria-pressed", String(button.dataset.tool === tool));
-    $("newFirst").value = newColors[0];
-    $("newSecond").value = newColors[1];
+    const shownCurve = selectedCurve();
+    const shownColors = shownCurve ? sidesOf(shownCurve).map(side => shownCurve[side]) : newColors;
+    for (const [id, k] of [["newFirst", 0], ["newSecond", 1]]) {
+        if (document.activeElement !== $(id))
+            $(id).value = hexColor(shownColors[k]);
+    }
     $("toolNote").textContent = TOOL_NOTES[tool];
 
     const list = $("curveList");

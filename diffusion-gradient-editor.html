@@ -415,10 +415,10 @@ fieldset.fields button.small:disabled { opacity: 1; }
         <button data-tool="ellipse" title="Ellipse" aria-label="Ellipse"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="12" rx="8" ry="6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>
         <button data-tool="arc" title="Arc" aria-label="Arc"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18a8 8 0 0 1 16 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
         <button data-tool="freehand" title="Freehand" aria-label="Freehand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16c3-7 5 3 8-3s5-6 8 1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
-        <div id="newColors" title="The colors of new curves: left, or inside, above; right, or outside, below">
-            <input id="newFirst" type="color" alpha aria-label="New curves' left or inside color">
-            <input id="newSecond" type="color" alpha aria-label="New curves' right or outside color">
-            <button id="swapNewColors" title="Swap" aria-label="Swap the new curves' colors">⇅</button>
+        <div id="newColors" title="The selected curve's colors, or with none selected, the next curve's: left, or inside, above; right, or outside, below">
+            <input id="newFirst" type="color" alpha aria-label="Left or inside color">
+            <input id="newSecond" type="color" alpha aria-label="Right or outside color">
+            <button id="swapNewColors" title="Swap" aria-label="Swap the two colors">⇅</button>
         </div>
         <button id="undo" title="Undo (⌘Z)" aria-label="Undo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7L4 12l5 5M4 12h10a5 5 0 0 1 0 10h-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -3)"/></svg></button>
         <button id="redo" title="Redo (⇧⌘Z)" aria-label="Redo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 7l5 5-5 5M20 12H10a5 5 0 0 0 0 10h2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -3)"/></svg></button>
@@ -5078,11 +5078,30 @@ for (const view of views) {
 
 for (const button of document.querySelectorAll("#toolbar button[data-tool]"))
     button.addEventListener("click", () => setTool(button.dataset.tool));
-$("newFirst").addEventListener("input", () => newColors[0] = pickedColor($("newFirst")));
-$("newSecond").addEventListener("input", () => newColors[1] = pickedColor($("newSecond")));
+// The toolbar's two colors are the selected curve's, or with none selected, the next curve's. A color picked in
+// either case is the next curve's too.
+const sidesOf = curve => curve.closed ? ["inside", "outside"] : ["left", "right"];
+const selectedCurve = () => selection && state.curves[selection.curve];
+for (const [id, k] of [["newFirst", 0], ["newSecond", 1]]) {
+    for (const type of ["input", "change"]) {
+        $(id).addEventListener(type, () => {
+            newColors[k] = pickedColor($(id));
+            const curve = selectedCurve();
+            if (curve)
+                curve[sidesOf(curve)[k]] = newColors[k];
+            changed();
+        });
+    }
+}
 $("swapNewColors").addEventListener("click", () => {
-    newColors = [newColors[1], newColors[0]];
-    updateControls();
+    const curve = selectedCurve();
+    if (curve) {
+        const [first, second] = sidesOf(curve);
+        [curve[first], curve[second]] = [curve[second], curve[first]];
+    } else {
+        newColors = [newColors[1], newColors[0]];
+    }
+    changed();
 });
 
 // MARK: - Controls
@@ -5092,8 +5111,12 @@ function updateControls() {
     $("showCurves").checked = state.showCurves;
     for (const button of document.querySelectorAll("#toolbar button[data-tool]"))
         button.setAttribute("aria-pressed", String(button.dataset.tool === tool));
-    $("newFirst").value = newColors[0];
-    $("newSecond").value = newColors[1];
+    const shownCurve = selectedCurve();
+    const shownColors = shownCurve ? sidesOf(shownCurve).map(side => shownCurve[side]) : newColors;
+    for (const [id, k] of [["newFirst", 0], ["newSecond", 1]]) {
+        if (document.activeElement !== $(id))
+            $(id).value = hexColor(shownColors[k]);
+    }
     $("toolNote").textContent = TOOL_NOTES[tool];
 
     const list = $("curveList");
