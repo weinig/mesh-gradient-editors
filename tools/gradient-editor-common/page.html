@@ -84,5 +84,12 @@
                     <option value="solved">As the grid solves them</option>
                 </select>
             </div>
+            <div id="flatHoldRow" class="row" title="Prototype. A band holds a Flat curve's colors across three texels or more a side, and the stencil sees across it. A cut leaves out every term of the thin plate's energy that crosses the curve, as a tear does, and holds two texels a side, so the two sides can't see each other.">
+                <label for="flatHold">Flat curves</label>
+                <select id="flatHold">
+                    <option value="band">Held across a band</option>
+                    <option value="cut">Cut, held two texels a side</option>
+                </select>
+            </div>
 {{MORE_GRID}}            <p id="gpuStatus" class="status"></p>
         </section>

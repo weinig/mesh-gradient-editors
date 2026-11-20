@@ -29,7 +29,8 @@ struct FreeformSegment {
     endRadius: f32,
     // 0 for one color, 1 for a color each side, held across a band, 2 for a
     // tear: a color each side, held on the texel either side of it, with the
-    // slope across it left free.
+    // slope across it left free, 3 for a flat tear: a tear with Finch et al.'s
+    // slope curve either side, so the slope across it is held at zero.
     isTwoSided: u32,
     startDistance: f32,
     endDistance: f32,
@@ -89,7 +90,9 @@ struct Level {
 // Where tears cross the grid: 1 if one crosses the edge from the texel to the
 // next across, 2 if the edge to the next down, and 4 if one is near enough
 // to drop a term of the texel's row of the biharmonic.
-@group(0) @binding(7) var constraintTearsOut: texture_storage_2d<r32float, write>;
+// Bits 8 and 16 are 1 and 2 for a flat tear, whose direction across the right
+// and down edges is in the green and blue, as an angle in the box's units.
+@group(0) @binding(7) var constraintTearsOut: texture_storage_2d<rgba32float, write>;
 
 // Whether the piece from a to b crosses the grid's edge from one texel's
 // center, c0, to the next's, c1.
@@ -122,6 +125,25 @@ fn crossesEdgeOnce(a: vec2<f32>, b: vec2<f32>, c0: vec2<f32>, c1: vec2<f32>) -> 
     let s0 = d.x * (c0.y - a.y) - d.y * (c0.x - a.x);
     let s1 = d.x * (c1.y - a.y) - d.y * (c1.x - a.x);
     return (s0 >= 0.0) != (s1 >= 0.0);
+}
+
+// A flat tear's cap at a line's open end: over this far from it, in units of
+// the box's shorter side and at least capTexels, its two colors meet at their
+// mean and its slope is let go, so the jump fades out to nothing at the end
+// rather than wrapping round it.
+const capLength = 0.03;
+const capTexels = 4.0;
+
+// A flat tear's direction across an edge, with how fully it holds its slope
+// there, 0 to 1, in one number: the angle, plus eight times the hold in
+// thousandths.
+fn packFlat(angle: f32, hold: f32) -> f32 {
+    return angle + 8.0 * round(saturate(hold) * 1000.0);
+}
+
+fn unpackFlat(packed: f32) -> vec2<f32> {
+    let steps = floor((packed + 4.0) / 8.0);
+    return vec2<f32>(packed - 8.0 * steps, steps / 1000.0);
 }
 
 // A tear is near a texel if it's within this many texels of it: two for the
@@ -168,6 +190,7 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
     var coverageSum = 0.0;
     var weight = 0.0;
     var tears = 0u;
+    var flatAngles = vec2<f32>(0.0);
     // Tears, edge by edge: right, left, down and up. An edge crossed an even
     // number of times, as where a curve thinner than a texel passes, as at a
     // sharp tip, is whole, and holds nothing.
@@ -177,6 +200,8 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
     var edgeColor = array<vec4<f32>, 4>(vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0));
     var edgeHold = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
     var edgeWeight = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
+    var edgeFlat = array<u32, 4>(0u, 0u, 0u, 0u);
+    var edgeAngle = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
     for (var i = 0u; i < level.pointCount; i++) {
         let point = points[i];
         let delta = position - point.position * level.boxScale;
@@ -256,13 +281,11 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
                 }
             }
         }
-        // Which of the texel's edges a tear crosses. A tear holds the texel
-        // either side of each edge of the grid it crosses, to that side's
-        // color, and nothing else: the side a step from the texel across the
-        // edge leaves, which the segment's own line can't always tell near its
-        // ends.
+        // Which of the texel's edges a tear crosses. The texel is on the side a
+        // step from it across the edge leaves, which the segment's own line
+        // can't always tell near its ends.
         var crossed = array<bool, 4>(false, false, false, false);
-        if (segment.isTwoSided == 2u) {
+        if (segment.isTwoSided >= 2u) {
             if (distance(position, a + t * along) <= tearReach * texel) {
                 tears |= 4u;
             }
@@ -271,6 +294,7 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
                 let other = position + steps[d];
                 crossed[d] = select(crossesEdgeOnce(a, b, other, position), crossesEdgeOnce(a, b, position, other), d % 2 == 0);
             }
+            beyond = 0.0;
         } else if (segment.isTwoSided != 0u) {
             coverage *= saturate(1.0 - max(0.0, past) / (openEndFade * texel));
         }
@@ -297,14 +321,23 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
         // over a texel, to any segment the texel is beside, and counts only
         // where no other does.
         let share = max(saturate(1.0 - beyond / texel), 1e-4);
-        if (segment.isTwoSided == 2u) {
+        if (segment.isTwoSided >= 2u) {
             for (var d = 0; d < 4; d++) {
                 if (!crossed[d]) {
                     continue;
                 }
                 let e = steps[d];
                 let side = select(1.0, 0.0, along.x * e.y - along.y * e.x < 0.0);
-                var sideColor = mix(mix(segment.startRight, segment.endRight, t), mix(segment.startLeft, segment.endLeft, t), side);
+                let rightColor = mix(segment.startRight, segment.endRight, t);
+                let leftColor = mix(segment.startLeft, segment.endLeft, t);
+                var sideColor = mix(rightColor, leftColor, side);
+                // How far into a flat tear's cap the crossing is.
+                var hold = 1.0;
+                if (segment.isTwoSided == 3u) {
+                    let toEnd = min(segment.startDistance + distanceAlong, segmentLength - distanceAlong + segment.endDistance);
+                    hold = saturate(toEnd / max(capLength, capTexels * texel));
+                    sideColor = mix(0.5 * (leftColor + rightColor), sideColor, hold);
+                }
                 if (level.holds == 2u && segment.strength < 1.0) {
                     let free = bilinearRead(constraintFree, (vec2<f32>(gid) + 0.5) / vec2<f32>(level.size)
                                             * vec2<f32>(textureDimensions(constraintFree)) - 0.5);
@@ -314,6 +347,10 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
                 edgeColor[d] += strength * sideColor;
                 edgeHold[d] += strength;
                 edgeWeight[d] = max(edgeWeight[d], strength);
+                if (segment.isTwoSided == 3u) {
+                    edgeFlat[d] = 1u;
+                    edgeAngle[d] = packFlat(atan2(along.y, along.x), hold);
+                }
             }
             continue;
         }
@@ -329,13 +366,17 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
         coverageSum += edgeHold[d];
         weight = max(weight, edgeWeight[d]);
     }
-    tears |= select(0u, 1u, edgeCount[0] % 2u == 1u) | select(0u, 2u, edgeCount[2] % 2u == 1u);
+    let rightTorn = edgeCount[0] % 2u == 1u;
+    let downTorn = edgeCount[2] % 2u == 1u;
+    tears |= select(0u, 1u, rightTorn) | select(0u, 2u, downTorn);
+    tears |= select(0u, 8u, rightTorn && edgeFlat[0] != 0u) | select(0u, 16u, downTorn && edgeFlat[2] != 0u);
+    flatAngles = vec2<f32>(edgeAngle[0], edgeAngle[2]);
 
     var color = vec4<f32>(0.0);
     if (coverageSum > 0.0) {
         color = colorSum / coverageSum;
     }
-    textureStore(constraintTearsOut, gid, vec4<f32>(f32(tears)));
+    textureStore(constraintTearsOut, gid, vec4<f32>(f32(tears), flatAngles, 0.0));
     textureStore(constraintColorOut, gid, color);
     textureStore(constraintWeightOut, gid, vec4<f32>(weight));
     textureStore(rightHandSideOut, gid, weight * color);
@@ -795,6 +836,84 @@ fn wholeEdge(p: vec2<i32>, e: vec2<i32>, size: vec2<i32>) -> bool {
     return (bits & select(2u, 1u, e.x != 0)) == 0u;
 }
 
+// How firmly a flat tear holds the slope at zero, against the thin plate's
+// terms' 1.
+const slopeWeight = 100.0;
+
+// A flat tear's slope terms in texel p's row, as Finch et al.'s slope curve:
+// at each texel beside an edge the tear crosses, the squared generalized first
+// difference away from it along its normal, over the texel and its neighbors
+// further out, across and down, by the normal's share in each.
+fn addSlopeTerms(p: vec2<i32>, size: vec2<i32>, row: ptr<function, array<f32, 25>>) {
+    for (var s = 0; s < 5; s++) {
+        let beside = p + select(edgeDirections[min(s, 3)], vec2<i32>(0), s == 4);
+        if (any(beside < vec2<i32>(0)) || any(beside >= size)) {
+            continue;
+        }
+        for (var d = 0; d < 4; d++) {
+            let e = edgeDirections[d];
+            let other = beside + e;
+            if (any(other < vec2<i32>(0)) || any(other >= size)) {
+                continue;
+            }
+            let crossing = textureLoad(bTears, min(beside, other), 0);
+            if ((u32(crossing.r) & select(16u, 8u, e.x != 0)) == 0u) {
+                continue;
+            }
+            let packed = unpackFlat(select(crossing.b, crossing.g, e.x != 0));
+            let angle = packed.x;
+            if (packed.y <= 0.0) {
+                continue;
+            }
+            var normal = vec2<f32>(-sin(angle), cos(angle));
+            if (dot(normal, vec2<f32>(e)) > 0.0) {
+                normal = -normal;
+            }
+            var texels = array<vec2<i32>, 3>(beside, beside, beside);
+            var weights = array<f32, 3>(0.0, 0.0, 0.0);
+            for (var axis = 0; axis < 2; axis++) {
+                let share = abs(normal[axis]);
+                if (share < 1e-6) {
+                    continue;
+                }
+                var step = vec2<i32>(0);
+                step[axis] = select(-1, 1, normal[axis] > 0.0);
+                if (!wholeEdge(beside, step, size)) {
+                    continue;
+                }
+                texels[axis + 1] = beside + step;
+                weights[axis + 1] = share;
+                weights[0] -= share;
+            }
+            for (var i = 0; i < 3; i++) {
+                if (any(texels[i] != p) || weights[i] == 0.0) {
+                    continue;
+                }
+                for (var j = 0; j < 3; j++) {
+                    if (weights[j] != 0.0) {
+                        (*row)[coefficientSlice(texels[j] - p)] += slopeWeight * packed.y * weights[i] * weights[j];
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The sum of the sizes of texel p's row's coefficients, which bounds what the
+// smoothing steps divide by: 64 for the 13-point stencil, more near a flat
+// tear's slope terms.
+fn ownMagnitude(p: vec2<i32>, size: vec2<i32>) -> f32 {
+    if (!nearTear(p)) {
+        return 64.0;
+    }
+    let row = ownRow(p, size);
+    var magnitude = 0.0;
+    for (var o = 0; o < 25; o++) {
+        magnitude += abs(row[o]);
+    }
+    return max(magnitude, 64.0);
+}
+
 fn checker(c: vec2<i32>) -> f32 {
     return select(-1.0, 1.0, (c.x + c.y) % 2 == 0);
 }
@@ -854,6 +973,7 @@ fn ownRow(p: vec2<i32>, size: vec2<i32>) -> array<f32, 25> {
         row[12] += w;
         row[coefficientSlice(e)] -= w;
     }
+    addSlopeTerms(p, size, &row);
     return row;
 }
 
@@ -1361,7 +1481,7 @@ fn bhChebyshevOwn(@builtin(global_invocation_id) id: vec3<u32>) {
     let r = ownResidual(p, vec2<i32>(bh.size));
     let center = textureLoad(bX, p, 0);
     let last = textureLoad(bPrevious, p, 0);
-    textureStore(bOut, id.xy, last + bh.stepOmega * (bh.stepGamma * r / (penalty(w) + 64.0) + center - last));
+    textureStore(bOut, id.xy, last + bh.stepOmega * (bh.stepGamma * r / (penalty(w) + ownMagnitude(p, vec2<i32>(bh.size))) + center - last));
 }
 
 // One Chebyshev step of a Galerkin level's correction toward its right-hand side.
@@ -1646,7 +1766,7 @@ fn bhChebyshevOwnCorrection(@builtin(global_invocation_id) id: vec3<u32>) {
     let r = textureLoad(bRightHandSide, p, 0) - ownProduct(p, vec2<i32>(bh.size), w);
     let center = textureLoad(bX, p, 0);
     let last = textureLoad(bPrevious, p, 0);
-    textureStore(bOut, id.xy, last + bh.stepOmega * (bh.stepGamma * r / (penalty(w) + 64.0) + center - last));
+    textureStore(bOut, id.xy, last + bh.stepOmega * (bh.stepGamma * r / (penalty(w) + ownMagnitude(p, vec2<i32>(bh.size))) + center - last));
 }
 
 // b - K e, or with the flag, K e; zero where held.

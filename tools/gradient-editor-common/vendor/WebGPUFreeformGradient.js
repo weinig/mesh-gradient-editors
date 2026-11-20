@@ -441,7 +441,8 @@ export class WebGPUFreeformGradientRenderer {
       constraintColor: texture("rgba32float"),
       constraintWeight: texture("r32float"),
       // Where tears cross the level's grid.
-      tears: texture("r32float"),
+      // The bits of where tears cross, then the direction of a flat tear across the right and down edges.
+      tears: texture("rgba32float"),
       rightHandSide: texture("rgba32float"),
       correction: grid(),
       correctionRightHandSide: texture("rgba32float"),
@@ -1169,9 +1170,9 @@ export class WebGPUFreeformGradientRenderer {
     for (let i = 0; i < count; i++) {
       const s = i * 23;
       const o = i * 28;
-      // 0 for one color, 1 for a color each side across a band, 2 for a tear.
-      const kind = segments[s + 22] === 2 ? 2 : segments[s + 22] !== 0 ? 1 : 0;
-      this.hasTears ||= kind === 2;
+      // 0 for one color, 1 for a color each side across a band, 2 for a tear, 3 for a flat tear.
+      const kind = segments[s + 22] === 2 || segments[s + 22] === 3 ? segments[s + 22] : segments[s + 22] !== 0 ? 1 : 0;
+      this.hasTears ||= kind >= 2;
       for (let k = 0; k < 20; k++) {
         f32[o + k] = segments[s + k];
       }
@@ -1219,7 +1220,8 @@ function edgeQuads(segments, boxScale, texel, blendWidth, pieceLength) {
       startRight: segments.slice(s + 8, s + 12), endRight: segments.slice(s + 12, s + 16),
       start: segments.slice(s + 16, s + 18), end: segments.slice(s + 18, s + 20),
       startRadius: segments[s + 20], endRadius: segments[s + 21],
-      tear: segments[s + 22] === 2,
+      // How many texels a tear holds either side of it: 0 for a band.
+      tear: segments[s + 22] === 2 || segments[s + 22] === 3 ? 1 : 0,
     };
     const along = length(fround(fround(segment.end[0] - segment.start[0]) * boxScale[0]),
                          fround(fround(segment.end[1] - segment.start[1]) * boxScale[1]));
@@ -1291,8 +1293,8 @@ function edgeQuads(segments, boxScale, texel, blendWidth, pieceLength) {
       joints.push([fround(miter[0] / scale), fround(miter[1] / scale)]);
     }
     run.forEach((segment, index) => {
-      // A tear holds its colors on the texel either side of it; a band, out to its radius.
-      const held = segment.tear ? [texel, texel]
+      // A tear holds its colors on the texel or two either side of it; a band, out to its radius.
+      const held = segment.tear ? [fround(segment.tear * texel), fround(segment.tear * texel)]
         : [Math.max(segment.startRadius, fround(twoSidedTexels * texel)),
            Math.max(segment.endRadius, fround(twoSidedTexels * texel))];
       const half = (a, b) => a.map((x, i) => fround(fround(x + b[i]) / 2));

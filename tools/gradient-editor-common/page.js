@@ -1224,6 +1224,7 @@ function commonState() {
         sample: state?.sample ?? false,
         otherCurves: state?.otherCurves ?? false,
         edgeStrips: state?.edgeStrips ?? true,
+        flatHold: state?.flatHold ?? "band",
     };
 }
 

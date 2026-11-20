@@ -449,7 +449,7 @@ function offsetPieces(flat, distance, closed) {
 // instead, each holding one side's color, moved apart by the blur, so the solve fills the band between them.
 function gradientData(model, influence = false) {
     const segments = [], strengths = [], lines = [], colors = [];
-    // `kind` is 0 for one color, 1 for a color each side held across a band, 2 for a tear.
+    // `kind` is 0 for one color, 1 for a color each side held across a band, 2 for a tear, 3 for a flat tear.
     const add = (flat, left, right, kind, strength, closed) => {
         for (const [x0, y0, x1, y1] of flat) {
             segments.push(...left, ...left, ...right, ...right, x0, y0, x1, y1, CURVE_RADIUS, CURVE_RADIUS, kind);
@@ -473,7 +473,7 @@ function gradientData(model, influence = false) {
             add(offsetPieces(flat, distance, curve.closed), left, left, 0, strength, curve.closed);
             add(offsetPieces(flat, -distance, curve.closed), right, right, 0, strength, curve.closed);
         } else {
-            add(flat, left, right, curve.free ? 2 : 1, strength, curve.closed);
+            add(flat, left, right, curve.free ? 2 : state.flatHold === "cut" ? 3 : 1, strength, curve.closed);
         }
     }
     const average = [0, 1, 2, 3].map(k => colors.length ? colors.reduce((sum, c) => sum + c[k], 0) / colors.length : 0);
