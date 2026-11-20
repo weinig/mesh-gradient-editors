@@ -1030,35 +1030,38 @@ function updateControls() {
             text += " With one stop, the linear part is a constant, a.";
         $("normalizationNote").textContent = text;
     }
-    $("countNote").textContent = `${state.stops.length} stop${state.stops.length === 1 ? "" : "s"}.`;
-
     updateStopList();
 
     const selected = selection !== null ? state.stops[selection] : null;
-    $("stopFields").hidden = !selected;
-    $("deleteStop").hidden = !selected;
-    $("stopTitle").textContent = selected ? `Stop ${selection + 1}` : "Stops";
-    if (selected) {
-        if (document.activeElement !== $("stopText"))
-            $("stopText").value = selected.color;
-        $("stopPicker").value = hexColor(selected.color);
-        for (const [id, axis] of [["stopX", 0], ["stopY", 1]]) {
-            if (document.activeElement !== $(id))
-                $(id).value = Math.round(selected.p[axis] * 1000) / 10;
-        }
-        $("spread").value = selected.spread;
-        $("spreadValue").textContent = selected.spread + "%";
-        if (document.activeElement !== $("stopWeight"))
-            $("stopWeight").value = selected.weight ?? "";
+    $("stopFields").disabled = !selected;
+    $("deleteStop").disabled = !selected;
+    $("clearStops").disabled = !state.stops.length;
+    $("stopHeading").classList.toggle("none", !selected);
+    $("stopTitle").textContent = selected ? `Stop ${selection + 1}` : state.stops.length ? "No stop selected" : "No stops";
+    if (!selected) {
+        for (const id of ["stopText", "stopX", "stopY"])
+            $(id).value = "";
+        $("spreadValue").textContent = "";
+        return;
     }
+    if (document.activeElement !== $("stopText"))
+        $("stopText").value = selected.color;
+    $("stopPicker").value = hexColor(selected.color);
+    for (const [id, axis] of [["stopX", 0], ["stopY", 1]]) {
+        if (document.activeElement !== $(id))
+            $(id).value = Math.round(selected.p[axis] * 1000) / 10;
+    }
+    $("spread").value = selected.spread;
+    $("spreadValue").textContent = selected.spread + "%";
 }
 
-// Each stop as a swatch that selects it.
+// Each stop as a chip that selects it.
 function updateStopList() {
     const list = $("stopList");
     if (list.children.length !== state.stops.length) {
         list.replaceChildren(...state.stops.map((_, index) => {
             const button = document.createElement("button");
+            button.className = "chip";
             button.append(document.createElement("span"));
             button.addEventListener("click", () => {
                 selection = index;
@@ -1070,7 +1073,7 @@ function updateStopList() {
     state.stops.forEach((stop, index) => {
         const button = list.children[index];
         button.firstChild.style.background = swatchColor(stop.color);
-        button.title = stop.color;
+        button.title = `Stop ${index + 1}: ${stop.color}`;
         button.classList.toggle("selected", index === selection);
     });
 }
@@ -1104,12 +1107,6 @@ for (const [id, axis] of [["stopX", 0], ["stopY", 1]]) {
         changed();
     });
 }
-$("stopWeight").addEventListener("change", () => {
-    const value = parseFloat($("stopWeight").value);
-    if (selection !== null)
-        state.stops[selection].weight = Number.isFinite(value) ? value : null;
-    changed();
-});
 $("splineDrawing").addEventListener("change", () => {
     state.splineDrawing = $("splineDrawing").value;
     changed();

@@ -18,45 +18,65 @@
 {{PAGE}}
         <section id="curves">
             <div class="heading">
-                <h2 id="curvesTitle">Curves</h2>
+                <h2>Curves</h2>
+                <button id="clearCurves" class="clear" title="Remove every curve">Remove all</button>
                 <button class="info" aria-controls="curvesNotes" title="About drawing curves" aria-label="About drawing curves" aria-expanded="false"></button>
             </div>
-            <div id="curveFields">
-                <div class="row">
-                    <label id="firstColorLabel" for="firstText"></label>
-                    <input id="firstColor" type="color" alpha title="Pick an sRGB color and its opacity">
-                    <input id="firstText" class="colorText" type="text" spellcheck="false" title="Any CSS color, with alpha. Missing (none) components are 0 for now.">
-                </div>
-                <div class="row">
-                    <label id="secondColorLabel" for="secondText"></label>
-                    <input id="secondColor" type="color" alpha title="Pick an sRGB color and its opacity">
-                    <input id="secondText" class="colorText" type="text" spellcheck="false" title="Any CSS color, with alpha. Missing (none) components are 0 for now.">
-                </div>
-                <div id="shapeFields"></div>
-                <div class="row" title="How firmly the curve holds its colors. Below 100%, the colors around it bleed in.">
-                    <label for="strength">Strength</label>
-                    <input id="strength" type="range" min="0" max="100" step="1">
-                    <output id="strengthValue"></output>
-                </div>
-                <div class="row" title="How wide a band the jump between the curve's two colors is softened over.">
-                    <label for="blur">Blur</label>
-                    <input id="blur" type="range" min="0" max="100" step="1">
-                    <output id="blurValue"></output>
-                </div>
-                <div class="row" title="A curve holds its colors across a band either side of it, which also holds the surface flat there. With a free slope it holds only the texel either side of it, so the biharmonic model's surface keeps its slope through the curve, as a tear in Finch et al.'s paper does. That can run far past the curve's colors, most of all for an open curve. A blurred curve has none, and the harmonic model has no slope to hold.">
-                    <label><input type="checkbox" id="free"> Free slope</label>
-                </div>
-                <div id="toPathRow" class="row" title="Turn the shape into a path of nodes, to shape it freely. It can't be turned back.">
-                    <button id="toPath" class="small">Convert to a path</button>
-                </div>
-            </div>
-            <div id="curveList"></div>
-            <div class="row"><button id="clearCurves" class="small">Remove all curves</button></div>
-            <p id="emptyNote" class="note">No curves. Draw some with the tools on the left.</p>
             <div id="curvesNotes" hidden>
                 <p id="toolNote" class="note"></p>
                 <p class="note">Each curve holds a color on each side. For a closed curve, that's inside and outside.</p>
             </div>
+            <div class="chips">
+                <div id="curveList" class="chipList"></div>
+                <details class="menu" id="addCurve">
+                    <summary class="addChip" title="Draw a curve" aria-label="Draw a curve"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.5v9M1.5 6h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></summary>
+                    <div class="menuItems">
+                        <button data-draw="pen">Path</button>
+                        <button data-draw="line">Straight line</button>
+                        <button data-draw="ellipse">Ellipse</button>
+                        <button data-draw="arc">Arc</button>
+                        <button data-draw="freehand">Freehand</button>
+                    </div>
+                </details>
+            </div>
+            <div id="curveHeading" class="inspectorHeading">
+                <span id="curveTitle"></span>
+                <span id="curveKind" class="kind"></span>
+                <button id="deleteCurve" class="remove" title="Remove the curve" aria-label="Remove the curve"></button>
+            </div>
+            <fieldset id="curveFields" class="fields">
+                <label id="firstColorLabel" for="firstText">Inside</label>
+                <div class="value">
+                    <input id="firstColor" type="color" alpha title="Pick an sRGB color and its opacity">
+                    <input id="firstText" class="colorText" type="text" spellcheck="false" title="Any CSS color, with alpha. Missing (none) components are 0 for now.">
+                </div>
+                <label id="secondColorLabel" for="secondText">Outside</label>
+                <div class="value">
+                    <input id="secondColor" type="color" alpha title="Pick an sRGB color and its opacity">
+                    <input id="secondText" class="colorText" type="text" spellcheck="false" title="Any CSS color, with alpha. Missing (none) components are 0 for now.">
+                </div>
+                <label for="strength" title="How firmly the curve holds its colors. Below 100%, the colors around it bleed in.">Strength</label>
+                <div class="value" title="How firmly the curve holds its colors. Below 100%, the colors around it bleed in.">
+                    <input id="strength" type="range" min="0" max="100" step="1">
+                    <output id="strengthValue"></output>
+                </div>
+                <label for="blur" title="How wide a band the jump between the curve's two colors is softened over.">Blur</label>
+                <div class="value" title="How wide a band the jump between the curve's two colors is softened over.">
+                    <input id="blur" type="range" min="0" max="100" step="1">
+                    <output id="blurValue"></output>
+                </div>
+                <label title="Flat holds the curve's colors across a band either side of it, which holds the surface flat there. Smooth holds only the texel either side of it, so the biharmonic model's surface keeps its slope through the curve, as a tear in Finch et al.'s paper does; that can run far past the curve's colors, most of all for an open curve. A blurred curve is always flat, and the harmonic model has no slope to hold.">Falloff</label>
+                <div class="value">
+                    <div class="segmented" title="Flat holds the curve's colors across a band either side of it, which holds the surface flat there. Smooth holds only the texel either side of it, so the biharmonic model's surface keeps its slope through the curve, as a tear in Finch et al.'s paper does; that can run far past the curve's colors, most of all for an open curve. A blurred curve is always flat, and the harmonic model has no slope to hold.">
+                        <label><input type="radio" name="slope" id="held"> Flat</label>
+                        <label><input type="radio" name="slope" id="free"> Smooth</label>
+                    </div>
+                </div>
+                <label>Shape</label>
+                <div class="value">
+                    <button id="toPath" class="small" title="Turn the shape into a path of nodes, to shape it freely. It can't be turned back.">Convert to a path</button>
+                </div>
+            </fieldset>
         </section>
 
 

@@ -7,40 +7,38 @@
 {{PAGE}}
         <section id="stops">
             <div class="heading">
-                <h2 id="stopTitle">Stops</h2>
+                <h2>Stops</h2>
+                <button id="clearStops" class="clear" title="Remove every stop">Remove all</button>
                 <button class="info" aria-controls="stopsNotes" title="About editing stops" aria-label="About editing stops" aria-expanded="false"></button>
             </div>
-            <div id="stopFields">
-                <div class="row">
-                    <input id="stopPicker" type="color" alpha title="Pick an sRGB color and its opacity">
-                    <input id="stopText" type="text" spellcheck="false" title="Any CSS color, with alpha. Missing (none) components are 0 for now.">
-                </div>
-                <div class="row">
-                    <label>Position</label>
-                    <input id="stopX" class="percent" type="number" step="1" title="Horizontal position as a percentage of the box's width. It can be outside the box."> % ×
-                    <input id="stopY" class="percent" type="number" step="1" title="Vertical position as a percentage of the box's height. It can be outside the box."> %
-                </div>
-                <div class="row" title="The optional / <number> after a stop's position in CSS. The draft doesn't say what it does to the colors, so nothing uses it yet.">
-                    <label for="stopWeight">Weight</label>
-                    <input id="stopWeight" class="percent" type="number" step="0.1" placeholder="none">
-                    <span class="note">Not used yet</span>
-                </div>
-                <div class="row" id="spreadRow" title="How far the stop's color holds before it starts to blend. Drag the dashed circle to change it.">
-                    <label for="spread">Spread</label>
-                    <input id="spread" type="range" min="0" max="100" step="1">
-                    <output id="spreadValue"></output>
-                </div>
-            </div>
-            <div class="row">
-                <button id="addStop" class="small">Add stop</button>
-                <button id="deleteStop" class="small">Remove stop</button>
-                <button id="clearStops" class="small">Remove all</button>
-            </div>
-            <div id="stopList"></div>
-            <p id="countNote" class="note"></p>
             <div id="stopsNotes" hidden>
                 <p class="note">Click a box to add a stop, in the color already there, and drag stops to move them, even a little outside the box. The arrow keys nudge the selected stop, Delete removes it, and Escape selects nothing. Drag a stop well clear of the box to remove it. Drag the dashed circle around a selected stop to change its spread, which the thin plate spline has no use for.</p>
             </div>
+            <div class="chips">
+                <div id="stopList" class="chipList"></div>
+                <button id="addStop" class="addChip" title="Add a stop" aria-label="Add a stop"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.5v9M1.5 6h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+            </div>
+            <div id="stopHeading" class="inspectorHeading">
+                <span id="stopTitle"></span>
+                <button id="deleteStop" class="remove" title="Remove the stop" aria-label="Remove the stop"></button>
+            </div>
+            <fieldset id="stopFields" class="fields">
+                <label for="stopText">Color</label>
+                <div class="value">
+                    <input id="stopPicker" type="color" alpha title="Pick an sRGB color and its opacity">
+                    <input id="stopText" type="text" spellcheck="false" title="Any CSS color, with alpha. Missing (none) components are 0 for now.">
+                </div>
+                <label for="stopX">Position</label>
+                <div class="value">
+                    <input id="stopX" class="percent" type="number" step="1" title="Horizontal position as a percentage of the box's width. It can be outside the box."> % ×
+                    <input id="stopY" class="percent" type="number" step="1" title="Vertical position as a percentage of the box's height. It can be outside the box."> %
+                </div>
+                <label for="spread" title="How far the stop's color holds before it starts to blend. Drag the dashed circle to change it.">Spread</label>
+                <div class="value" id="spreadRow" title="How far the stop's color holds before it starts to blend. Drag the dashed circle to change it.">
+                    <input id="spread" type="range" min="0" max="100" step="1">
+                    <output id="spreadValue"></output>
+                </div>
+            </fieldset>
         </section>
 
 {{VISUALIZE}}

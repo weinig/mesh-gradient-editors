@@ -23,9 +23,10 @@ test("the pen, double-clicks and bad links", async t => {
     mouse.doubleClick(0.2, 0.7);
     const count = state.curves.length;
     await mouse.click(0.8, 0.8);
-    $("curveList").children[0].querySelector("button.small").click();
+    $("curveList").children[0].click();
+    $("deleteCurve").click();
     await sleep(50);
-    t.equal(count - state.curves.length, 1, "removing a curve from the list while the pen is drawing");
+    t.equal(count - state.curves.length, 1, "removing a curve while the pen is drawing");
     pick("select");
     const bad = btoa(JSON.stringify({ v: 1, curves: [
         { kind: "zzz", left: "red", right: "blue" },
@@ -35,7 +36,7 @@ test("the pen, double-clicks and bad links", async t => {
     t.equal(decodeState(bad).curves.length, 1, "a link's unsound curves are dropped");
 });
 
-test("the Free slope checkbox", async t => {
+test("Falloff: Flat or Smooth", async t => {
     await preset("A circle");
     selection = { curve: 0, node: null };
     changed();

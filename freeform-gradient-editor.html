@@ -312,26 +312,92 @@ aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transf
     border-radius: 4px;
 }
 #preset, #view { flex: 1; min-width: 0; }
-#stops input[type=range] { flex: 1; }
-#stops output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
-#stops .row + .row, #stopFields + .row { margin-top: 4px; }
-#stopText { flex: 1; min-width: 0; }
-#stopList { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
-#stopList button {
-    width: 30px;
+/* The stops or curves: a strip of chips, then the selected one's fields, which keep their place whatever is selected. */
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 26px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.chipList { display: contents; }
+.chip {
+    flex: none;
+    width: 22px;
     height: 22px;
-    border: 1px solid var(--border);
-    border-radius: 5px;
+    border: none;
+    border-radius: 50%;
     padding: 0;
     cursor: pointer;
+    position: relative;
     background-image: conic-gradient(#ccc 0 25%, #fff 0 50%, #ccc 0 75%, #fff 0);
     background-size: 8px 8px;
-    position: relative;
 }
-#stopList button span { position: absolute; inset: 0; border-radius: 4px; }
-#stopList button.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
-#stops [hidden] { display: none !important; }
-input.percent { width: 72px; }
+.chip span { position: absolute; inset: 0; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2); }
+.chip.selected { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lineChips { display: flex; align-items: center; padding: 2px; border-radius: 13px; background: color-mix(in srgb, var(--fg) 9%, transparent); }
+.lineChips.drawing { background: color-mix(in srgb, var(--accent) 25%, transparent); }
+.lineChips .bar { flex: none; width: 6px; height: 2px; background: var(--muted); }
+.lineChips .joint { color: var(--muted); font-size: 12px; padding: 0 3px 0 2px; }
+.addChip, details.menu > summary.addChip {
+    flex: none;
+    box-sizing: border-box;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px dashed var(--muted);
+    border-radius: 50%;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+}
+.addChip svg { width: 12px; height: 12px; }
+.addChip:hover, details.menu[open] > summary.addChip { color: var(--accent); border-color: var(--accent); }
+.inspectorHeading { display: flex; align-items: center; gap: 6px; min-height: 24px; margin: 8px 0 6px; font-weight: 600; }
+.inspectorHeading .kind { font-weight: normal; color: var(--muted); }
+.inspectorHeading.none { font-weight: normal; color: var(--muted); }
+button.remove { flex: none; display: flex; margin-left: auto; padding: 3px; border: none; border-radius: 4px; background: none; color: var(--muted); cursor: pointer; }
+button.remove svg { width: 16px; height: 16px; }
+button.remove:hover:not(:disabled) { color: var(--error); }
+button.remove:disabled { opacity: 0.35; cursor: default; }
+fieldset.fields { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 6px 8px; align-items: center; min-width: 0; margin: 0; padding: 0; border: none; }
+fieldset.fields > label { color: var(--muted); }
+fieldset.fields > .value { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 24px; }
+fieldset.fields:disabled > * { opacity: 0.45; }
+fieldset.fields input[type=range] { flex: 1; min-width: 0; }
+fieldset.fields output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+fieldset.fields input[type=color] { flex: none; }
+fieldset.fields input[type=text] { flex: 1; min-width: 0; }
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.segmented label { position: relative; padding: 2px 12px; font-size: 12px; cursor: pointer; }
+.segmented label + label { border-left: 1px solid var(--border); }
+.segmented input { position: absolute; opacity: 0; pointer-events: none; }
+.segmented label:has(input:checked) { background: var(--accent); color: #fff; }
+.segmented label:has(input:disabled) { opacity: 0.45; cursor: default; }
+details.menu { position: relative; flex: none; }
+details.menu > summary { list-style: none; }
+details.menu > summary::-webkit-details-marker { display: none; }
+.menuItems {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 4px);
+    z-index: 20;
+    min-width: 170px;
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+.menuItems button { font: inherit; font-size: 13px; text-align: left; white-space: nowrap; padding: 5px 10px; border: none; border-radius: 5px; background: none; color: var(--fg); cursor: pointer; }
+.menuItems button:hover:not(:disabled) { background: var(--accent); color: #fff; }
+.menuItems button:disabled { color: var(--muted); cursor: default; }
+.menuItems button[hidden] { display: none; }
+.heading button.clear { margin-left: auto; padding: 2px 4px; border: none; background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.heading button.clear:hover:not(:disabled) { color: var(--error); }
+.heading button.clear:disabled { opacity: 0.45; cursor: default; }
+.heading button.clear + button.info { margin-left: 2px; }
+fieldset.fields button.small:disabled { opacity: 1; }
+input.percent { width: 64px; }
 #splineDrawing { min-width: 0; flex: 1; }
 /* A stop can be outside the box, so each overlay reaches 28px past it on every side: REACH in editor.js. */
 .stage canvas.overlay { inset: -28px; width: calc(100% + 56px); height: calc(100% + 56px); }
@@ -513,40 +579,38 @@ input.percent { width: 72px; }
 
         <section id="stops">
             <div class="heading">
-                <h2 id="stopTitle">Stops</h2>
+                <h2>Stops</h2>
+                <button id="clearStops" class="clear" title="Remove every stop">Remove all</button>
                 <button class="info" aria-controls="stopsNotes" title="About editing stops" aria-label="About editing stops" aria-expanded="false"></button>
             </div>
-            <div id="stopFields">
-                <div class="row">
-                    <input id="stopPicker" type="color" alpha title="Pick an sRGB color and its opacity">
-                    <input id="stopText" type="text" spellcheck="false" title="Any CSS color, with alpha. Missing (none) components are 0 for now.">
-                </div>
-                <div class="row">
-                    <label>Position</label>
-                    <input id="stopX" class="percent" type="number" step="1" title="Horizontal position as a percentage of the box's width. It can be outside the box."> % ×
-                    <input id="stopY" class="percent" type="number" step="1" title="Vertical position as a percentage of the box's height. It can be outside the box."> %
-                </div>
-                <div class="row" title="The optional / <number> after a stop's position in CSS. The draft doesn't say what it does to the colors, so nothing uses it yet.">
-                    <label for="stopWeight">Weight</label>
-                    <input id="stopWeight" class="percent" type="number" step="0.1" placeholder="none">
-                    <span class="note">Not used yet</span>
-                </div>
-                <div class="row" id="spreadRow" title="How far the stop's color holds before it starts to blend. Drag the dashed circle to change it.">
-                    <label for="spread">Spread</label>
-                    <input id="spread" type="range" min="0" max="100" step="1">
-                    <output id="spreadValue"></output>
-                </div>
-            </div>
-            <div class="row">
-                <button id="addStop" class="small">Add stop</button>
-                <button id="deleteStop" class="small">Remove stop</button>
-                <button id="clearStops" class="small">Remove all</button>
-            </div>
-            <div id="stopList"></div>
-            <p id="countNote" class="note"></p>
             <div id="stopsNotes" hidden>
                 <p class="note">Click a box to add a stop, in the color already there, and drag stops to move them, even a little outside the box. The arrow keys nudge the selected stop, Delete removes it, and Escape selects nothing. Drag a stop well clear of the box to remove it. Drag the dashed circle around a selected stop to change its spread, which the thin plate spline has no use for.</p>
             </div>
+            <div class="chips">
+                <div id="stopList" class="chipList"></div>
+                <button id="addStop" class="addChip" title="Add a stop" aria-label="Add a stop"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.5v9M1.5 6h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+            </div>
+            <div id="stopHeading" class="inspectorHeading">
+                <span id="stopTitle"></span>
+                <button id="deleteStop" class="remove" title="Remove the stop" aria-label="Remove the stop"></button>
+            </div>
+            <fieldset id="stopFields" class="fields">
+                <label for="stopText">Color</label>
+                <div class="value">
+                    <input id="stopPicker" type="color" alpha title="Pick an sRGB color and its opacity">
+                    <input id="stopText" type="text" spellcheck="false" title="Any CSS color, with alpha. Missing (none) components are 0 for now.">
+                </div>
+                <label for="stopX">Position</label>
+                <div class="value">
+                    <input id="stopX" class="percent" type="number" step="1" title="Horizontal position as a percentage of the box's width. It can be outside the box."> % ×
+                    <input id="stopY" class="percent" type="number" step="1" title="Vertical position as a percentage of the box's height. It can be outside the box."> %
+                </div>
+                <label for="spread" title="How far the stop's color holds before it starts to blend. Drag the dashed circle to change it.">Spread</label>
+                <div class="value" id="spreadRow" title="How far the stop's color holds before it starts to blend. Drag the dashed circle to change it.">
+                    <input id="spread" type="range" min="0" max="100" step="1">
+                    <output id="spreadValue"></output>
+                </div>
+            </fieldset>
         </section>
 
         <section>
@@ -4905,35 +4969,38 @@ function updateControls() {
             text += " With one stop, the linear part is a constant, a.";
         $("normalizationNote").textContent = text;
     }
-    $("countNote").textContent = `${state.stops.length} stop${state.stops.length === 1 ? "" : "s"}.`;
-
     updateStopList();
 
     const selected = selection !== null ? state.stops[selection] : null;
-    $("stopFields").hidden = !selected;
-    $("deleteStop").hidden = !selected;
-    $("stopTitle").textContent = selected ? `Stop ${selection + 1}` : "Stops";
-    if (selected) {
-        if (document.activeElement !== $("stopText"))
-            $("stopText").value = selected.color;
-        $("stopPicker").value = hexColor(selected.color);
-        for (const [id, axis] of [["stopX", 0], ["stopY", 1]]) {
-            if (document.activeElement !== $(id))
-                $(id).value = Math.round(selected.p[axis] * 1000) / 10;
-        }
-        $("spread").value = selected.spread;
-        $("spreadValue").textContent = selected.spread + "%";
-        if (document.activeElement !== $("stopWeight"))
-            $("stopWeight").value = selected.weight ?? "";
+    $("stopFields").disabled = !selected;
+    $("deleteStop").disabled = !selected;
+    $("clearStops").disabled = !state.stops.length;
+    $("stopHeading").classList.toggle("none", !selected);
+    $("stopTitle").textContent = selected ? `Stop ${selection + 1}` : state.stops.length ? "No stop selected" : "No stops";
+    if (!selected) {
+        for (const id of ["stopText", "stopX", "stopY"])
+            $(id).value = "";
+        $("spreadValue").textContent = "";
+        return;
     }
+    if (document.activeElement !== $("stopText"))
+        $("stopText").value = selected.color;
+    $("stopPicker").value = hexColor(selected.color);
+    for (const [id, axis] of [["stopX", 0], ["stopY", 1]]) {
+        if (document.activeElement !== $(id))
+            $(id).value = Math.round(selected.p[axis] * 1000) / 10;
+    }
+    $("spread").value = selected.spread;
+    $("spreadValue").textContent = selected.spread + "%";
 }
 
-// Each stop as a swatch that selects it.
+// Each stop as a chip that selects it.
 function updateStopList() {
     const list = $("stopList");
     if (list.children.length !== state.stops.length) {
         list.replaceChildren(...state.stops.map((_, index) => {
             const button = document.createElement("button");
+            button.className = "chip";
             button.append(document.createElement("span"));
             button.addEventListener("click", () => {
                 selection = index;
@@ -4945,7 +5012,7 @@ function updateStopList() {
     state.stops.forEach((stop, index) => {
         const button = list.children[index];
         button.firstChild.style.background = swatchColor(stop.color);
-        button.title = stop.color;
+        button.title = `Stop ${index + 1}: ${stop.color}`;
         button.classList.toggle("selected", index === selection);
     });
 }
@@ -4979,12 +5046,6 @@ for (const [id, axis] of [["stopX", 0], ["stopY", 1]]) {
         changed();
     });
 }
-$("stopWeight").addEventListener("change", () => {
-    const value = parseFloat($("stopWeight").value);
-    if (selection !== null)
-        state.stops[selection].weight = Number.isFinite(value) ? value : null;
-    changed();
-});
 $("splineDrawing").addEventListener("change", () => {
     state.splineDrawing = $("splineDrawing").value;
     changed();
@@ -5239,6 +5300,22 @@ for (const button of document.querySelectorAll("button.info")) {
         button.setAttribute("aria-expanded", String(!notes.hidden));
     });
 }
+
+// A menu closes once one of its items is picked, or on a press anywhere else.
+for (const menu of document.querySelectorAll("details.menu")) {
+    menu.querySelector(".menuItems").addEventListener("click", event => {
+        if (event.target.closest("button"))
+            menu.open = false;
+    });
+}
+document.addEventListener("pointerdown", event => {
+    for (const menu of document.querySelectorAll("details.menu[open]")) {
+        if (!menu.contains(event.target))
+            menu.open = false;
+    }
+});
+for (const button of document.querySelectorAll("button.remove"))
+    button.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9.5h6.6L12 4M6.6 6.5v4.5M9.4 6.5v4.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 $("preset").addEventListener("change", () => {
     if ($("preset").value === "")

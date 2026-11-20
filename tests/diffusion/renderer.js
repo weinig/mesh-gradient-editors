@@ -131,7 +131,7 @@ test("a lone free-slope line with natural edges is a plane through both its colo
 });
 
 test("free slopes and natural edges draw at every grid", async t => {
-    await preset("Free slope");
+    await preset("Flat and smooth");
     set("edges", "natural");
     for (const resolution of ["128", "512", "1024"]) {
         set("resolution", resolution);

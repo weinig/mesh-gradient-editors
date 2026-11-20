@@ -1,6 +1,7 @@
 <body>
 <main>
     <nav id="toolbar" aria-label="Draw">
+        <button data-mode="select" title="Select: click a stop to select it, and drag it to move it" aria-label="Select"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3l12 9-5.5 1.2L16 19.5l-2.4 1.2-3-6.3L6 18z" fill="currentColor"/></svg></button>
         <button data-mode="points" title="Points: click to add a stop" aria-label="Points"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7" cy="8" r="3" fill="currentColor"/><circle cx="17" cy="7" r="3" fill="currentColor"/><circle cx="11" cy="17" r="3" fill="currentColor"/></svg></button>
         <button data-mode="lines" title="Lines: click to add stops along a line" aria-label="Lines"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17C8 5 15 21 20 8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="4" cy="17" r="2.6" fill="currentColor"/><circle cx="12" cy="13" r="2.6" fill="currentColor"/><circle cx="20" cy="8" r="2.6" fill="currentColor"/></svg></button>
         <button id="undo" title="Undo (⌘Z)" aria-label="Undo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7L4 12l5 5M4 12h10a5 5 0 0 1 0 10h-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -3)"/></svg></button>
@@ -9,39 +10,52 @@
 {{PAGE}}
         <section id="stops">
             <div class="heading">
-                <h2 id="stopTitle">Stops</h2>
+                <h2>Stops</h2>
+                <button id="clearStops" class="clear" title="Remove every stop and line">Remove all</button>
                 <button class="info" aria-controls="stopsNotes" title="About editing stops and lines" aria-label="About editing stops and lines" aria-expanded="false"></button>
             </div>
-            <div id="stopFields">
-                <div class="row">
-                    <input id="stopPicker" type="color" alpha title="Pick an sRGB color and its opacity">
-                    <input id="stopText" type="text" spellcheck="false" title="Any CSS color, with alpha. Missing (none) components are 0 for now.">
-                </div>
-                <div class="row">
-                    <label>Position</label>
-                    <input id="stopX" class="percent" type="number" min="0" max="100" step="1" title="Horizontal position as a percentage of the box's width"> % ×
-                    <input id="stopY" class="percent" type="number" min="0" max="100" step="1" title="Vertical position as a percentage of the box's height"> %
-                </div>
-                <div class="row" id="spreadRow" title="How far the stop's color holds before it starts to blend. Drag the dashed circle to change it.">
-                    <label for="spread">Spread</label>
-                    <input id="spread" type="range" min="0" max="100" step="1">
-                    <output id="spreadValue"></output>
-                </div>
-                <p id="spreadNote" class="note">Stops on lines have no spread.</p>
-            </div>
-            <div class="row">
-                <button id="addStop" class="small">Add stop</button>
-                <button id="deleteStop" class="small">Remove stop</button>
-                <button id="finishLine" class="small">Finish line</button>
-                <button id="resetHandles" class="small" title="The lines through this stop go back to curving through their stops on their own.">Reset handles</button>
-                <button id="clearStops" class="small">Remove all</button>
-            </div>
-            <div id="stopList"></div>
-            <p id="countNote" class="note"></p>
             <div id="stopsNotes" hidden>
                 <p id="modeNote" class="note"></p>
                 <p class="note">Each stop holds its color. In Lines, the color runs along each line from stop to stop, and the line curves through its stops once it has three, or as its handles say.</p>
             </div>
+            <div class="chips">
+                <div id="stopList" class="chipList"></div>
+                <details class="menu" id="addMenu">
+                    <summary class="addChip" title="Add a point or a line" aria-label="Add a point or a line"><svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 1.5v9M1.5 6h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></summary>
+                    <div class="menuItems">
+                        <button id="addStop">Point</button>
+                        <button id="addLine">Line</button>
+                    </div>
+                </details>
+                <button id="finishLine" class="small" title="End the line being drawn">Finish line</button>
+            </div>
+            <div id="stopHeading" class="inspectorHeading">
+                <span id="stopTitle"></span>
+                <span id="stopKind" class="kind"></span>
+                <button id="deleteStop" class="remove" title="Remove the stop" aria-label="Remove the stop"></button>
+            </div>
+            <fieldset id="stopFields" class="fields">
+                <label for="stopText">Color</label>
+                <div class="value">
+                    <input id="stopPicker" type="color" alpha title="Pick an sRGB color and its opacity">
+                    <input id="stopText" type="text" spellcheck="false" title="Any CSS color, with alpha. Missing (none) components are 0 for now.">
+                </div>
+                <label for="stopX">Position</label>
+                <div class="value">
+                    <input id="stopX" class="percent" type="number" min="0" max="100" step="1" title="Horizontal position as a percentage of the box's width"> % ×
+                    <input id="stopY" class="percent" type="number" min="0" max="100" step="1" title="Vertical position as a percentage of the box's height"> %
+                </div>
+                <label>Line</label>
+                <div class="value">
+                    <button id="resetHandles" class="small" title="The lines through this stop go back to curving through their stops on their own.">Reset handles</button>
+                    <button id="removeLine" class="small" title="Remove the line and its stops, but not a stop it shares with another line">Remove line</button>
+                </div>
+                <label for="spread" title="How far the stop's color holds before it starts to blend. Drag the dashed circle to change it. Stops on lines have none.">Spread</label>
+                <div class="value" id="spreadRow" title="How far the stop's color holds before it starts to blend. Drag the dashed circle to change it. Stops on lines have none.">
+                    <input id="spread" type="range" min="0" max="100" step="1">
+                    <output id="spreadValue"></output>
+                </div>
+            </fieldset>
         </section>
 
 {{VISUALIZE}}

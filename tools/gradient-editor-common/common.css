@@ -101,3 +101,88 @@ aside h3 { font-size: 12px; margin: 14px 0 4px; color: var(--muted); text-transf
     border-radius: 4px;
 }
 #preset, #view { flex: 1; min-width: 0; }
+/* The stops or curves: a strip of chips, then the selected one's fields, which keep their place whatever is selected. */
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 26px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.chipList { display: contents; }
+.chip {
+    flex: none;
+    width: 22px;
+    height: 22px;
+    border: none;
+    border-radius: 50%;
+    padding: 0;
+    cursor: pointer;
+    position: relative;
+    background-image: conic-gradient(#ccc 0 25%, #fff 0 50%, #ccc 0 75%, #fff 0);
+    background-size: 8px 8px;
+}
+.chip span { position: absolute; inset: 0; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2); }
+.chip.selected { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lineChips { display: flex; align-items: center; padding: 2px; border-radius: 13px; background: color-mix(in srgb, var(--fg) 9%, transparent); }
+.lineChips.drawing { background: color-mix(in srgb, var(--accent) 25%, transparent); }
+.lineChips .bar { flex: none; width: 6px; height: 2px; background: var(--muted); }
+.lineChips .joint { color: var(--muted); font-size: 12px; padding: 0 3px 0 2px; }
+.addChip, details.menu > summary.addChip {
+    flex: none;
+    box-sizing: border-box;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px dashed var(--muted);
+    border-radius: 50%;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+}
+.addChip svg { width: 12px; height: 12px; }
+.addChip:hover, details.menu[open] > summary.addChip { color: var(--accent); border-color: var(--accent); }
+.inspectorHeading { display: flex; align-items: center; gap: 6px; min-height: 24px; margin: 8px 0 6px; font-weight: 600; }
+.inspectorHeading .kind { font-weight: normal; color: var(--muted); }
+.inspectorHeading.none { font-weight: normal; color: var(--muted); }
+button.remove { flex: none; display: flex; margin-left: auto; padding: 3px; border: none; border-radius: 4px; background: none; color: var(--muted); cursor: pointer; }
+button.remove svg { width: 16px; height: 16px; }
+button.remove:hover:not(:disabled) { color: var(--error); }
+button.remove:disabled { opacity: 0.35; cursor: default; }
+fieldset.fields { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 6px 8px; align-items: center; min-width: 0; margin: 0; padding: 0; border: none; }
+fieldset.fields > label { color: var(--muted); }
+fieldset.fields > .value { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 24px; }
+fieldset.fields:disabled > * { opacity: 0.45; }
+fieldset.fields input[type=range] { flex: 1; min-width: 0; }
+fieldset.fields output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+fieldset.fields input[type=color] { flex: none; }
+fieldset.fields input[type=text] { flex: 1; min-width: 0; }
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.segmented label { position: relative; padding: 2px 12px; font-size: 12px; cursor: pointer; }
+.segmented label + label { border-left: 1px solid var(--border); }
+.segmented input { position: absolute; opacity: 0; pointer-events: none; }
+.segmented label:has(input:checked) { background: var(--accent); color: #fff; }
+.segmented label:has(input:disabled) { opacity: 0.45; cursor: default; }
+details.menu { position: relative; flex: none; }
+details.menu > summary { list-style: none; }
+details.menu > summary::-webkit-details-marker { display: none; }
+.menuItems {
+    position: absolute;
+    left: 0;
+    top: calc(100% + 4px);
+    z-index: 20;
+    min-width: 170px;
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+.menuItems button { font: inherit; font-size: 13px; text-align: left; white-space: nowrap; padding: 5px 10px; border: none; border-radius: 5px; background: none; color: var(--fg); cursor: pointer; }
+.menuItems button:hover:not(:disabled) { background: var(--accent); color: #fff; }
+.menuItems button:disabled { color: var(--muted); cursor: default; }
+.menuItems button[hidden] { display: none; }
+.heading button.clear { margin-left: auto; padding: 2px 4px; border: none; background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.heading button.clear:hover:not(:disabled) { color: var(--error); }
+.heading button.clear:disabled { opacity: 0.45; cursor: default; }
+.heading button.clear + button.info { margin-left: 2px; }
+fieldset.fields button.small:disabled { opacity: 1; }

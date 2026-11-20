@@ -70,14 +70,13 @@ test("the stop's fields, the list, and the buttons", async t => {
     t.equal($("stopText").value, "#ff000080", "and shows in the text");
     $("stopText").value = "oklch(0.7 0.2 140)";
     $("stopText").dispatchEvent(new Event("input"));
-    set("stopWeight", "2.5");
-    t.equal(state.stops[1].weight, 2.5, "a weight typed in");
-    t.ok(cssText().includes(" 40% 22% / 2.5,"), "is in the spline's CSS");
+    t.ok(!$("stopWeight"), "there's no weight field");
+    state.stops[1].weight = 2.5;
+    t.ok(cssText().includes(" 40% 22% / 2.5,"), "but a link's weight is in the spline's CSS");
     set("stopX", "-5");
     t.below(Math.abs(state.stops[1].p[0] + 0.05), 1e-9, "a position outside the box typed in");
     set("stopX", "40");
-    set("stopWeight", "");
-    t.equal(state.stops[1].weight, null, "and the weight cleared");
+    state.stops[1].weight = null;
     document.querySelector('#modelBar [data-model="spline"]').click();
     t.ok(/oklch\(0\.7 0\.2 140\) 40% 22% spread 30%/.test(cssText()), "a grid model's has the spread");
     document.querySelector('#modelBar [data-model="spline"]').click();

@@ -6,7 +6,7 @@ test("lines, inserted stops and bad links", async t => {
     document.querySelector("#toolbar [data-mode=lines]").click();
     await mouse.click(0.75, 0.3);
     t.equal(gradientData("biharmonic").points.length / 8, 4, "a line of one stop leaves its stop a point");
-    t.ok(!$("spreadRow").hidden, "and the stop keeps its spread");
+    t.ok(!$("spread").disabled, "and the stop keeps its spread");
     t.ok(!/line\(/.test(cssText()), "and the CSS has no line");
     mouse.doubleClick(0.75, 0.3);
     t.equal(state.lines.length, 0, "ending a line of one stop removes it");
@@ -119,12 +119,33 @@ test("a line's handles: dragged, pulled out, kept through a new stop, and reset"
     await mouse.drag([p, [p[0] + 0.05, p[1]], [p[0] + 0.1, p[1]]], { altKey: true });
     t.below(Math.abs(line().handles[0].out[0] - 0.1), 0.005, "Option-dragging a stop pulls its handle out");
     t.equal(state.stops[line().stops[0]].p.join(), p.join(), "and leaves the stop where it was");
-    t.ok(shown && !$("resetHandles").hidden, "Reset handles shows for a stop on a line with its own");
+    t.ok(!$("resetHandles").disabled, "Reset handles is on for a stop on a line with its own");
     selection = line().stops[0];
     $("resetHandles").click();
     t.ok(!line().handles, "Reset handles lets the line curve on its own again");
     $("undo").click();
     await sleep(100);
+});
+
+test("the + adds a point or a line, and Select adds nothing", async t => {
+    await preset("A line");
+    const stops = state.stops.length, lines = state.lines.length;
+    $("addLine").click();
+    await sleep(100);
+    t.equal(state.lines.length - lines, 1, "Line adds a line");
+    t.equal(state.stops.length - stops, 2, "of two stops");
+    t.ok(!$("removeLine").disabled, "and selects one, which can remove it");
+    $("removeLine").click();
+    t.equal(`${state.lines.length} ${state.stops.length}`, `${lines} ${stops}`, "Remove line takes its stops with it");
+    $("addStop").click();
+    await sleep(100);
+    t.equal(state.stops.length - stops, 1, "Point adds a stop");
+    t.ok($("removeLine").disabled, "on no line");
+    document.querySelector("#toolbar [data-mode=select]").click();
+    await pointer().click(0.97, 0.97);
+    t.equal(state.stops.length - stops, 1, "a click in Select adds no stop");
+    t.equal(selection, null, "and selects nothing");
+    document.querySelector("#toolbar [data-mode=points]").click();
 });
 
 test("dragging on from a new stop in Lines pulls out its handles", async t => {

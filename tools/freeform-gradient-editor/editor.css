@@ -1,23 +1,4 @@
-#stops input[type=range] { flex: 1; }
-#stops output { min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
-#stops .row + .row, #stopFields + .row { margin-top: 4px; }
-#stopText { flex: 1; min-width: 0; }
-#stopList { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
-#stopList button {
-    width: 30px;
-    height: 22px;
-    border: 1px solid var(--border);
-    border-radius: 5px;
-    padding: 0;
-    cursor: pointer;
-    background-image: conic-gradient(#ccc 0 25%, #fff 0 50%, #ccc 0 75%, #fff 0);
-    background-size: 8px 8px;
-    position: relative;
-}
-#stopList button span { position: absolute; inset: 0; border-radius: 4px; }
-#stopList button.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
-#stops [hidden] { display: none !important; }
-input.percent { width: 72px; }
+input.percent { width: 64px; }
 #splineDrawing { min-width: 0; flex: 1; }
 /* A stop can be outside the box, so each overlay reaches 28px past it on every side: REACH in editor.js. */
 .stage canvas.overlay { inset: -28px; width: calc(100% + 56px); height: calc(100% + 56px); }

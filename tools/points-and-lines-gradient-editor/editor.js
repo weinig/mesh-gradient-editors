@@ -764,6 +764,8 @@ for (const view of views) {
             selection = index;
             // Dragging on from a new stop pulls its handles out, as a pen does.
             drag = { kind: "pen", index, line: drawing, start: at };
+        } else if (mode === "select") {
+            selection = null;
         } else {
             selection = addStop(at);
             drag = { kind: "stop", index: selection, start: at, origin: at.slice(), moved: false };
@@ -784,7 +786,7 @@ for (const view of views) {
         const at = fraction(event);
         if (!drag) {
             const hit = hitTest(view, point(event));
-            overlay.style.cursor = !hit ? "crosshair" : hit.kind === "section" ? (hit.end === "row" ? "ns-resize" : "move") : hit.kind === "spread" ? "ew-resize" : hit.kind === "stop" || hit.kind === "handle" ? "grab" : mode === "lines" ? "copy" : "crosshair";
+            overlay.style.cursor = !hit ? "crosshair" : hit.kind === "section" ? (hit.end === "row" ? "ns-resize" : "move") : hit.kind === "spread" ? "ew-resize" : hit.kind === "stop" || hit.kind === "handle" ? "grab" : mode === "select" ? "default" : mode === "lines" ? "copy" : "crosshair";
             return;
         }
         if (drag.kind === "section") {
@@ -878,8 +880,9 @@ function cssColorIn(space, c, alpha) {
 // MARK: - Controls
 
 const MODE_NOTES = {
+    select: "Select: click a stop to select it, and drag stops and handles to move them. Clicking anything else selects nothing, and adds no stop. The arrow keys nudge the selected stop, Delete removes it, and Escape selects nothing.",
     points: "Points: click to add a stop, in the color around it, and drag stops to move them. The arrow keys nudge the selected stop, Delete removes it, and Escape selects nothing. Drag a stop out of the box to remove it. Drag the dashed circle around a selected stop to change its spread.",
-    lines: "Lines: click to add stops along a line; it curves through them once it has three. Drag as you add a stop to pull out its handles and shape the curve yourself, as a pen does. Double-click or press Finish line to end it. Click a stop at the end of a line to carry on from it, the first stop to close the line, another line's end to join them, or a line to add a stop on it. A selected stop on a line shows its handles: drag one to bend the line, with Option to move it alone, or Option-drag the stop to pull new ones out.",
+    lines: "Lines: click to add stops along a line; it curves through them once it has three. Drag as you add a stop to pull out its handles and shape the curve yourself, as a pen does. Double-click, or press Finish line beside the line's stops, to end it. Click a stop at the end of a line to carry on from it, the first stop to close the line, another line's end to join them, or a line to add a stop on it. A selected stop on a line shows its handles: drag one to bend the line, with Option to move it alone, or Option-drag the stop to pull new ones out.",
 };
 
 function updateControls() {
@@ -889,94 +892,82 @@ function updateControls() {
     for (const button of document.querySelectorAll("#toolbar button[data-mode]"))
         button.setAttribute("aria-pressed", String(button.dataset.mode === mode));
     $("modeNote").textContent = MODE_NOTES[mode];
-    const onLines = state.stops.filter((_, i) => linesThrough(i).length).length;
-    $("countNote").textContent = `${state.stops.length} stop${state.stops.length === 1 ? "" : "s"}: ${state.stops.length - onLines} point${state.stops.length - onLines === 1 ? "" : "s"}, ${onLines} on ${state.lines.length} line${state.lines.length === 1 ? "" : "s"}.`;
-
     updateStopList();
 
     const selected = selection !== null ? state.stops[selection] : null;
-    $("stopFields").hidden = !selected;
-    $("deleteStop").hidden = !selected;
+    const lines = selected ? linesThrough(selection).map(line => state.lines.indexOf(line) + 1) : [];
+    const onLine = lines.length > 0;
+    $("stopFields").disabled = !selected;
+    $("deleteStop").disabled = !selected;
     $("finishLine").hidden = drawing === null;
-    $("resetHandles").hidden = !(selected && linesThrough(selection).some(line => line.handles));
-    if (!selected)
-        $("stopTitle").textContent = "Stops";
-    if (selected) {
-        const lines = linesThrough(selection).map(line => state.lines.indexOf(line) + 1);
-        const onLine = lines.length > 0;
-        $("stopTitle").textContent = `Stop ${selection + 1}${onLine ? `, on line${lines.length > 1 ? "s" : ""} ${lines.join(" and ")}` : ", a point"}`;
-        if (document.activeElement !== $("stopText"))
-            $("stopText").value = selected.color;
-        $("stopPicker").value = hexColor(selected.color);
-        for (const [id, axis] of [["stopX", 0], ["stopY", 1]]) {
-            if (document.activeElement !== $(id))
-                $(id).value = Math.round(selected.p[axis] * 1000) / 10;
-        }
-        $("spread").value = selected.spread;
-        $("spreadValue").textContent = selected.spread + "%";
-        $("spreadRow").hidden = onLine;
-        $("spreadNote").hidden = !onLine;
+    $("clearStops").disabled = !state.stops.length;
+    $("resetHandles").disabled = !(selected && linesThrough(selection).some(line => line.handles));
+    $("removeLine").disabled = !onLine;
+    $("stopHeading").classList.toggle("none", !selected);
+    $("stopTitle").textContent = selected ? `Stop ${selection + 1}` : state.stops.length ? "No stop selected" : "No stops";
+    $("stopKind").textContent = !selected ? "" : onLine ? `on line${lines.length > 1 ? "s" : ""} ${lines.join(" and ")}` : "a point";
+    if (!selected) {
+        for (const id of ["stopText", "stopX", "stopY"])
+            $(id).value = "";
+        $("spreadValue").textContent = "";
+        return;
     }
+    if (document.activeElement !== $("stopText"))
+        $("stopText").value = selected.color;
+    $("stopPicker").value = hexColor(selected.color);
+    for (const [id, axis] of [["stopX", 0], ["stopY", 1]]) {
+        if (document.activeElement !== $(id))
+            $(id).value = Math.round(selected.p[axis] * 1000) / 10;
+    }
+    $("spread").disabled = onLine;
+    $("spread").value = onLine ? 0 : selected.spread;
+    $("spreadValue").textContent = onLine ? "none" : selected.spread + "%";
 }
 
-// Each line with its stops in order, then the points, each stop a swatch that selects it.
+// The points, then each line as its stops in order, joined; each stop a chip that selects it.
 let stopListKey = null;
 function updateStopList() {
     const list = $("stopList");
     const points = state.stops.map((_, i) => i).filter(i => !linesThrough(i).length);
-    const groups = [
-        ...state.lines.map((line, l) => ({ label: `Line ${l + 1}`, stops: line.stops, closed: line.closed && line.stops.length > 2, line: l })).filter(group => group.stops.length > 1),
-        ...(points.length ? [{ label: "Points", stops: points, closed: false, line: null }] : []),
-    ];
-    const key = JSON.stringify(groups);
+    const lines = state.lines.map((line, l) => ({ stops: line.stops, closed: line.closed && line.stops.length > 2, line: l })).filter(group => group.stops.length > 1 || group.line === drawing);
+    const key = JSON.stringify([points, lines]);
+    const chip = index => {
+        const button = document.createElement("button");
+        button.className = "chip";
+        button.dataset.stop = index;
+        button.append(document.createElement("span"));
+        button.addEventListener("click", () => {
+            selection = index;
+            changed();
+        });
+        return button;
+    };
     if (key !== stopListKey) {
         stopListKey = key;
-        list.replaceChildren(...groups.map(group => {
-            const row = document.createElement("div");
-            row.className = "group";
-            row.dataset.line = group.line ?? "";
-            const label = document.createElement("span");
-            label.textContent = group.label;
-            const swatches = document.createElement("div");
-            swatches.className = "swatches";
-            for (const index of group.stops) {
-                const button = document.createElement("button");
-                button.dataset.stop = index;
-                button.append(document.createElement("span"));
-                button.addEventListener("click", () => {
-                    selection = index;
-                    changed();
-                });
-                swatches.append(button);
-            }
+        list.replaceChildren(...points.map(chip), ...lines.map(group => {
+            const pill = document.createElement("div");
+            pill.className = "lineChips";
+            pill.dataset.line = group.line;
+            pill.title = `Line ${group.line + 1}`;
+            group.stops.forEach((index, k) => {
+                if (k)
+                    pill.append(Object.assign(document.createElement("span"), { className: "bar" }));
+                pill.append(chip(index));
+            });
             if (group.closed)
-                swatches.append(Object.assign(document.createElement("span"), { className: "joint", textContent: "↺", title: "Closed: the line runs back to its first stop" }));
-            row.append(label, swatches);
-            if (group.line !== null) {
-                const remove = Object.assign(document.createElement("button"), { className: "small", textContent: "×", title: "Delete this line and its stops" });
-                remove.addEventListener("click", () => {
-                    // Its stops go too, but not one that joins it to another line.
-                    const drawn = drawing !== null ? state.lines[drawing] : null;
-                    const [line] = state.lines.splice(group.line, 1);
-                    drawing = drawn && drawn !== line ? state.lines.indexOf(drawn) : null;
-                    for (const index of line.stops.filter(i => !state.lines.some(other => other.stops.includes(i))).sort((a, b) => b - a))
-                        deleteStop(index);
-                    pruneLines();
-                    changed();
-                });
-                row.append(remove);
-            }
-            return row;
+                pill.append(Object.assign(document.createElement("span"), { className: "joint", textContent: "↺", title: "Closed: the line runs back to its first stop" }));
+            return pill;
         }));
     }
     for (const button of list.querySelectorAll("button[data-stop]")) {
-        const stop = state.stops[Number(button.dataset.stop)];
+        const index = Number(button.dataset.stop);
+        const stop = state.stops[index];
         button.firstChild.style.background = swatchColor(stop.color);
-        button.title = stop.color;
-        button.classList.toggle("selected", Number(button.dataset.stop) === selection);
+        button.title = `Stop ${index + 1}: ${stop.color}`;
+        button.classList.toggle("selected", index === selection);
     }
-    for (const row of list.children)
-        row.classList.toggle("drawing", row.dataset.line !== "" && Number(row.dataset.line) === drawing);
+    for (const pill of list.querySelectorAll(".lineChips"))
+        pill.classList.toggle("drawing", Number(pill.dataset.line) === drawing);
 }
 
 $("stopPicker").addEventListener("input", () => {
@@ -1032,6 +1023,31 @@ $("deleteStop").addEventListener("click", () => {
     changed();
 });
 $("finishLine").addEventListener("click", finishLine);
+// The selected stop's lines go, and their stops, but not one that joins them to another line.
+$("removeLine").addEventListener("click", () => {
+    for (const line of selection !== null ? linesThrough(selection) : [])
+        removeLine(line);
+    changed();
+});
+function removeLine(line) {
+    const drawn = drawing !== null ? state.lines[drawing] : null;
+    state.lines.splice(state.lines.indexOf(line), 1);
+    drawing = drawn && drawn !== line ? state.lines.indexOf(drawn) : null;
+    for (const index of line.stops.filter(i => !state.lines.some(other => other.stops.includes(i))).sort((a, b) => b - a))
+        deleteStop(index);
+    pruneLines();
+}
+// A new line of two stops goes across the middle of the box, or below the selected stop, in the colors there.
+$("addLine").addEventListener("click", () => {
+    finishLine();
+    const near = selection !== null ? state.stops[selection].p : null;
+    const y = near ? clamp(near[1] + 0.1, 0.05, 0.95) : 0.5;
+    const x = near ? clamp(near[0], 0.2, 0.8) : 0.5;
+    const first = addStop([x - 0.15, y]), second = addStop([x + 0.15, y]);
+    state.lines.push({ stops: [first, second], closed: false });
+    selection = second;
+    changed();
+});
 // The lines through the selected stop go back to curving through their stops on their own.
 $("resetHandles").addEventListener("click", () => {
     for (const line of selection !== null ? linesThrough(selection) : [])

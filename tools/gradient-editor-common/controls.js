@@ -211,6 +211,22 @@ for (const button of document.querySelectorAll("button.info")) {
     });
 }
 
+// A menu closes once one of its items is picked, or on a press anywhere else.
+for (const menu of document.querySelectorAll("details.menu")) {
+    menu.querySelector(".menuItems").addEventListener("click", event => {
+        if (event.target.closest("button"))
+            menu.open = false;
+    });
+}
+document.addEventListener("pointerdown", event => {
+    for (const menu of document.querySelectorAll("details.menu[open]")) {
+        if (!menu.contains(event.target))
+            menu.open = false;
+    }
+});
+for (const button of document.querySelectorAll("button.remove"))
+    button.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4h11M6.5 4V2.5h3V4M4 4l.7 9.5h6.6L12 4M6.6 6.5v4.5M9.4 6.5v4.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
 $("preset").addEventListener("change", () => {
     if ($("preset").value === "")
         return updateControls();

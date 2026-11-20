@@ -80,8 +80,8 @@ const PRESETS = [
         },
     },
     {
-        name: "Free slope",
-        note: "Two circles with the same colors, each between a green line and a pink one. The left one holds its colors across a band, which holds the surface flat beside it, so it sits in a halo of its blue before the colors turn toward the lines. The right one's slope is free: it holds only the texel either side of it, so the biharmonic model's turn toward the lines starts at the circle itself, and its halo is thinner. The difference is small for a closed curve like this. An open curve with a free slope tilts each side into a steep plane, far past its colors. Show what the curves hold to see the band and the single texels. The harmonic model has no slope to hold, so its two are nearly alike.",
+        name: "Flat and smooth",
+        note: "Two circles with the same colors, each between a green line and a pink one. The left one is Flat: it holds its colors across a band, which holds the surface flat beside it, so it sits in a halo of its blue before the colors turn toward the lines. The right one is Smooth: it holds only the texel either side of it, so the biharmonic model's turn toward the lines starts at the circle itself, and its halo is thinner. The difference is small for a closed curve like this. A smooth open curve tilts each side into a steep plane, far past its colors. Show what the curves hold to see the band and the single texels. The harmonic model has no slope to hold, so its two are nearly alike.",
         state: {
             width: 600, height: 300,
             curves: [0.28, 0.72].flatMap((x, i) => [
@@ -148,7 +148,7 @@ const PRESETS = [
     },
     {
         name: "Finch et al., Figure 2: a shaded sphere",
-        note: "After the top row of Figure 2 of the thin-plate spline paper: a dark rim and one bright spot. The harmonic model, the paper's Laplacian diffusion, makes a tent at the spot; the biharmonic model, its thin-plate spline, shades the sphere smoothly. The rim is a curve with a free slope, the paper's tear with a value; the spot is a point in the paper, and a very small circle here.",
+        note: "After the top row of Figure 2 of the thin-plate spline paper: a dark rim and one bright spot. The harmonic model, the paper's Laplacian diffusion, makes a tent at the spot; the biharmonic model, its thin-plate spline, shades the sphere smoothly. The rim is a smooth curve, the paper's tear with a value; the spot is a point in the paper, and a very small circle here.",
         state: {
             width: 500, height: 500,
             curves: [
@@ -159,7 +159,7 @@ const PRESETS = [
     },
     {
         name: "Finch et al., Figure 5: a tear",
-        note: "After the middle row of Figure 5 of the thin-plate spline paper: a bright center inside a dark rim, cut apart by a circle that's a tear, so each side is flat in its own color. The paper's tear has no colors of its own and takes them from a point and the rim; a curve here always has a color a side, so the circle carries them. Turn off its Free slope to see a band's halo in its place.",
+        note: "After the middle row of Figure 5 of the thin-plate spline paper: a bright center inside a dark rim, cut apart by a circle that's a tear, so each side is flat in its own color. The paper's tear has no colors of its own and takes them from a point and the rim; a curve here always has a color a side, so the circle carries them. Set it to Flat to see a band's halo in its place.",
         state: {
             width: 500, height: 500,
             curves: [
@@ -757,8 +757,8 @@ function convertToPath(curve) {
     curve.nodes = nodes;
 }
 
-const KIND_NAMES = { ellipse: "an ellipse", line: "a line", arc: "an arc" };
-const curveName = (curve, index) => `Curve ${index + 1}, ${KIND_NAMES[curve.kind] ?? (curve.closed ? "a closed path" : "a path")}`;
+const KIND_WORDS = { ellipse: "ellipse", line: "straight line", arc: "arc" };
+const kindWord = curve => KIND_WORDS[curve.kind] ?? (curve.closed ? "closed path" : "path");
 
 // MARK: - Editing
 
@@ -1148,95 +1148,58 @@ function updateControls() {
 
     const list = $("curveList");
     if (list.children.length !== state.curves.length)
-        list.replaceChildren(...state.curves.map(curveRow));
+        list.replaceChildren(...state.curves.map(curveChip));
     state.curves.forEach((curve, i) => {
         const [first, second] = curve.closed ? ["inside", "outside"] : ["left", "right"];
-        const row = list.children[i];
-        row.classList.toggle("selected", selection?.curve === i);
-        row.querySelector("span").textContent = curveName(curve, i);
-        for (const [input, side] of [[row.querySelector(".first"), first], [row.querySelector(".second"), second]]) {
-            input.title = side[0].toUpperCase() + side.slice(1);
-            if (document.activeElement !== input)
-                input.value = hexColor(curve[side]);
-        }
+        const chip = list.children[i];
+        chip.classList.toggle("selected", selection?.curve === i);
+        chip.title = `Curve ${i + 1}, ${kindWord(curve)}: ${curve[first]} ${first}, ${curve[second]} ${second}`;
+        chip.firstChild.style.background = `linear-gradient(135deg, ${swatchColor(curve[first])} 50%, ${swatchColor(curve[second])} 50%)`;
     });
-    $("emptyNote").hidden = state.curves.length > 0;
 
     const selected = selection && state.curves[selection.curve];
-    $("curvesTitle").textContent = selected ? curveName(selected, selection.curve) : "Curves";
-    $("curveFields").hidden = !selected;
-    if (selected) {
-        const sides = selected.closed ? ["inside", "outside"] : ["left", "right"];
-        for (const [which, side] of [["first", sides[0]], ["second", sides[1]]]) {
-            $(which + "ColorLabel").textContent = side[0].toUpperCase() + side.slice(1);
-            $(which + "Color").value = hexColor(selected[side]);
-            if (document.activeElement !== $(which + "Text"))
-                $(which + "Text").value = selected[side];
-        }
-        updateShapeFields(selected);
-        $("toPathRow").hidden = isPath(selected);
-        for (const [id, value, unit] of [["strength", selected.strength ?? 100, "%"], ["blur", selected.blur ?? 0, " px"]]) {
-            $(id).value = value;
-            $(id + "Value").textContent = value + unit;
-        }
-        $("free").checked = !!selected.free;
-        $("free").disabled = (selected.blur ?? 0) > 0;
+    $("curveFields").disabled = !selected;
+    $("deleteCurve").disabled = !selected;
+    $("toPath").disabled = !selected || isPath(selected);
+    $("clearCurves").disabled = !state.curves.length;
+    $("curveHeading").classList.toggle("none", !selected);
+    $("curveTitle").textContent = selected ? `Curve ${selection.curve + 1}` : state.curves.length ? "No curve selected" : "No curves";
+    $("curveKind").textContent = selected ? kindWord(selected) : "";
+    if (!selected) {
+        for (const id of ["firstText", "secondText"])
+            $(id).value = "";
+        for (const id of ["strengthValue", "blurValue"])
+            $(id).textContent = "";
+        $("held").checked = $("free").checked = false;
+        return;
     }
+    const sides = selected.closed ? ["inside", "outside"] : ["left", "right"];
+    for (const [which, side] of [["first", sides[0]], ["second", sides[1]]]) {
+        $(which + "ColorLabel").textContent = side[0].toUpperCase() + side.slice(1);
+        $(which + "Color").value = hexColor(selected[side]);
+        if (document.activeElement !== $(which + "Text"))
+            $(which + "Text").value = selected[side];
+    }
+    for (const [id, value, unit] of [["strength", selected.strength ?? 100, "%"], ["blur", selected.blur ?? 0, " px"]]) {
+        $(id).value = value;
+        $(id + "Value").textContent = value + unit;
+    }
+    const blurred = (selected.blur ?? 0) > 0;
+    $("free").checked = !!selected.free && !blurred;
+    $("held").checked = !$("free").checked;
+    $("free").disabled = $("held").disabled = blurred;
 }
 
-// The fields for a shape's own form, by kind: a label, the key, and whether it's a point or a pair of fractions of the
-// box, shown as percentages, or a number.
-const SHAPE_FIELDS = {
-    ellipse: [["Center", "center", "pair"], ["Radii", "radii", "pair"], ["Turn", "angle", "degrees"]],
-    line: [["From", "from", "pair"], ["To", "to", "pair"]],
-    arc: [["From", "from", "pair"], ["To", "to", "pair"], ["Bend", "bend", "number"]],
-};
-
-function updateShapeFields(curve) {
-    const container = $("shapeFields");
-    const fields = SHAPE_FIELDS[curve.kind] ?? [];
-    if (container.dataset.kind !== (curve.kind ?? "path")) {
-        container.dataset.kind = curve.kind ?? "path";
-        container.replaceChildren(...fields.map(shapeFieldRow));
-    }
-    fields.forEach(([, key, type], i) => {
-        const inputs = container.children[i].querySelectorAll("input");
-        const values = type === "pair" ? curve[key].map(v => Math.round(v * 1000) / 10) : [Math.round(curve[key] * 100) / 100];
-        inputs.forEach((input, k) => {
-            if (document.activeElement !== input)
-                input.value = values[k];
-        });
+// A curve as a chip of its two sides' colors that selects it.
+function curveChip(_, index) {
+    const button = document.createElement("button");
+    button.className = "chip";
+    button.append(document.createElement("span"));
+    button.addEventListener("click", () => {
+        selection = { curve: index, node: null };
+        changed();
     });
-}
-
-function shapeFieldRow([label, key, type]) {
-    const row = document.createElement("div");
-    row.className = "row";
-    row.append(Object.assign(document.createElement("label"), { textContent: label }));
-    const count = type === "pair" ? 2 : 1;
-    for (let k = 0; k < count; ++k) {
-        const input = Object.assign(document.createElement("input"), { type: "number", step: type === "number" ? "0.05" : "1" });
-        input.title = type === "pair" ? `${label}, ${["across", "down"][k]}, as a percentage of the box's ${["width", "height"][k]}` : label;
-        input.addEventListener("input", () => {
-            const curve = selection && state.curves[selection.curve];
-            const value = Number(input.value);
-            if (!curve || input.value === "" || !Number.isFinite(value))
-                return;
-            if (type === "pair") {
-                curve[key] = curve[key].slice();
-                curve[key][k] = key === "radii" ? Math.max(0, value) / 100 : value / 100;
-            } else {
-                curve[key] = key === "bend" ? clamp(value, -4, 4) : value;
-            }
-            changed();
-        });
-        row.append(input);
-        if (type === "pair")
-            row.append(k ? " %" : " % ×");
-    }
-    if (type === "degrees")
-        row.append(" °");
-    return row;
+    return button;
 }
 
 // A side's color, from its color well or as any CSS color typed in.
@@ -1259,47 +1222,13 @@ for (const which of ["first", "second"]) {
 }
 
 const TOOL_NOTES = {
-    select: "Click a curve to select it, and drag it to move it. The arrow keys nudge it, Delete removes it, and Escape selects nothing. Click a swatch to change that side's color. Shapes keep their form: drag a line's or an arc's ends, an arc's middle to bend it, or an ellipse's center, its radii, and the knob that turns it. Hold Shift to make an ellipse a circle, or to turn it in steps of 15°. On a path, drag its nodes and handles, and double-click a node to switch it between corner and smooth.",
+    select: "Click a curve to select it, and drag it to move it. The arrow keys nudge it, Delete removes it, and Escape selects nothing. Click a swatch on a curve to change that side's color. Shapes keep their form: drag a line's or an arc's ends, an arc's middle to bend it, or an ellipse's center, its radii, and the knob that turns it. Hold Shift to make an ellipse a circle, or to turn it in steps of 15°. On a path, drag its nodes and handles, and double-click a node to switch it between corner and smooth.",
     pen: "Click to add corner nodes, or drag to add smooth ones. Click the first node to close the curve, or double-click to leave it open.",
     line: "Drag to draw a straight line.",
     ellipse: "Drag to draw an ellipse. Hold Shift for a circle.",
     arc: "Drag from one end of the arc to the other. It bulges to the left of the way you drag, as half a circle; drag its middle to bend it more or less.",
     freehand: "Drag to draw. The stroke becomes smooth nodes.",
 };
-
-function curveRow(_, index) {
-    const row = document.createElement("div");
-    row.className = "curve";
-    row.append(document.createElement("span"));
-    row.addEventListener("click", event => {
-        if (event.target.closest("input, button"))
-            return;
-        selection = { curve: index, node: null };
-        changed();
-    });
-    for (const which of ["first", "second"]) {
-        const input = Object.assign(document.createElement("input"), { type: "color", className: which });
-        input.setAttribute("alpha", "");
-        input.addEventListener("input", () => {
-            const curve = state.curves[index];
-            const sides = curve.closed ? ["inside", "outside"] : ["left", "right"];
-            curve[sides[which === "first" ? 0 : 1]] = pickedColor(input);
-            changed();
-        });
-        row.append(input);
-    }
-    const remove = Object.assign(document.createElement("button"), { className: "small", textContent: "×", title: "Delete this curve" });
-    remove.addEventListener("click", () => {
-        const drawn = penCurve !== null ? state.curves[penCurve] : null;
-        state.curves.splice(index, 1);
-        selection = null;
-        penCurve = drawn && state.curves.includes(drawn) ? state.curves.indexOf(drawn) : null;
-        finishPen();
-        changed();
-    });
-    row.append(remove);
-    return row;
-}
 
 for (const id of ["strength", "blur"]) {
     $(id).addEventListener("input", () => {
@@ -1316,13 +1245,29 @@ for (const id of ["strength", "blur"]) {
     });
 }
 
-$("free").addEventListener("change", () => {
-    const curve = selection && state.curves[selection.curve];
-    if (!curve)
+for (const id of ["held", "free"]) {
+    $(id).addEventListener("change", () => {
+        const curve = selection && state.curves[selection.curve];
+        if (!curve)
+            return;
+        curve.free = $("free").checked;
+        changed();
+    });
+}
+
+$("deleteCurve").addEventListener("click", () => {
+    if (!selection || !state.curves[selection.curve])
         return;
-    curve.free = $("free").checked;
+    const drawn = penCurve !== null ? state.curves[penCurve] : null;
+    state.curves.splice(selection.curve, 1);
+    selection = null;
+    penCurve = drawn && state.curves.includes(drawn) ? state.curves.indexOf(drawn) : null;
+    finishPen();
     changed();
 });
+
+for (const button of document.querySelectorAll("#addCurve button[data-draw]"))
+    button.addEventListener("click", () => setTool(button.dataset.draw));
 
 $("toPath").addEventListener("click", () => {
     const curve = selection && state.curves[selection.curve];
