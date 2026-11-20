@@ -504,7 +504,7 @@ function drawOverlay(view) {
 // MARK: - Editing
 
 // Whether clicks add stops on their own or along lines.
-let mode = "points";
+let mode = "select";
 // The selected stop, by index.
 let selection = null;
 // The line being drawn, by index, which clicks in Lines add stops to the end of.
