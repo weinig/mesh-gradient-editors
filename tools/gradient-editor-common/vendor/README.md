@@ -35,27 +35,28 @@ its center, so the biharmonic is solved twice: the second time each center is he
 as the first solution differs between the center and the point, which puts the point's color at the point itself.
 
 Sixth, a segment's two-sidedness may be 2, for a tear, as Finch et al.'s: it holds its colors on the texel either side
-of each edge of the grid it crosses, and the biharmonic leaves the slope across it free. freeformConstraints writes
-where tears cross each level's grid, and near one a texel's row of the level's own equation is built from the thin
-plate's energy term by term, leaving out the terms a tear crosses, rather than taken from the 13-point stencil. The
-coarser levels, built from those rows, need nothing more. Tears are counted edge by edge and line by line: an edge one
-line crosses an even number of times, as where a curve thinner than a texel passes, as at a sharp tip, is whole as far
-as that line goes and holds nothing for it, while two lines crossing the same edge tear it. A line's segments are
-packed together, so a segment that doesn't start where the last ended starts a new line. And a texel's side is the one
-a step from it across the edge leaves, not its segment's line, which can't always tell near the segment's ends. Each
-edge is crossed once where two segments meet on it. A tear's edge strips hold its colors one texel either side, and
-with any tear the finest level is solved as with natural edges.
+of each edge of the grid it crosses, and the biharmonic leaves the slope across it free. What tears hold is the
+curves' geometry, which a texel on its own can't see, so tearTexels() works it out on the CPU for each level, and
+freeformConstraints looks each texel up in its records. It walks each line's segments across the rows and columns of
+texel centers. An edge a line crosses an even number of times, as where a curve thinner than a texel passes, as at a
+sharp tip, is whole as far as that line goes and holds nothing for it, while two lines crossing the same edge tear it.
+A segment's end on a row counts for the segment that leaves it, so a joint is crossed once. Near a tear a texel's row
+of the level's own equation is built from the thin plate's energy term by term, leaving out the terms a tear crosses,
+rather than taken from the 13-point stencil, with a faint membrane on its whole edges: boxed in by tears, a texel can
+keep a neighbor but no whole term, and its row would be empty. The coarser levels, built from those rows, need nothing
+more. A tear's edge strips hold its colors one texel either side, and with any tear the finest level is solved as with
+natural edges.
 
 Seventh, it may be 3, for a flat tear: a tear with Finch et al.'s slope curve either side, a penalty, 50 times a thin
-plate term, on the first difference away from the curve along its normal, so the surface is flat beside it. The tears
-texture carries the curve's direction and how firmly it's held across each torn edge. Toward an open end, over 3% of
-the box's shorter side or 4 texels, the two colors meet at their mean and the hold and the slope are let go, so the
-jump fades out rather than wrapping round the end, and a line that ends against or just inside another's colors
-doesn't fight them. Within 2 texels of a torn edge that runs more than half a radian another way, or isn't a flat
-tear's, as where two curves cross or one turns sharply, the slope is let go too: held flat along both curves' normals,
-it would pin texels a step apart to the two curves' colors. A firmer slope converges too slowly on fine grids. The
-smoothing steps divide by a row's own size near a tear, since the slope terms make it more than the 13-point stencil's
-64.
+plate term, on the first difference away from the curve along its normal, so the surface is flat beside it. Its
+records carry the curve's direction and how firmly the slope is held across each torn edge. Toward an open end, over
+3% of the box's shorter side or 4 texels, measured along the line, the two colors meet at their mean and the hold and
+the slope are let go, so the jump fades out rather than wrapping round the end, and a line that ends against or just
+inside another's colors doesn't fight them. Within 2 texels of a torn edge that runs more than half a radian another
+way, or isn't a flat tear's, as where two curves cross or one turns sharply, the slope is let go too: held flat along
+both curves' normals, it would pin texels a step apart to the two curves' colors. A firmer slope converges too slowly
+on fine grids. The smoothing steps divide by a row's own size near a tear, since the slope terms make it more than the
+13-point stencil's 64.
 
 A two-sided segment holds at least 3 texels a side, not 1.5: with fewer than two whole texels a side the biharmonic
 doesn't hold the slope across the line, and overshoots far past its colors on coarse grids.

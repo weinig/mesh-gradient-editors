@@ -646,17 +646,7 @@ function encodeRelaxation(renderer, encoder, steps) {
     renderer.packSources();
     renderer.pass = encoder.beginComputePass();
     const finest = renderer.levels[0];
-    renderer.dispatch("constraints", finest, [
-        renderer.uniformEntry(0, 0),
-        { binding: 1, resource: { buffer: renderer.pointBuffer } },
-        { binding: 2, resource: { buffer: renderer.segmentBuffer } },
-        { binding: 3, resource: renderer.view(finest.constraintColor) },
-        { binding: 4, resource: renderer.view(finest.constraintWeight) },
-        { binding: 5, resource: renderer.view(finest.rightHandSide) },
-        // Read only by the biharmonic's second hold; any texture the kernel doesn't write.
-        { binding: 6, resource: renderer.view(finest.correctionRightHandSide) },
-        { binding: 7, resource: renderer.view(finest.tears) },
-    ]);
+    renderer.holdLevel(0);
     renderer.fill(finest, renderer.gradient.average);
     renderer.smooth(0, finest.values, finest.rightHandSide, steps, 0);
     renderer.pass.end();

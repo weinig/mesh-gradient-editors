@@ -72,7 +72,8 @@ struct Level {
     // For freeformConstraints: the finest level's texel over the texel a
     // strength is given for, squared.
     strengthScale: f32,
-    padding1: u32,
+    // For freeformConstraints: which of tearTexels' headers is the level's.
+    tearHeader: u32,
 }
 
 // MARK: - Color sources
@@ -94,6 +95,26 @@ struct Level {
 // and down edges is in the green and blue, as an angle in the box's units.
 @group(0) @binding(7) var constraintTearsOut: texture_storage_2d<rgba32float, write>;
 
+// What the tears hold at a texel beside or near one, as
+// WebGPUFreeformGradient.js's tearTexels() works out for each level: which of
+// the grid's edges they cross and what each texel beside one holds is the
+// curves' geometry, which a texel on its own can't see.
+struct TearTexel {
+    // y * width + x. In a header, where the level's records start.
+    key: u32,
+    // As constraintTearsOut's red. In a header, how many records.
+    bits: u32,
+    // A flat tear's direction and hold across the right and down edges.
+    flat: vec2<f32>,
+    // The colors held, each times its strength and hold, summed.
+    color: vec4<f32>,
+    // The strengths times holds, summed; the holds; the greatest strength
+    // times hold; and the greatest hold.
+    holds: vec4<f32>,
+    padding: vec4<f32>,
+}
+@group(0) @binding(8) var<storage, read> tearTexels: array<TearTexel>;
+
 // Whether the piece from a to b crosses the grid's edge from one texel's
 // center, c0, to the next's, c1.
 fn crossesEdge(a: vec2<f32>, b: vec2<f32>, c0: vec2<f32>, c1: vec2<f32>) -> bool {
@@ -110,46 +131,10 @@ fn crossesEdge(a: vec2<f32>, b: vec2<f32>, c0: vec2<f32>, c1: vec2<f32>) -> bool
     return t >= 0.0 && t <= 1.0;
 }
 
-// Whether the segment from a to b crosses the grid edge from c0 to c1, for
-// counting a curve's crossings: by which side of the edge each end of the
-// segment is on, so where two segments of a curve meet on an edge, it's
-// crossed once, not twice or not at all.
-fn crossesEdgeOnce(a: vec2<f32>, b: vec2<f32>, c0: vec2<f32>, c1: vec2<f32>) -> bool {
-    let e = c1 - c0;
-    let sa = e.x * (a.y - c0.y) - e.y * (a.x - c0.x) >= 0.0;
-    let sb = e.x * (b.y - c0.y) - e.y * (b.x - c0.x) >= 0.0;
-    if (sa == sb) {
-        return false;
-    }
-    let d = b - a;
-    let s0 = d.x * (c0.y - a.y) - d.y * (c0.x - a.x);
-    let s1 = d.x * (c1.y - a.y) - d.y * (c1.x - a.x);
-    return (s0 >= 0.0) != (s1 >= 0.0);
-}
-
-// A flat tear's cap at a line's open end: over this far from it, in units of
-// the box's shorter side and at least capTexels, its two colors meet at their
-// mean and its slope is let go, so the jump fades out to nothing at the end
-// rather than wrapping round it.
-const capLength = 0.03;
-const capTexels = 4.0;
-
-// A flat tear's direction across an edge, with how fully it holds its slope
-// there, 0 to 1, in one number: the angle, plus eight times the hold in
-// thousandths.
-fn packFlat(angle: f32, hold: f32) -> f32 {
-    return angle + 8.0 * round(saturate(hold) * 1000.0);
-}
-
 fn unpackFlat(packed: f32) -> vec2<f32> {
     let steps = floor((packed + 4.0) / 8.0);
     return vec2<f32>(packed - 8.0 * steps, steps / 1000.0);
 }
-
-// A tear is near a texel if it's within this many texels of it: two for the
-// reach of a term of the texel's row, one for the far end of the edge the
-// tear crosses, and a half to spare.
-const tearReach = 3.5;
 
 fn segmentCrossesBox(a: vec2<f32>, b: vec2<f32>, center: vec2<f32>, halfSize: vec2<f32>) -> bool {
     let d = b - a;
@@ -191,26 +176,6 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
     var weight = 0.0;
     var tears = 0u;
     var flatAngles = vec2<f32>(0.0);
-    // Tears, edge by edge: right, left, down and up. An edge one line crosses
-    // an even number of times, as where a curve thinner than a texel passes,
-    // as at a sharp tip, is whole as far as that line goes, and it holds
-    // nothing there. Each line's crossings are counted on their own, so where
-    // two lines cross the same edge, it's torn.
-    let steps = array<vec2<f32>, 4>(vec2<f32>(level.texelSize.x, 0.0), vec2<f32>(-level.texelSize.x, 0.0),
-                                    vec2<f32>(0.0, level.texelSize.y), vec2<f32>(0.0, -level.texelSize.y));
-    var edgeTorn = array<bool, 4>(false, false, false, false);
-    var edgeColor = array<vec4<f32>, 4>(vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0));
-    var edgeHold = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
-    var edgeWeight = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
-    var edgeFlat = array<u32, 4>(0u, 0u, 0u, 0u);
-    var edgeAngle = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
-    // The same, for the line whose segments are being counted.
-    var lineCount = array<u32, 4>(0u, 0u, 0u, 0u);
-    var lineColor = array<vec4<f32>, 4>(vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0));
-    var lineHold = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
-    var lineWeight = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
-    var lineFlat = array<u32, 4>(0u, 0u, 0u, 0u);
-    var lineAngle = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
     for (var i = 0u; i < level.pointCount; i++) {
         let point = points[i];
         let delta = position - point.position * level.boxScale;
@@ -239,34 +204,10 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
         coverageSum += coverage;
         weight = max(weight, coverage);
     }
-    for (var i = 0u; i <= level.segmentCount; i++) {
-        // A line's segments are packed one after the next, so a segment that
-        // doesn't start where the last ended starts a new line; the last's
-        // odd crossings are its tears.
-        if (i > 0u && (i == level.segmentCount || any(segments[i].start != segments[i - 1u].end))) {
-            for (var d = 0; d < 4; d++) {
-                if (lineCount[d] % 2u == 1u) {
-                    edgeTorn[d] = true;
-                    edgeColor[d] += lineColor[d];
-                    edgeHold[d] += lineHold[d];
-                    edgeWeight[d] = max(edgeWeight[d], lineWeight[d]);
-                    if (lineFlat[d] != 0u) {
-                        edgeFlat[d] = 1u;
-                        edgeAngle[d] = lineAngle[d];
-                    }
-                }
-                lineCount[d] = 0u;
-                lineColor[d] = vec4<f32>(0.0);
-                lineHold[d] = 0.0;
-                lineWeight[d] = 0.0;
-                lineFlat[d] = 0u;
-            }
-        }
-        if (i == level.segmentCount) {
-            break;
-        }
+    for (var i = 0u; i < level.segmentCount; i++) {
         let segment = segments[i];
-        if (level.holds == 1u && segment.strength < 1.0) {
+        // A tear's holds are in tearTexels.
+        if (segment.isTwoSided >= 2u || (level.holds == 1u && segment.strength < 1.0)) {
             continue;
         }
         let a = segment.start * level.boxScale;
@@ -315,21 +256,7 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
                 }
             }
         }
-        // Which of the texel's edges a tear crosses. The texel is on the side a
-        // step from it across the edge leaves, which the segment's own line
-        // can't always tell near its ends.
-        var crossed = array<bool, 4>(false, false, false, false);
-        if (segment.isTwoSided >= 2u) {
-            if (distance(position, a + t * along) <= tearReach * texel) {
-                tears |= 4u;
-            }
-            for (var d = 0; d < 4; d++) {
-                // Each edge from its upper or left texel, so both texels beside it count the same.
-                let other = position + steps[d];
-                crossed[d] = select(crossesEdgeOnce(a, b, other, position), crossesEdgeOnce(a, b, position, other), d % 2 == 0);
-            }
-            beyond = 0.0;
-        } else if (segment.isTwoSided != 0u) {
+        if (segment.isTwoSided != 0u) {
             coverage *= saturate(1.0 - max(0.0, past) / (openEndFade * texel));
         }
         var color = mix(mix(segment.startRight, segment.endRight, t), mix(segment.startLeft, segment.endLeft, t), left);
@@ -355,58 +282,40 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
         // over a texel, to any segment the texel is beside, and counts only
         // where no other does.
         let share = max(saturate(1.0 - beyond / texel), 1e-4);
-        if (segment.isTwoSided >= 2u) {
-            for (var d = 0; d < 4; d++) {
-                if (!crossed[d]) {
-                    continue;
-                }
-                let e = steps[d];
-                let side = select(1.0, 0.0, along.x * e.y - along.y * e.x < 0.0);
-                let rightColor = mix(segment.startRight, segment.endRight, t);
-                let leftColor = mix(segment.startLeft, segment.endLeft, t);
-                var sideColor = mix(rightColor, leftColor, side);
-                // How far into a flat tear's cap the crossing is.
-                var hold = 1.0;
-                if (segment.isTwoSided == 3u) {
-                    let toEnd = min(segment.startDistance + distanceAlong, segmentLength - distanceAlong + segment.endDistance);
-                    hold = saturate(toEnd / max(capLength, capTexels * texel));
-                    sideColor = mix(0.5 * (leftColor + rightColor), sideColor, hold);
-                }
-                if (level.holds == 2u && segment.strength < 1.0) {
-                    let free = bilinearRead(constraintFree, (vec2<f32>(gid) + 0.5) / vec2<f32>(level.size)
-                                            * vec2<f32>(textureDimensions(constraintFree)) - 0.5);
-                    sideColor = mix(free, sideColor, segment.strength);
-                }
-                // In a cap, the hold fades too, so a line that ends against or
-                // just inside another's colors doesn't fight them there.
-                lineCount[d] += 1u;
-                lineColor[d] += strength * hold * sideColor;
-                lineHold[d] += strength * hold;
-                lineWeight[d] = max(lineWeight[d], strength * hold);
-                if (segment.isTwoSided == 3u) {
-                    lineFlat[d] = 1u;
-                    lineAngle[d] = packFlat(atan2(along.y, along.x), hold);
-                }
-            }
-            continue;
-        }
         colorSum += coverage * strength * share * color;
         coverageSum += coverage * strength * share;
         weight = max(weight, coverage * strength);
     }
-    for (var d = 0; d < 4; d++) {
-        if (!edgeTorn[d]) {
-            continue;
+    // The texel's record among the level's, by its key.
+    let header = tearTexels[level.tearHeader];
+    let key = gid.y * level.size.x + gid.x;
+    var low = header.key;
+    var high = header.key + header.bits;
+    while (low < high) {
+        let middle = (low + high) / 2u;
+        if (tearTexels[middle].key < key) {
+            low = middle + 1u;
+        } else {
+            high = middle;
         }
-        colorSum += edgeColor[d];
-        coverageSum += edgeHold[d];
-        weight = max(weight, edgeWeight[d]);
     }
-    let rightTorn = edgeTorn[0];
-    let downTorn = edgeTorn[2];
-    tears |= select(0u, 1u, rightTorn) | select(0u, 2u, downTorn);
-    tears |= select(0u, 8u, rightTorn && edgeFlat[0] != 0u) | select(0u, 16u, downTorn && edgeFlat[2] != 0u);
-    flatAngles = vec2<f32>(edgeAngle[0], edgeAngle[2]);
+    if (low < header.key + header.bits && tearTexels[low].key == key) {
+        let held = tearTexels[low];
+        tears = held.bits;
+        flatAngles = held.flat;
+        if (level.holds == 2u) {
+            // Each fully, at its strength's mix from the free solution's color to its own.
+            let free = bilinearRead(constraintFree, (vec2<f32>(gid) + 0.5) / vec2<f32>(level.size)
+                                    * vec2<f32>(textureDimensions(constraintFree)) - 0.5);
+            colorSum += held.color + (held.holds.y - held.holds.x) * free;
+            coverageSum += held.holds.y;
+            weight = max(weight, held.holds.w);
+        } else {
+            colorSum += held.color;
+            coverageSum += held.holds.x;
+            weight = max(weight, held.holds.z);
+        }
+    }
 
     var color = vec4<f32>(0.0);
     if (coverageSum > 0.0) {
@@ -876,42 +785,6 @@ fn wholeEdge(p: vec2<i32>, e: vec2<i32>, size: vec2<i32>) -> bool {
 // terms' 1.
 const slopeWeight = 50.0;
 
-// Whether a torn edge near texel p, within junctionReach texels, runs another
-// way than `angle`, or isn't a flat tear's: where two curves meet, or one
-// turns sharply, each holding the slope flat along its own normal would pin
-// texels a step apart to the two curves' colors.
-fn atJunction(p: vec2<i32>, angle: f32, size: vec2<i32>) -> bool {
-    for (var y = -junctionReach; y <= junctionReach; y++) {
-        for (var x = -junctionReach; x <= junctionReach; x++) {
-            let q = p + vec2<i32>(x, y);
-            if (any(q < vec2<i32>(0)) || any(q >= size)) {
-                continue;
-            }
-            let entry = textureLoad(bTears, q, 0);
-            let bits = u32(entry.r);
-            for (var k = 0u; k < 2u; k++) {
-                if ((bits & (1u << k)) == 0u) {
-                    continue;
-                }
-                if ((bits & (8u << k)) == 0u) {
-                    return true;
-                }
-                let turn = abs(unpackFlat(select(entry.b, entry.g, k == 0u)).x - angle) % pi;
-                if (min(turn, pi - turn) > junctionTurn) {
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
-}
-
-const junctionReach = 2;
-// How far, in radians, two torn edges' curves may run apart before they're a
-// junction.
-const junctionTurn = 0.5;
-const pi = 3.14159265;
-
 // A flat tear's slope terms in texel p's row, as Finch et al.'s slope curve:
 // at each texel beside an edge the tear crosses, the squared generalized first
 // difference away from it along its normal, over the texel and its neighbors
@@ -934,7 +807,7 @@ fn addSlopeTerms(p: vec2<i32>, size: vec2<i32>, row: ptr<function, array<f32, 25
             }
             let packed = unpackFlat(select(crossing.b, crossing.g, e.x != 0));
             let angle = packed.x;
-            if (packed.y <= 0.0 || atJunction(beside, angle, size)) {
+            if (packed.y <= 0.0) {
                 continue;
             }
             var normal = vec2<f32>(-sin(angle), cos(angle));
@@ -990,6 +863,8 @@ fn checker(c: vec2<i32>) -> f32 {
     return select(-1.0, 1.0, (c.x + c.y) % 2 == 0);
 }
 
+const tearMembrane = 0.001;
+
 // Texel p's row of a level's own equation, from the thin plate's energy term
 // by term, as Finch et al. build theirs: its coefficient for each texel up to
 // two away, without p's penalty. The terms are the squared second differences
@@ -1036,7 +911,10 @@ fn ownRow(p: vec2<i32>, size: vec2<i32>) -> array<f32, 25> {
         if (!wholeEdge(p, e, size)) {
             continue;
         }
-        var w = bh.membrane;
+        // At least a faint membrane, as Finch et al. have everywhere: boxed in
+        // by tears, a texel can keep a neighbor but no whole term of the thin
+        // plate's, and this alone says what it is.
+        var w = max(bh.membrane, tearMembrane);
         if (bh.natural == 0u) {
             let lo = select(min(p.y, p.y + e.y), min(p.x, p.x + e.x), e.x != 0);
             let last = select(size.y, size.x, e.x != 0) - 2;

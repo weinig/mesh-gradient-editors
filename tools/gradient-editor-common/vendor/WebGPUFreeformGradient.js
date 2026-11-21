@@ -255,6 +255,7 @@ export class WebGPUFreeformGradientRenderer {
     this.solvedSize = null;
     this.pointBuffer = null;
     this.segmentBuffer = null;
+    this.tearBuffer = null;
   }
 
   // Replaces the gradient, to be solved the next time it is drawn.
@@ -323,6 +324,7 @@ export class WebGPUFreeformGradientRenderer {
     this.destroyLevels();
     this.pointBuffer?.destroy();
     this.segmentBuffer?.destroy();
+    this.tearBuffer?.destroy();
     this.edgeBuffer?.destroy();
     for (const buffer of [this.coarsestInverse, this.partialSums, this.conjugateGradientState, this.backgroundRows]) {
       buffer.destroy();
@@ -514,17 +516,7 @@ export class WebGPUFreeformGradientRenderer {
     } else {
       const holdLevels = (holds) => {
         for (let index = 0; index < levels.length; index++) {
-          this.dispatch("constraints", levels[index], [
-            this.uniformEntry(index, index, 0, [0, 0], holds),
-            { binding: 1, resource: { buffer: this.pointBuffer } },
-            { binding: 2, resource: { buffer: this.segmentBuffer } },
-            { binding: 3, resource: this.view(levels[index].constraintColor) },
-            { binding: 4, resource: this.view(levels[index].constraintWeight) },
-            { binding: 5, resource: this.view(levels[index].rightHandSide) },
-            // Read only for holds 2 and 3; any texture the kernel doesn't write otherwise.
-            { binding: 6, resource: this.view(holds >= 2 ? finest.values.texture : finest.correctionRightHandSide) },
-            { binding: 7, resource: this.view(levels[index].tears) },
-          ]);
+          this.holdLevel(index, holds);
         }
       };
       if (gradient.model === "biharmonic") {
@@ -563,6 +555,25 @@ export class WebGPUFreeformGradientRenderer {
     this.pass = null;
     device.queue.writeBuffer(this.uniforms, 0, this.slotData, 0, uniformSlotBytes * Math.max(this.slots.size, 1));
     this.makeEdges();
+  }
+
+  // Writes what level `index`'s points and segments hold, and where its tears
+  // cross it. `holds` is as the shader's Level has it.
+  holdLevel(index, holds = 0) {
+    const level = this.levels[index];
+    const finest = this.levels[0];
+    this.dispatch("constraints", level, [
+      this.uniformEntry(index, index, 0, [0, 0], holds),
+      { binding: 1, resource: { buffer: this.pointBuffer } },
+      { binding: 2, resource: { buffer: this.segmentBuffer } },
+      { binding: 3, resource: this.view(level.constraintColor) },
+      { binding: 4, resource: this.view(level.constraintWeight) },
+      { binding: 5, resource: this.view(level.rightHandSide) },
+      // Read only for holds 2 and 3; any texture the kernel doesn't write otherwise.
+      { binding: 6, resource: this.view(holds >= 2 ? finest.values.texture : finest.correctionRightHandSide) },
+      { binding: 7, resource: this.view(level.tears) },
+      { binding: 8, resource: { buffer: this.tearBuffer } },
+    ]);
   }
 
   // Full multigrid: the coarsest level solved outright, then each finer level
@@ -1084,6 +1095,7 @@ export class WebGPUFreeformGradientRenderer {
       u32[12] = coarseSize[0];
       u32[13] = coarseSize[1];
       f32[14] = this.strengthScale;
+      u32[15] = (holds === 1 ? this.levels.length : 0) + index;
     });
   }
 
@@ -1189,7 +1201,329 @@ export class WebGPUFreeformGradientRenderer {
 
     this.pointBuffer = this.storageBuffer(this.pointBuffer, pointData);
     this.segmentBuffer = this.storageBuffer(this.segmentBuffer, segmentBytes);
+
+    // What the tears hold on each level, twice over: with every segment, and with only those fully held, for the
+    // biharmonic's solve without the rest. A header for each, where its records start and how many, then the
+    // records. The harmonic holds a segment in part by its strength's odds, as the shader does the rest.
+    const strengths = Array.from({ length: count }, (_, i) => f32[i * 28 + 25]);
+    const odds = (strength) => {
+      if (gradient.model === "biharmonic" || !(strength > 0 && strength < 1)) {
+        return strength;
+      }
+      const scaled = strength / (1 - strength) * this.strengthScale;
+      return scaled / (1 + scaled);
+    };
+    const sets = [(i) => false, (i) => strengths[i] < 1].map((skip) => this.levels.map((level) =>
+      this.hasTears ? tearTexels(segments, gradient.lines, boxScale, level.width, level.height, (i) => odds(strengths[i]), skip)
+                    : new ArrayBuffer(0)));
+    const headers = 2 * this.levels.length;
+    const total = sets.flat().reduce((sum, records) => sum + records.byteLength, 0);
+    const tearBytes = new ArrayBuffer(headers * tearTexelFloats * 4 + total);
+    const tearWords = new Uint32Array(tearBytes);
+    let offset = headers;
+    sets.flat().forEach((records, index) => {
+      tearWords[index * tearTexelFloats] = offset;
+      tearWords[index * tearTexelFloats + 1] = records.byteLength / (tearTexelFloats * 4);
+      tearWords.set(new Uint32Array(records), offset * tearTexelFloats);
+      offset += records.byteLength / (tearTexelFloats * 4);
+    });
+    this.tearBuffer = this.storageBuffer(this.tearBuffer, tearBytes);
   }
+}
+
+// MARK: - Tears
+
+// A flat tear's cap at a line's open end: over this far from it, in units of
+// the box's shorter side and at least capTexels, its two colors meet at their
+// mean and its hold and slope are let go, so the jump fades out to nothing at
+// the end rather than wrapping round it, and a line that ends against or just
+// inside another's colors doesn't fight them there.
+const capLength = 0.03;
+const capTexels = 4;
+// Within junctionReach texels of a torn edge that runs more than junctionTurn
+// radians another way, or isn't a flat tear's, as where two curves cross or
+// one turns sharply, a flat tear's slope is let go: held flat along both
+// curves' normals, it would pin texels a step apart to the two curves' colors.
+const junctionTurn = 0.5;
+const junctionReach = 2;
+// A texel within this many texels of a torn edge's has its row of the
+// biharmonic built term by term: two for the reach of a term, and one to spare.
+const tearNear = 3;
+const tearTexelFloats = 16;
+
+// A flat tear's direction across an edge and how firmly it holds the slope
+// there, as the shader's unpackFlat() takes them apart.
+function packFlat(angle, hold) {
+  return angle + 8 * Math.round(Math.min(Math.max(hold, 0), 1) * 1000);
+}
+
+// Arrays the size of a grid, kept between builds: each edge's tear, and each
+// texel's place among the records. Whatever a build touches, it puts back.
+const tearScratch = new Map();
+function tearScratchFor(width, height) {
+  const key = `${width}x${height}`;
+  let scratch = tearScratch.get(key);
+  if (!scratch) {
+    scratch = { edge: new Int32Array(2 * width * height).fill(-1), slot: new Int32Array(width * height).fill(-1) };
+    tearScratch.set(key, scratch);
+  }
+  return scratch;
+}
+
+// What the tears among `segments`, 23 numbers each, hold on a grid `width` by
+// `height`: for each texel beside or near a torn edge, a record of
+// tearTexelFloats numbers, in the order of the texels' keys, y * width + x.
+//
+//   0      the key
+//   1      1 if a tear crosses the edge to the next texel across, 2 if the edge
+//          to the next down, 4 if one is near, 8 and 16 as 1 and 2 for a flat
+//          tear
+//   2, 3   a flat tear's direction and hold across those two edges, packed
+//   4-7    the colors it holds, each times its strength and hold, summed
+//   8, 9   the strengths times holds, summed, and the holds
+//   10, 11 the greatest strength times hold, and the greatest hold
+//
+// `lines` gives each line's segments, in order, and whether it's closed;
+// segments past the lines' go by where each starts. A grid edge is torn if a
+// line crosses it an odd number of times: where a curve thinner than a texel
+// passes, as at a sharp tip, both its sides cross the same edge, which is
+// whole as far as that line goes. Each crossing holds the texel either side
+// to its own side's color. `strength(i)` is how firmly segment i holds, and
+// `skip(i)` whether to leave it out.
+function tearTexels(segments, lines, boxScale, width, height, strength, skip) {
+  const texelX = boxScale[0] / width, texelY = boxScale[1] / height;
+  const texel = Math.max(texelX, texelY);
+  const cap = Math.max(capLength, capTexels * texel);
+  const scratch = tearScratchFor(width, height);
+  // The torn edges: 14 numbers each, as `crossing` below, summed over a line's crossings of it.
+  const edgeFloats = 16;
+  let edges = new Float64Array(edgeFloats * 256);
+  let edgeCount = 0;
+  const edgeKeys = [];
+
+  // Each line's segments: from `lines`, then by where the rest start.
+  const count = Math.floor(segments.length / 23);
+  const runs = [];
+  let next = 0;
+  for (const line of lines ?? []) {
+    const length = Math.min(line.ends.length / 4, count - next);
+    if (length > 0) {
+      runs.push({ from: next, to: next + length, closed: !!line.closed });
+      next += length;
+    }
+  }
+  for (let i = next; i < count; i++) {
+    const s = i * 23, last = runs[runs.length - 1];
+    if (i > next && last && segments[s + 16] === segments[s - 23 + 18] && segments[s + 17] === segments[s - 23 + 19]) {
+      last.to = i + 1;
+    } else {
+      runs.push({ from: i, to: i + 1, closed: false });
+    }
+  }
+
+  const line = new Map();
+  for (const run of runs) {
+    const lengths = [];
+    let total = 0;
+    for (let i = run.from; i < run.to; i++) {
+      const s = i * 23;
+      lengths.push(Math.hypot((segments[s + 18] - segments[s + 16]) * boxScale[0], (segments[s + 19] - segments[s + 17]) * boxScale[1]));
+      total += lengths[lengths.length - 1];
+    }
+    line.clear();
+    let before = 0;
+    for (let i = run.from; i < run.to; i++) {
+      const s = i * 23, length = lengths[i - run.from];
+      const kind = segments[s + 22];
+      const start = before;
+      before += length;
+      if ((kind !== 2 && kind !== 3) || skip(i) || !(length > 0)) {
+        continue;
+      }
+      const alongX = (segments[s + 18] - segments[s + 16]) * boxScale[0], alongY = (segments[s + 19] - segments[s + 17]) * boxScale[1];
+      const angle = Math.atan2(alongY, alongX);
+      // In texels, with the texels' centers at whole numbers.
+      const ua = segments[s + 16] * width - 0.5, va = segments[s + 17] * height - 0.5;
+      const ub = segments[s + 18] * width - 0.5, vb = segments[s + 19] * height - 0.5;
+      const held = strength(i);
+      const crossing = (x, y, axis, t) => {
+        const toEnd = run.closed ? Infinity : Math.min(start + t * length, total - start - t * length);
+        const hold = kind === 3 ? Math.min(Math.max(toEnd / cap, 0), 1) : 1;
+        const key = 2 * (y * width + x) + axis;
+        let e = line.get(key);
+        if (!e) {
+          e = new Float64Array(edgeFloats);
+          line.set(key, e);
+        }
+        // The first texel, the upper or left one, is on the left of a segment heading up or right across the edge.
+        const firstIsLeft = axis === 0 ? alongY <= 0 : alongX >= 0;
+        for (let k = 0; k < 4; k++) {
+          let left = segments[s + k] + (segments[s + 4 + k] - segments[s + k]) * t;
+          let right = segments[s + 8 + k] + (segments[s + 12 + k] - segments[s + 8 + k]) * t;
+          if (kind === 3) {
+            const mean = 0.5 * (left + right);
+            left = mean + (left - mean) * hold;
+            right = mean + (right - mean) * hold;
+          }
+          e[k] += held * hold * (firstIsLeft ? left : right);
+          e[4 + k] += held * hold * (firstIsLeft ? right : left);
+        }
+        e[8] += held * hold;
+        e[9] += hold;
+        e[10] = Math.max(e[10], held * hold);
+        e[11] = Math.max(e[11], hold);
+        e[12] += 1;
+        if (kind === 3) {
+          e[13] = 1;
+          e[14] = angle;
+          e[15] = hold;
+        }
+      };
+      // The edges across, from a texel to the next: where the segment passes a row of centers. A segment's end on
+      // a row counts for the segment that leaves it, so a joint on a row is crossed once, or not at all.
+      for (let y = Math.max(Math.ceil(Math.min(va, vb)), 0); y < Math.max(va, vb) && y < height; y++) {
+        const t = (y - va) / (vb - va);
+        const x = Math.floor(ua + t * (ub - ua));
+        if (x >= 0 && x < width - 1) {
+          crossing(x, y, 0, t);
+        }
+      }
+      for (let x = Math.max(Math.ceil(Math.min(ua, ub)), 0); x < Math.max(ua, ub) && x < width; x++) {
+        const t = (x - ua) / (ub - ua);
+        const y = Math.floor(va + t * (vb - va));
+        if (y >= 0 && y < height - 1) {
+          crossing(x, y, 1, t);
+        }
+      }
+    }
+    for (const [key, e] of line) {
+      if (e[12] % 2 !== 1) {
+        continue;
+      }
+      let index = scratch.edge[key];
+      if (index < 0) {
+        index = edgeCount++;
+        scratch.edge[key] = index;
+        edgeKeys.push(key);
+        if (edgeCount * edgeFloats > edges.length) {
+          const grown = new Float64Array(edges.length * 2);
+          grown.set(edges);
+          edges = grown;
+        }
+        edges.fill(0, index * edgeFloats, (index + 1) * edgeFloats);
+      }
+      const o = index * edgeFloats;
+      for (let k = 0; k < 10; k++) {
+        edges[o + k] += e[k];
+      }
+      edges[o + 10] = Math.max(edges[o + 10], e[10]);
+      edges[o + 11] = Math.max(edges[o + 11], e[11]);
+      // Torn by a tear that isn't flat as well, the edge is no flat tear's.
+      edges[o + 13] = edges[o + 12] > 0 && !(edges[o + 13] && e[13]) ? 0 : e[13];
+      edges[o + 12] += 1;
+      edges[o + 14] = e[14];
+      edges[o + 15] = e[15];
+    }
+  }
+
+  // Junctions: a flat tear's slope is let go near an edge torn another way.
+  const turned = (a, b) => {
+    const turn = Math.abs(a - b) % Math.PI;
+    return Math.min(turn, Math.PI - turn) > junctionTurn;
+  };
+  const released = [];
+  for (let n = 0; n < edgeCount; n++) {
+    const o = n * edgeFloats;
+    if (!edges[o + 13]) {
+      continue;
+    }
+    const key = edgeKeys[n], axis = key & 1, first = key >> 1;
+    const fx = first % width, fy = (first - fx) / width;
+    let junction = false;
+    for (let side = 0; side < 2 && !junction; side++) {
+      const px = fx + (side && axis === 0 ? 1 : 0), py = fy + (side && axis === 1 ? 1 : 0);
+      for (let y = Math.max(py - junctionReach, 0); y <= Math.min(py + junctionReach, height - 1) && !junction; y++) {
+        for (let x = Math.max(px - junctionReach, 0); x <= Math.min(px + junctionReach, width - 1) && !junction; x++) {
+          for (let a = 0; a < 2; a++) {
+            const other = scratch.edge[2 * (y * width + x) + a];
+            if (other >= 0 && (!edges[other * edgeFloats + 13] || turned(edges[other * edgeFloats + 14], edges[o + 14]))) {
+              junction = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+    if (junction) {
+      released.push(n);
+    }
+  }
+  for (const n of released) {
+    edges[n * edgeFloats + 15] = 0;
+  }
+
+  // The texels' records.
+  let records = new Float32Array(tearTexelFloats * 1024);
+  let recordCount = 0;
+  const keys = [];
+  const record = (key) => {
+    let index = scratch.slot[key];
+    if (index < 0) {
+      index = recordCount++;
+      scratch.slot[key] = index;
+      keys.push(key);
+      if (recordCount * tearTexelFloats > records.length) {
+        const grown = new Float32Array(records.length * 2);
+        grown.set(records);
+        records = grown;
+      }
+    }
+    return index * tearTexelFloats;
+  };
+  const bits = [];
+  for (let n = 0; n < edgeCount; n++) {
+    const o = n * edgeFloats;
+    const key = edgeKeys[n], axis = key & 1, first = key >> 1;
+    const fx = first % width, fy = (first - fx) / width;
+    const second = axis === 0 ? first + 1 : first + width;
+    for (let side = 0; side < 2; side++) {
+      const r = record(side ? second : first);
+      for (let k = 0; k < 4; k++) {
+        records[r + 4 + k] += edges[o + 4 * side + k];
+      }
+      records[r + 8] += edges[o + 8];
+      records[r + 9] += edges[o + 9];
+      records[r + 10] = Math.max(records[r + 10], edges[o + 10]);
+      records[r + 11] = Math.max(records[r + 11], edges[o + 11]);
+    }
+    const r = record(first);
+    bits[r / tearTexelFloats] = (bits[r / tearTexelFloats] ?? 0) | (axis === 0 ? 1 : 2) | (edges[o + 13] ? (axis === 0 ? 8 : 16) : 0);
+    if (edges[o + 13]) {
+      records[r + 2 + axis] = packFlat(edges[o + 14], edges[o + 15]);
+    }
+    const sx = fx + (axis === 0 ? 1 : 0), sy = fy + (axis === 1 ? 1 : 0);
+    for (let y = Math.max(fy - tearNear, 0); y <= Math.min(sy + tearNear, height - 1); y++) {
+      for (let x = Math.max(fx - tearNear, 0); x <= Math.min(sx + tearNear, width - 1); x++) {
+        const near = record(y * width + x) / tearTexelFloats;
+        bits[near] = (bits[near] ?? 0) | 4;
+      }
+    }
+  }
+  for (const key of edgeKeys) {
+    scratch.edge[key] = -1;
+  }
+  const order = Uint32Array.from(keys.keys()).sort((a, b) => keys[a] - keys[b]);
+  for (const key of keys) {
+    scratch.slot[key] = -1;
+  }
+  const result = new ArrayBuffer(recordCount * tearTexelFloats * 4);
+  const f32 = new Float32Array(result), u32 = new Uint32Array(result);
+  order.forEach((from, to) => {
+    f32.set(records.subarray(from * tearTexelFloats, (from + 1) * tearTexelFloats), to * tearTexelFloats);
+    u32[to * tearTexelFloats] = keys[from];
+    u32[to * tearTexelFloats + 1] = bits[from] ?? 0;
+  });
+  return result;
 }
 
 // MARK: - Edge quads

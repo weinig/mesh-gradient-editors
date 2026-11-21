@@ -593,16 +593,7 @@ class SplineRenderer extends WebGPUFreeformGradientRenderer {
             for (let index = 0; index < levels.length; index++) {
                 const level = levels[index];
                 // What the stops hold, for the visualizations: the texel each is in.
-                this.dispatch("constraints", level, [
-                    this.uniformEntry(index, index, 0, [0, 0], 0),
-                    { binding: 1, resource: { buffer: this.pointBuffer } },
-                    { binding: 2, resource: { buffer: this.segmentBuffer } },
-                    { binding: 3, resource: this.view(level.constraintColor) },
-                    { binding: 4, resource: this.view(level.constraintWeight) },
-                    { binding: 5, resource: this.view(level.rightHandSide) },
-                    { binding: 6, resource: this.view(finest.correctionRightHandSide) },
-                    { binding: 7, resource: this.view(level.tears) },
-                ]);
+                this.holdLevel(index);
                 level.values.current = 0;
                 this.pass.setPipeline(this.splinePipeline);
                 this.pass.setBindGroup(0, this.bindGroup(this.splinePipeline, [
