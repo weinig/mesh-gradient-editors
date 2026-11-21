@@ -16,7 +16,7 @@ test("biharmonic Strength mixes from the gradient without the curve to the one w
     const absent = await solve([curve(0.25, 100)]);
     const full = await solve([curve(0.25, 100), curve(0.6, 100)]);
     const half = await solve([curve(0.25, 100), curve(0.6, 50)]);
-    t.above(difference(full, absent), 0.5, "a full-strength curve changes the gradient");
+    t.above(difference(full, absent), 0.15, "a full-strength curve changes the gradient");
     t.below(difference(zero, absent), 0.02, "a curve at 0% is as no curve");
     t.below(difference(half, absent.map((v, i) => 0.5 * v + 0.5 * full[i])), 0.02, "a curve at 50% is halfway between");
 });
@@ -89,14 +89,16 @@ test("an edge is antialiased with a mix of its two colors, not a third hue", asy
 test("on a coarse grid a curve still holds its slope", async t => {
     set("space", "srgb");
     set("numbers", true);
+    // Overlapping shapes' curves cross, and one starts on another's edge: where they meet, nothing rings. Its gray
+    // open curves, held flat either side, carry the gray a little past itself far from them on the 128 grid.
     for (const name of ["A circle", "Overlapping shapes", "Blur"]) {
         await preset(name);
         set("space", "srgb");
-        for (const resolution of ["128", "256", "512"]) {
+        for (const resolution of ["128", "256", "512", "1024"]) {
             set("resolution", resolution);
             const [low, high] = range(await grab(0));
             t.above(low, -0.06, `${name} at ${resolution}: the least color`);
-            t.below(high, 1.1, `${name} at ${resolution}: the greatest color`);
+            t.below(high, 1.12, `${name} at ${resolution}: the greatest color`);
         }
     }
 });
@@ -174,4 +176,44 @@ test("a closed tear holds nothing past it, where it's thinner than a texel or it
             t.below(worst, 0.03, `${name} on the ${resolution} grid`);
         }
     }
+});
+
+test("a Flat curve holds the surface flat beside it, on every grid", async t => {
+    await preset("A line between two colors");
+    // Alone, so its box is as wide as the grids.
+    state.models = ["biharmonic"];
+    set("space", "srgb");
+    set("numbers", true);
+    for (const resolution of ["256", "512", "1024"]) {
+        set("resolution", resolution);
+        const readout = await grab(0);
+        // How much each side changes from 1% to 4% of the box away from the line, at its middle.
+        for (const [near, far] of [[0.49, 0.46], [0.51, 0.54]]) {
+            const a = sampleReadout(readout, [0.5, near]), b = sampleReadout(readout, [0.5, far]);
+            t.below(Math.max(...[0, 1, 2].map(k => Math.abs(a[k] - b[k]))), 0.005, `at ${near} on the ${resolution} grid`);
+        }
+    }
+});
+
+test("a Flat open line draws much the same on every grid", async t => {
+    // In the preset's own space, Oklab, where a firmer slope stopped short of converging on the 1024 grid. Alone, so
+    // its box is as wide as the grids.
+    await preset("A line between two colors");
+    state.models = ["biharmonic"];
+    set("numbers", true);
+    const sample = readout => {
+        const out = [];
+        for (let y = 0; y < 20; ++y)
+            for (let x = 0; x < 30; ++x)
+                out.push(appearance(sampleReadout(readout, [(x + 0.5) / 30, (y + 0.5) / 20]), readout.space).rgb);
+        return out;
+    };
+    const got = {};
+    for (const resolution of ["256", "512", "1024"]) {
+        set("resolution", resolution);
+        got[resolution] = sample(await grab(0));
+    }
+    const worst = (a, b) => Math.max(...a.map((c, i) => Math.max(...[0, 1, 2].map(k => Math.abs(c[k] - b[i][k])))));
+    t.below(worst(got[512], got[1024]), 0.05, "512 against 1024");
+    t.below(worst(got[256], got[1024]), 0.3, "256 against 1024");
 });

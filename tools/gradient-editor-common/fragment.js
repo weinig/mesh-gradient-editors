@@ -36,8 +36,6 @@ function soundState(data) {
     for (const key of ["crossSection", "sheet", "numbers", "about", "sample", "otherCurves"])
         data[key] = !!data[key];
     data.edgeStrips = data.edgeStrips !== false;
-    if (data.flatHold !== "cut")
-        data.flatHold = "band";
     return data;
 }
 

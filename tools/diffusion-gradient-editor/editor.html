@@ -65,9 +65,9 @@
                     <input id="blur" type="range" min="0" max="100" step="1">
                     <output id="blurValue"></output>
                 </div>
-                <label title="Flat holds the curve's colors across a band either side of it, which holds the surface flat there. Smooth holds only the texel either side of it, so the biharmonic model's surface keeps its slope through the curve, as a tear in Finch et al.'s paper does; that can run far past the curve's colors, most of all for an open curve. A blurred curve is always flat, and the harmonic model has no slope to hold.">Falloff</label>
+                <label title="Both cut the surface along the curve, as a tear in Finch et al.'s paper does, and hold each side's color beside it. Flat also holds the slope away from the curve at zero, so the surface is flat either side. Smooth leaves the slope free, so the biharmonic model's surface keeps its slope through the curve; that can run far past the curve's colors, most of all for an open curve. A blurred curve is always flat, and the harmonic model has no slope to hold.">Falloff</label>
                 <div class="value">
-                    <div class="segmented" title="Flat holds the curve's colors across a band either side of it, which holds the surface flat there. Smooth holds only the texel either side of it, so the biharmonic model's surface keeps its slope through the curve, as a tear in Finch et al.'s paper does; that can run far past the curve's colors, most of all for an open curve. A blurred curve is always flat, and the harmonic model has no slope to hold.">
+                    <div class="segmented" title="Both cut the surface along the curve, as a tear in Finch et al.'s paper does, and hold each side's color beside it. Flat also holds the slope away from the curve at zero, so the surface is flat either side. Smooth leaves the slope free, so the biharmonic model's surface keeps its slope through the curve; that can run far past the curve's colors, most of all for an open curve. A blurred curve is always flat, and the harmonic model has no slope to hold.">
                         <label><input type="radio" name="slope" id="held"> Flat</label>
                         <label><input type="radio" name="slope" id="free"> Smooth</label>
                     </div>

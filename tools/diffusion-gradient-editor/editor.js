@@ -81,7 +81,7 @@ const PRESETS = [
     },
     {
         name: "Flat and smooth",
-        note: "Two circles with the same colors, each between a green line and a pink one. The left one is Flat: it holds its colors across a band, which holds the surface flat beside it, so it sits in a halo of its blue before the colors turn toward the lines. The right one is Smooth: it holds only the texel either side of it, so the biharmonic model's turn toward the lines starts at the circle itself, and its halo is thinner. The difference is small for a closed curve like this. A smooth open curve tilts each side into a steep plane, far past its colors. Show what the curves hold to see the band and the single texels. The harmonic model has no slope to hold, so its two are nearly alike.",
+        note: "Two circles with the same colors, each between a green line and a pink one. The left one is Flat: it holds the surface flat beside it, so it sits in a halo of its blue before the colors turn toward the lines. The right one is Smooth: it leaves the slope free, so the biharmonic model's turn toward the lines starts at the circle itself, and its halo is thinner. The difference is small for a closed curve like this. A smooth open curve tilts each side into a steep plane, far past its colors. The harmonic model has no slope to hold, so its two are nearly alike.",
         state: {
             width: 600, height: 300,
             curves: [0.28, 0.72].flatMap((x, i) => [
@@ -442,8 +442,9 @@ function offsetPieces(flat, distance, closed) {
 // strength's cube, since the solve barely gives at all above a weight of 0.3. Held in part, a jump would make the
 // biharmonic solve overshoot far out of gamut, so the renderer mixes its held colors instead, which is linear.
 //
-// A curve with a free slope is a tear, as Finch et al.'s: it holds its colors on the texel either side of it and
-// leaves the slope across it free, where a band holds the slope flat too. A blurred curve has no tear.
+// A curve is a tear, as Finch et al.'s: it holds its colors on the texel either side of it. A flat one holds the
+// slope away from it at zero, as their slope curves do, and a free one leaves it free. The harmonic model has no
+// slope, so it holds a flat curve across a band instead. A blurred curve has no tear.
 //
 // A blurred curve is two one-sided copies of it
 // instead, each holding one side's color, moved apart by the blur, so the solve fills the band between them.
@@ -473,7 +474,7 @@ function gradientData(model, influence = false) {
             add(offsetPieces(flat, distance, curve.closed), left, left, 0, strength, curve.closed);
             add(offsetPieces(flat, -distance, curve.closed), right, right, 0, strength, curve.closed);
         } else {
-            add(flat, left, right, curve.free ? 2 : state.flatHold === "cut" ? 3 : 1, strength, curve.closed);
+            add(flat, left, right, curve.free ? 2 : model === "harmonic" ? 1 : 3, strength, curve.closed);
         }
     }
     const average = [0, 1, 2, 3].map(k => colors.length ? colors.reduce((sum, c) => sum + c[k], 0) / colors.length : 0);

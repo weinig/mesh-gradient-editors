@@ -143,8 +143,6 @@ function updateCommonControls() {
     $("otherCurvesRow").hidden = !state.crossSection || state.models.length < 2;
     $("edgeStrips").value = state.edgeStrips ? "sharp" : "solved";
     $("edgeStripsRow").hidden = !TWO_SIDED_LINES;
-    $("flatHold").value = state.flatHold;
-    $("flatHoldRow").hidden = !TWO_SIDED_LINES;
     const heights = sheetHeights(state.space);
     if ($("sheetHeight").dataset.space !== String(state.space)) {
         $("sheetHeight").replaceChildren(...heights.map(height => new Option(height.label, height.value)));
@@ -311,10 +309,6 @@ $("gamut").addEventListener("change", () => {
 });
 $("otherCurves").addEventListener("change", () => {
     state.otherCurves = $("otherCurves").checked;
-    changed();
-});
-$("flatHold").addEventListener("change", () => {
-    state.flatHold = $("flatHold").value;
     changed();
 });
 $("edgeStrips").addEventListener("change", () => {
