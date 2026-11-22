@@ -44,6 +44,8 @@ const twoSidedBiharmonicCycles = 4;
 const naturalBiharmonicCycles = 40;
 const naturalRestart = 10;
 const conjugateGradientSmoothing = 2;
+// The shader's ConjugateGradientState.
+const conjugateGradientStateBytes = 80;
 // The coarsest level's inverse, n × n with n up to 64, then each row's scale.
 const coarsestTexels = 64;
 // Partial sums of a dot product, one a workgroup of 16×16 texels, over a
@@ -221,7 +223,13 @@ export class WebGPUFreeformGradientRenderer {
     const storage = (size) => device.createBuffer({ size, usage: GPUBufferUsage.STORAGE });
     this.coarsestInverse = storage((coarsestTexels * coarsestTexels + coarsestTexels) * 4);
     this.partialSums = storage(maximumPartialSums * 16);
-    this.conjugateGradientState = storage(64);
+    this.conjugateGradientState = device.createBuffer({
+      size: conjugateGradientStateBytes, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+    });
+    // How many steps the finest level takes, and how often its residual is formed afresh, in place of the usual:
+    // for measuring.
+    this.finestSteps = null;
+    this.finestRestart = null;
     const rows = backgroundRows();
     this.backgroundRows = device.createBuffer({
       size: rows.byteLength, usage: GPUBufferUsage.STORAGE, mappedAtCreation: true,
@@ -765,7 +773,7 @@ export class WebGPUFreeformGradientRenderer {
 
     // With natural edges or tears, what's left to solve can be too faint for a residual carried along.
     const careful = gradient.naturalEdges || this.hasTears;
-    const cycles = (careful ? naturalBiharmonicCycles : finestBiharmonicCycles)
+    const cycles = this.finestSteps ?? (careful ? naturalBiharmonicCycles : finestBiharmonicCycles)
       + (gradient.hasTwoSidedLines ? twoSidedBiharmonicCycles : 0);
     for (let index = coarsest - 1; index >= 0; index--) {
       const level = levels[index];
@@ -776,7 +784,7 @@ export class WebGPUFreeformGradientRenderer {
       level.values.current = 0;
       this.buildGalerkinLevels(index);
       if (index === 0) {
-        this.encodeConjugateGradients(cycles, careful ? naturalRestart : 0);
+        this.encodeConjugateGradients(cycles, this.finestRestart ?? (careful ? naturalRestart : 0));
       } else {
         for (let cycle = 0; cycle < biharmonicCycles; cycle++) {
           this.biharmonicVCycle(index);
@@ -905,21 +913,21 @@ export class WebGPUFreeformGradientRenderer {
       x: level.values.texture, out: level.values.next, color: level.constraintColor, weight: level.constraintWeight,
     });
     level.values.flip();
-    const start = () => {
+    const start = (first) => {
       this.bhDispatch("ResidualOwn", level, uniforms, {
         x: level.values.texture, out: residual.texture, color: level.constraintColor, weight: level.constraintWeight,
         tears: level.tears,
       });
-      this.bhDispatch("Reset", [1, 1, 1], null, { state: this.conjugateGradientState });
+      this.bhDispatch("Reset", [1, 1, 1], this.bh({ of: level, flag: first ? 1 : 0 }), { state: this.conjugateGradientState });
     };
-    start();
+    start(true);
 
     for (let step = 0; step < count; step++) {
       // The residual each step carries along drifts from the solution's own in 32-bit floats. With natural edges,
       // what's left to solve can be a twist that only the box's four corner texels resist, too faint to survive
       // that, so there the residual is formed afresh from the solution every few steps.
       if (restart > 0 && step > 0 && step % restart === 0) {
-        start();
+        start(false);
       }
       const z = this.encodePreconditioner();
       this.encodeDot(residual.texture, z, false);
@@ -939,6 +947,25 @@ export class WebGPUFreeformGradientRenderer {
       level.values.flip();
       residual.flip();
     }
+  }
+
+  // How far the last biharmonic solve came: the steps it took, and for each channel r · z as it began and as its
+  // last step began, r what the finest level's equation is short by and z the preconditioner's answer to it.
+  // `left` is the square root of the greatest channel's ratio of the two: small when the solve settled.
+  async convergence() {
+    const { device } = this;
+    const read = device.createBuffer({ size: conjugateGradientStateBytes, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+    const encoder = device.createCommandEncoder();
+    encoder.copyBufferToBuffer(this.conjugateGradientState, 0, read, 0, conjugateGradientStateBytes);
+    device.queue.submit([encoder.finish()]);
+    await read.mapAsync(GPUMapMode.READ);
+    const bytes = read.getMappedRange().slice(0);
+    read.destroy();
+    const floats = new Float32Array(bytes);
+    const first = Array.from(floats.subarray(16, 20)), last = Array.from(floats.subarray(0, 4));
+    const steps = new Uint32Array(bytes)[13];
+    const left = Math.sqrt(Math.max(...first.map((value, i) => value > 0 ? Math.max(last[i], 0) / value : 0)));
+    return { steps, first, last, left };
   }
 
   // a · b over the finest level, into the scalars: r · z and beta, or with

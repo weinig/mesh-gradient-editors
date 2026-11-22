@@ -705,6 +705,10 @@ struct ConjugateGradientState {
     beta: vec4<f32>,
     // Whether the next step is the first.
     first: u32,
+    // How many steps the solve has taken, and r · z at its first and at each fresh start since: how far it has
+    // come, for whoever reads it back.
+    steps: u32,
+    firstRZ: vec4<f32>,
 }
 
 @group(0) @binding(20) var<uniform> bh: Biharmonic;
@@ -913,8 +917,10 @@ fn ownRow(p: vec2<i32>, size: vec2<i32>) -> array<f32, 25> {
         }
         // At least a faint membrane, as Finch et al. have everywhere: boxed in
         // by tears, a texel can keep a neighbor but no whole term of the thin
-        // plate's, and this alone says what it is.
-        var w = max(bh.membrane, tearMembrane);
+        // plate's, and this alone says what it is. Only between two texels
+        // near a tear, whose rows both come from here: the neighbor's row has
+        // to have it too, or the equation isn't symmetric.
+        var w = select(bh.membrane, max(bh.membrane, tearMembrane), nearTear(p + e));
         if (bh.natural == 0u) {
             let lo = select(min(p.y, p.y + e.y), min(p.x, p.x + e.x), e.x != 0);
             let last = select(size.y, size.x, e.x != 0) - 2;
@@ -1801,6 +1807,10 @@ fn bhScalars(@builtin(local_invocation_index) lane: u32) {
         bState.beta = select(beta, vec4<f32>(0.0), bState.first != 0u);
         bState.rz = total;
         bState.first = 0u;
+        if (bState.steps == 0u) {
+            bState.firstRZ = total;
+        }
+        bState.steps += 1u;
     }
 }
 
@@ -1810,6 +1820,11 @@ fn bhReset() {
     bState.alpha = vec4<f32>(0.0);
     bState.beta = vec4<f32>(0.0);
     bState.first = 1u;
+    // With the flag, a solve's start, not a fresh start partway.
+    if (bh.flag != 0u) {
+        bState.steps = 0u;
+        bState.firstRZ = vec4<f32>(0.0);
+    }
 }
 
 // The held texels at their colors: from the last solution, a point or line

@@ -42,10 +42,10 @@ texel centers. An edge a line crosses an even number of times, as where a curve 
 sharp tip, is whole as far as that line goes and holds nothing for it, while two lines crossing the same edge tear it.
 A segment's end on a row counts for the segment that leaves it, so a joint is crossed once. Near a tear a texel's row
 of the level's own equation is built from the thin plate's energy term by term, leaving out the terms a tear crosses,
-rather than taken from the 13-point stencil, with a faint membrane on its whole edges: boxed in by tears, a texel can
-keep a neighbor but no whole term, and its row would be empty. The coarser levels, built from those rows, need nothing
-more. A tear's edge strips hold its colors one texel either side, and with any tear the finest level is solved as with
-natural edges.
+rather than taken from the 13-point stencil, with a faint membrane on its whole edges to texels that are near one too:
+boxed in by tears, a texel can keep a neighbor but no whole term, and its row would be empty. The coarser levels,
+built from those rows, need nothing more. A tear's edge strips hold its colors one texel either side, and with any
+tear the finest level is solved as with natural edges.
 
 Seventh, it may be 3, for a flat tear: a tear with Finch et al.'s slope curve either side, a penalty, 50 times a thin
 plate term, on the first difference away from the curve along its normal, so the surface is flat beside it. Its
