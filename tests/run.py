@@ -28,6 +28,10 @@ EDITORS = {
 }
 
 
+# The test window's left, top, right and bottom on the screen.
+WINDOW = (0, 33, 1600, 1033)
+
+
 def osascript(*lines):
     arguments = [argument for line in lines for argument in ("-e", line)]
     return subprocess.run(["osascript", *arguments], capture_output=True, text=True).stdout.strip()
@@ -56,7 +60,9 @@ def run(editor, only, timeout):
     name = f"{editor}-{os.getpid()}"
     window = f'(first window whose name starts with "TESTS {name} ")'
     open(path, "w").write(page_for(editor, only, name))
+    # A window of one size, whatever the last one was: a box is sized to fit the window, and its grid to fit the box.
     osascript(f'tell application "Safari" to make new document with properties {{URL:"file://{path}"}}',
+              f'tell application "Safari" to set bounds of window 1 to {{{", ".join(map(str, WINDOW))}}}',
               'tell application "Safari" to activate')
     # The results come a part at a time, each "TESTS <run> done <place>/<count> <part>", over and over.
     title, started, parts, count = "", time.time(), {}, None

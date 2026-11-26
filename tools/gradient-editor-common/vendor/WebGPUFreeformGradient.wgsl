@@ -185,9 +185,13 @@ fn freeformConstraints(@builtin(global_invocation_id) id: vec3<u32>) {
         }
         // A point of no radius holds the texel it's in and no other, so
         // nothing holds the slope there: just one, even from a texel's edge,
-        // since two would hold the slope between them.
+        // since two would hold the slope between them. Which texel that is
+        // comes from the point alone, the same for every texel asking: by
+        // its distance from each texel's center, rounding could leave a
+        // point on an edge in neither.
         if (point.radius <= 0.0) {
-            coverage = select(0.0, 1.0, all(delta > -0.5 * level.texelSize) && all(delta <= 0.5 * level.texelSize));
+            let inside = vec2<i32>(floor(point.position * vec2<f32>(level.size)));
+            coverage = select(0.0, 1.0, all(inside == vec2<i32>(gid)));
         }
         var color = point.color;
         if (level.holds == 3u && point.radius <= 0.0 && coverage > 0.0) {
