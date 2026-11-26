@@ -79,6 +79,11 @@ def mesh_parts(source_path):
     }
 
 
+# Text as a JavaScript template literal, so it reads in the page as it does in its file: a line to a line.
+def template_literal(text):
+    return "`" + text.replace("\\", "\\\\").replace("`", "\\`").replace("${", "\\${") + "`"
+
+
 def fill(text, replacements):
     for marker, value in replacements.items():
         assert marker in text, marker
@@ -140,7 +145,7 @@ def build(parts, output_path, source_path):
         "__SHADER_MATRICES__": mesh["shader_matrices"],
         "__SHADER_COLOR__": shader_color,
         "__RENDERER__": renderer.rstrip(),
-        "__SHADER__": json.dumps(read(os.path.join(vendor, "WebGPUFreeformGradient.wgsl"))),
+        "__SHADER__": template_literal(read(os.path.join(vendor, "WebGPUFreeformGradient.wgsl"))),
     })
 
     page = (style.rstrip() + "\n" + read(os.path.join(common, "common.css")) + read(os.path.join(parts, "editor.css"))
