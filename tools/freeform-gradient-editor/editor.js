@@ -47,6 +47,17 @@ const PRESETS = [
         },
     },
     {
+        name: "Scattered sunset",
+        note: "Six stops from dark blue through pink and orange to yellow, some near the box's edges, where the models differ most.",
+        state: {
+            width: 600, height: 400,
+            stops: [
+                stop(0.1, 0.08, "#1a1446"), stop(0.7, 0.12, "#5b2a86"), stop(0.3, 0.5, "#e0457b"),
+                stop(0.8, 0.6, "#ff8a3d"), stop(0.45, 0.92, "#ffd166"), stop(0.95, 0.95, "#2e1760"),
+            ],
+        },
+    },
+    {
         name: "Two stops close together",
         note: "A black and a white stop a short way apart. The thin plate spline carries the steep slope between them across the whole box, far darker than black on one side and brighter than white on the other: try Where it leaves the gamut, or a cross-section through both. The biharmonic model does less of that, and the harmonic model stays between them.",
         state: {
