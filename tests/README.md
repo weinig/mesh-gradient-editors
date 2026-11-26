@@ -38,3 +38,6 @@ were written, so they catch a change in what the renderer draws, not a change in
 
 `prototypes/tears/` has a CPU reference for the biharmonic model with tears, and a check that a solver like the
 renderer's can solve it in single precision. Those need NumPy, SciPy and Pillow, and run on their own.
+
+`prototypes/exact/` checks the renderer's own biharmonic solve against an exact one of the same equation: see its
+README.
